@@ -135,11 +135,11 @@ const SPECIES = {
   oak_a:    { kind: 'tree',  baseH: 1.95, slopeMax: 0.42, clearR: 0.60, sway: 0.016, blobA: 0.50 },
   oak_b:    { kind: 'tree',  baseH: 1.85, slopeMax: 0.42, clearR: 0.60, sway: 0.016, blobA: 0.50 },
   oak_c:    { kind: 'tree',  baseH: 2.05, slopeMax: 0.42, clearR: 0.60, sway: 0.016, blobA: 0.50 },
-  blossom_a:{ kind: 'tree',  baseH: 2.00, slopeMax: 0.45, clearR: 0.60, sway: 0.018, blobA: 0.50 },
-  blossom_b:{ kind: 'tree',  baseH: 1.90, slopeMax: 0.45, clearR: 0.60, sway: 0.018, blobA: 0.50 },
-  blossom_c:{ kind: 'tree',  baseH: 2.10, slopeMax: 0.45, clearR: 0.60, sway: 0.018, blobA: 0.50 },
-  bamboo_a: { kind: 'tree',  baseH: 2.50, slopeMax: 0.40, clearR: 0.48, sway: 0.021, blobA: 0.42 },
-  bamboo_b: { kind: 'tree',  baseH: 2.30, slopeMax: 0.40, clearR: 0.48, sway: 0.021, blobA: 0.42 },
+  blossom_a:{ kind: 'tree',  baseH: 2.00, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
+  blossom_b:{ kind: 'tree',  baseH: 1.90, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
+  blossom_c:{ kind: 'tree',  baseH: 2.10, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
+  bamboo_a: { kind: 'tree',  baseH: 2.50, slopeMax: 0.40, clearR: 0.40, sway: 0.021, blobA: 0.42 },
+  bamboo_b: { kind: 'tree',  baseH: 2.30, slopeMax: 0.40, clearR: 0.40, sway: 0.021, blobA: 0.42 },
   bush_a:   { kind: 'bush',  baseH: 0.72, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40 },
   bush_b:   { kind: 'bush',  baseH: 0.66, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40 },
   bush_c:   { kind: 'bush',  baseH: 0.78, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40 },
@@ -156,7 +156,7 @@ const SPECIES = {
   wheat_b:  { kind: 'crop',  baseH: 0.82, slopeMax: 0.35, clearR: 0.26, sway: 0.034, blobA: 0.10 },
   stump:    { kind: 'wood',  baseH: 0.45, slopeMax: 0.40, clearR: 0.55, sway: 0,     blobA: 0.38 },
   log:      { kind: 'wood',  baseH: 0.50, slopeMax: 0.38, clearR: 0.55, sway: 0,     blobA: 0.38 },
-  cattail:  { kind: 'reed',  baseH: 0.92, slopeMax: 0.50, clearR: 0.32, sway: 0.030, blobA: 0 },
+  cattail:  { kind: 'reed',  baseH: 0.92, slopeMax: 0.70, clearR: 0.32, sway: 0.030, blobA: 0 },
   lilypad:  { kind: 'flat',  baseH: 0.46, slopeMax: 1.00, clearR: 0.50, sway: 0,     blobA: 0 },
 }
 
@@ -281,6 +281,22 @@ export function createScatter({ terrain, atlas, renderer }) {
     return m
   }
 
+  // ---- Special-stand discs (decided up front so the generic tree pass can
+  // ---- leave them alone): the designated blossom valley SE of the village
+  // ---- and the bamboo stand at the village fringe (frame02 biome grammar).
+  const BLOSSOM_C = villagePOI
+    ? { x: villagePOI.x + 16, z: villagePOI.z + 18, r: 26 }
+    : { x: -54, z: -110, r: 26 }
+  const BAMBOO_C = villagePOI
+    ? { x: villagePOI.x + 16, z: villagePOI.z + 6, r: 7.5 }
+    : { x: -54, z: -122, r: 7.5 }
+  const inDisc = (x, z, d, f) => {
+    const dx = x - d.x
+    const dz = z - d.z
+    const rr = d.r * (f || 1)
+    return dx * dx + dz * dz < rr * rr
+  }
+
   // ---- Instance records --------------------------------------------------
   // { key, x, y, z, w, h, tint[3], phase, amp, freq, flip, rotY (flats) }
   const inst = []
@@ -376,6 +392,8 @@ export function createScatter({ terrain, atlas, renderer }) {
         const jz = gz + (hash2(gx, gz, 2) - 0.5) * step * 1.15
         const b = T.biome(jx, jz)
         if (b === 'ocean' || b === 'beach' || b === 'road' || b === 'field') continue
+        // reserved for the blossom valley / bamboo passes
+        if (inDisc(jx, jz, BLOSSOM_C, 0.92) || inDisc(jx, jz, BAMBOO_C, 1.15)) continue
 
         const y = T.height(jx, jz)
         const sl = T.slope(jx, jz)
@@ -494,10 +512,10 @@ export function createScatter({ terrain, atlas, renderer }) {
   // Three pink ramps intermixed + dark conifers interleaved (bible F2 note).
   {
     const rnd = rngFor('blossom')
-    const cx = villagePOI ? villagePOI.x + 16 : -54
-    const cz = villagePOI ? villagePOI.z + 18 : -110
-    const R = 26
-    const step = 1.5
+    const cx = BLOSSOM_C.x
+    const cz = BLOSSOM_C.z
+    const R = BLOSSOM_C.r
+    const step = 1.4
     let n = 0
     for (let gz = cz - R; gz <= cz + R; gz += step) {
       for (let gx = cx - R; gx <= cx + R; gx += step) {
@@ -508,13 +526,14 @@ export function createScatter({ terrain, atlas, renderer }) {
         if (d > 1) continue
         const b = T.biome(jx, jz)
         if (b !== 'grass' && b !== 'forest') continue
-        // clumpy falloff with ragged rim
-        const p = (1 - sstep(0.5, 1.0, d)) * (0.62 + 0.38 * fbm2(jx * 0.06, jz * 0.06, 2))
+        // solid interior plateau, ragged noise-eaten rim (frame02's pink
+        // hillsides are a near-continuous mass, not sprinkles)
+        const p = (1 - sstep(0.62, 1.0, d)) * (0.74 + 0.26 * fbm2(jx * 0.06, jz * 0.06, 2))
         if (hash2(jx, jz, 43) > p) continue
         const r = hash2(jx, jz, 44)
         const key =
-          r < 0.36 ? 'blossom_a' : r < 0.62 ? 'blossom_b' : r < 0.82 ? 'blossom_c'
-          : r < 0.93 ? 'pine_b' : 'pine_a' // interleaved dark conifers
+          r < 0.32 ? 'blossom_a' : r < 0.58 ? 'blossom_b' : r < 0.78 ? 'blossom_c'
+          : r < 0.9 ? 'pine_b' : 'pine_a' // interleaved dark conifers (bible F2)
         const grp = key.indexOf('pine') === 0 ? 'conifer' : 'blossom'
         if (plant(key, jx, jz, rnd, grp)) { if (grp === 'blossom') n++ }
       }
@@ -524,10 +543,10 @@ export function createScatter({ terrain, atlas, renderer }) {
   // ---- 4.4 BAMBOO STAND: tight cane clusters near the village -------------
   {
     const rnd = rngFor('bamboo')
-    const cx = villagePOI ? villagePOI.x + 16 : -54
-    const cz = villagePOI ? villagePOI.z + 6 : -122
-    const R = 7.5
-    const step = 0.9
+    const cx = BAMBOO_C.x
+    const cz = BAMBOO_C.z
+    const R = BAMBOO_C.r
+    const step = 0.85
     let n = 0
     for (let gz = cz - R; gz <= cz + R; gz += step) {
       for (let gx = cx - R; gx <= cx + R; gx += step) {
@@ -536,7 +555,7 @@ export function createScatter({ terrain, atlas, renderer }) {
         const jz = gz + (hash2(gx, gz, 52) - 0.5) * step
         const d = Math.hypot(jx - cx, jz - cz) / R
         if (d > 1) continue
-        const p = (1 - sstep(0.5, 1.0, d)) * 0.85
+        const p = (1 - sstep(0.62, 1.0, d)) * 0.9
         if (hash2(jx, jz, 53) > p) continue
         const key = hash2(jx, jz, 54) < 0.55 ? 'bamboo_a' : 'bamboo_b'
         if (plant(key, jx, jz, rnd, 'bamboo')) n++
@@ -620,15 +639,15 @@ export function createScatter({ terrain, atlas, renderer }) {
         if (T.biome(gx, gz) === 'field') tiles.push(gx, gz)
       }
     }
-    const fine = 0.8
+    const fine = 0.62
     for (let i = 0; i < tiles.length; i += 2) {
       if ((counts.wheat || 0) >= BUDGET.wheat) break
       const tx = tiles[i]
       const tz = tiles[i + 1]
       for (let oz = -2; oz < 2; oz += fine) {
         for (let ox = -2; ox < 2; ox += fine) {
-          const jx = tx + ox + (hash2(tx + ox, tz + oz, 101) - 0.5) * 0.5
-          const jz = tz + oz + (hash2(tx + ox, tz + oz, 102) - 0.5) * 0.5
+          const jx = tx + ox + (hash2(tx + ox, tz + oz, 101) - 0.5) * 0.4
+          const jz = tz + oz + (hash2(tx + ox, tz + oz, 102) - 0.5) * 0.4
           if (T.biome(jx, jz) !== 'field') continue
           if (T.onRoad(jx, jz) > 0.05) continue
           if (hash2(jx, jz, 103) > 0.86) continue // tiny breathing gaps
@@ -741,10 +760,31 @@ export function createScatter({ terrain, atlas, renderer }) {
           if (!T.isWater(jx, jz)) {
             // ---- bank: cattail clusters right at the waterline
             if ((counts.cattail || 0) >= BUDGET.cattail) continue
-            if (!waterNear(jx, jz, 0.9)) continue
-            if (T.slope(jx, jz) > 0.5 || T.onRoad(jx, jz) > 0.05) continue
-            if (hash2(jx, jz, 193) > 0.24) continue
+            if (!waterNear(jx, jz, 1.1)) continue
+            if (T.slope(jx, jz) > 0.68 || T.onRoad(jx, jz) > 0.05) continue
+            if (hash2(jx, jz, 193) > 0.30) continue
             plant('cattail', jx, jz, rnd, 'cattail')
+          } else if (
+            // ---- shallows: reeds emerge from the water margin itself (the
+            // ---- carved channels have steep rock banks — the waterline is
+            // ---- where the reeds live, roots just under the surface)
+            (counts.cattail || 0) < BUDGET.cattail &&
+            T.waterHeight(jx, jz) - T.height(jx, jz) <= 0.3 &&
+            hash2(jx, jz, 196) < 0.22
+          ) {
+            // needs a dry shoulder within ~1.2 m so reeds hug the edge
+            let dry = false
+            for (let k = 0; k < 8 && !dry; k++) {
+              if (!T.isWater(jx + RING8[k][0] * 1.2, jz + RING8[k][1] * 1.2)) dry = true
+            }
+            if (!dry) continue
+            const it = makeInstance('cattail', jx, jz, rnd)
+            if (!it) continue
+            it.y = T.waterHeight(jx, jz) - 0.06 // base just below the surface
+            if (!occClear(jx, jz, 0.3)) continue
+            occInsert(jx, jz, 0.3)
+            inst.push(it)
+            bump('cattail')
           } else {
             // ---- pool: lilypads on slow, shallow fresh water
             if ((counts.lilypad || 0) >= BUDGET.lilypad) continue
