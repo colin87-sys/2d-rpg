@@ -186,16 +186,15 @@ const PAL = {
   GRASS_MID: 0x4a7429,
   GRASS_SHADOW: 0x2f5426,
   GRASS_DEEP: 0x1d3a1e,
-  // INTEGRATION (round 2): measured off frame01 — the plate's lit rock face is
-  // #b7c7ac at value 0.78 and its mid mass sits at 0.66, while the shipped
-  // terraces rendered at 0.35–0.63: the strata benches were there but read as
-  // dark contour stripes instead of a pale limestone massif. The ramp is
-  // lifted ~12 % (hue and the LIT anchor kept — LIT *is* the bible's sampled
-  // #b7c2a8) so the risers carry the silhouette rather than the shadow.
-  CLIFF_LIT: 0xc9d1bd,
-  CLIFF_MID: 0xa0ac93,
-  CLIFF_SHADOW: 0x6f8272,
-  CLIFF_CREVICE: 0x435248,
+  // ROUND 3: back to the bible ramp verbatim. The terraces are now hard
+  // GEOMETRY (flat sunlit bench tops, near-vertical risers), so the sun does
+  // the lit-top / shadowed-riser separation — the albedo no longer needs a
+  // lifted ramp to fake it, and the strata texture is gated strictly by
+  // surface normal (never by elevation isolines).
+  CLIFF_LIT: 0xb7c2a8,
+  CLIFF_MID: 0x8a9880,
+  CLIFF_SHADOW: 0x5d7161,
+  CLIFF_CREVICE: 0x37473f,
   ROAD_LIT: 0xc39a5c,
   ROAD_MID: 0xa57a45,
   ROAD_SHADOW: 0x6f5638,
@@ -268,198 +267,244 @@ function resampleSpline(pts, spacing, extraKeys = []) {
 
 const SEA_LEVEL = 0
 
-// --- Coastline: mean x −82 (meander ±10) for z ≥ −45, veering west to
-// --- x ≈ −128 north of z −60. Land is d = x − coastX(z) > 0.
+// --- Coastline (FRAMING §4, BINDING): lip polyline (−53,+23) → (−57,+10.5)
+// --- → (−63.5,−6.5) → (−72,−28) → (−79,−45), extended off-frame both ways.
+// --- Land is d = x − coastX(z) > 0. Meander is kept tiny (±0.4 m) so the
+// --- verified lip landmarks stay within tolerance.
+const COAST_BREAKS = [
+  // [z, x] — monotonic decreasing z, southmost first
+  [256, -60.0],
+  [120, -55.5],
+  [60, -51.5],
+  [40, -51.5],
+  [23, -53.0],
+  [10.5, -57.0],
+  [-6.5, -63.5],
+  [-28, -72.0],
+  [-45, -79.0],
+  [-80, -84.0],
+  [-140, -90.0],
+  [-256, -96.0],
+]
 function coastX(z) {
-  const south = -82 + 6.5 * Math.sin(z * 0.021 + 1.3) + 3.0 * Math.sin(z * 0.049 + 4.1)
-  const north = -128 + 5.0 * Math.sin(z * 0.026 + 0.7)
-  const t = sstep(0, 1, clamp01((-46 - z) / 24)) // veer complete by z −70
-  return lerp(south, north, t)
+  let x
+  if (z >= COAST_BREAKS[0][0]) x = COAST_BREAKS[0][1]
+  else if (z <= COAST_BREAKS[COAST_BREAKS.length - 1][0]) x = COAST_BREAKS[COAST_BREAKS.length - 1][1]
+  else {
+    x = COAST_BREAKS[COAST_BREAKS.length - 1][1]
+    for (let i = 0; i < COAST_BREAKS.length - 1; i++) {
+      const a = COAST_BREAKS[i]
+      const b = COAST_BREAKS[i + 1]
+      if (z <= a[0] && z >= b[0]) {
+        const t = (a[0] - z) / (a[0] - b[0] || 1e-6)
+        x = lerp(a[1], b[1], t)
+        break
+      }
+    }
+  }
+  return x + 0.4 * Math.sin(z * 0.23 + 1.7) + 0.25 * Math.sin(z * 0.61 + 4.1)
 }
 
-// --- River. One downstream polyline, headwater → sea exit, with per-point
-// --- half-usable data: w = full width (m), lv = water surface level (m).
-// --- The waterfall is the segment between WFALL_LIP_I and WFALL_BASE_I.
+// --- River (FRAMING §4, BINDING). One downstream polyline: perched coastal
+// --- headwater → under the north bridge (−41, −1) → falls lip (−30.5, +3)
+// --- y 12.5 → 4 m FALLS → pool (−30, +2) y 8.5 → gorge run east between the
+// --- massif E face and the castle backdrop, exiting at (−15, +8), then
+// --- fading off-frame east. w = full width (m), lv = water surface (m).
 const RIVER_PTS = [
-  { x: -37, z: -252, w: 3.0, lv: 30.6 }, // fog-washed headwater at map edge
-  { x: -33, z: -216, w: 3.0, lv: 29.4 },
-  { x: -36, z: -182, w: 3.2, lv: 28.2 },
-  { x: -34, z: -152, w: 3.2, lv: 27.0 }, // north highland
-  { x: -31, z: -132, w: 3.4, lv: 26.0 },
-  { x: -30, z: -118, w: 3.6, lv: 25.0 }, // under the log bridge (deck +26)
-  { x: -29, z: -102, w: 3.8, lv: 24.2 },
-  { x: -28.5, z: -86, w: 4.0, lv: 23.4 },
-  { x: -27, z: -70, w: 4.0, lv: 22.6 },
-  { x: -26.5, z: -56, w: 4.2, lv: 21.6 }, // enters the massif top
-  { x: -26.2, z: -47, w: 4.2, lv: 20.8 },
-  { x: -26.5, z: -40, w: 4.4, lv: 20.2 }, // WATERFALL LIP (massif SW face)
-  { x: -29.5, z: -35.5, w: 6.0, lv: 11.0 }, // WATERFALL BASE → plunge pool
-  { x: -30.5, z: -34, w: 9.5, lv: 11.0 }, // pool centre (−31, −33)-ish
-  // the reach the hero shot actually sees: kept WIDE (8–8.5 m, frame01's
-  // east-of-massif run is a broad cyan band) with low hugging banks so the
-  // 28°-pitch camera reads water, not a hidden slot
-  { x: -26, z: -31, w: 8.0, lv: 10.6 },
-  { x: -18, z: -28.5, w: 8.0, lv: 9.9 },
-  { x: -8, z: -26, w: 8.5, lv: 9.2 }, // bible waypoint
-  { x: 3, z: -23.5, w: 8.2, lv: 8.6 },
-  { x: 14, z: -20, w: 8.0, lv: 8.1 }, // bible waypoint
-  { x: 27, z: -13, w: 7.0, lv: 7.4 },
-  { x: 38, z: -3, w: 6.2, lv: 6.9 },
-  { x: 48, z: 4, w: 6.0, lv: 6.4 },
-  { x: 60, z: 10, w: 6.0, lv: 6.0 }, // bible: exits SE at (+60, +10)
-  { x: 84, z: 20, w: 6.5, lv: 5.4 },
-  { x: 112, z: 33, w: 7.0, lv: 4.8 },
-  { x: 148, z: 49, w: 7.5, lv: 4.2 },
-  { x: 194, z: 62, w: 8.0, lv: 3.6 },
-  { x: 244, z: 72, w: 8.5, lv: 3.1 }, // fades off the SE map edge
+  { x: -70, z: -110, w: 2.6, lv: 17.2 }, // fog-washed spring, far north coast
+  { x: -68, z: -80, w: 2.6, lv: 16.2 },
+  { x: -66, z: -58, w: 2.6, lv: 15.7 },
+  { x: -64, z: -42, w: 2.8, lv: 15.2 },
+  { x: -62, z: -30, w: 2.8, lv: 14.8 },
+  { x: -59, z: -20, w: 3.0, lv: 14.4 },
+  { x: -55, z: -12, w: 3.0, lv: 14.05 },
+  { x: -51, z: -7, w: 3.0, lv: 13.75 },
+  { x: -48, z: -3, w: 3.0, lv: 13.5 }, // §4 headwater start proper
+  { x: -44, z: -2.2, w: 3.0, lv: 13.3 },
+  { x: -41, z: -1, w: 3.0, lv: 13.15 }, // NORTH BRIDGE (deck y 13.5)
+  { x: -38, z: -1.8, w: 3.0, lv: 13.0 },
+  { x: -35, z: -2.6, w: 2.8, lv: 12.85 },
+  { x: -32.5, z: -1.6, w: 2.6, lv: 12.7 }, // notch round the massif NE flank
+  { x: -31, z: 0.5, w: 2.5, lv: 12.6 },
+  { x: -30.5, z: 3, w: 2.5, lv: 12.5 }, // WATERFALL LIP (E shoulder terrace)
+  { x: -30, z: 2, w: 4.2, lv: 8.5 }, // WATERFALL POOL — 4 m single drop
+  { x: -28.6, z: 3.6, w: 4.4, lv: 8.3 },
+  { x: -27.5, z: 5, w: 4.4, lv: 8.0 }, // small cascade y 8 → 7.5
+  { x: -26.6, z: 5.6, w: 4.4, lv: 7.6 },
+  { x: -24.5, z: 6.2, w: 4.6, lv: 7.5 },
+  { x: -22, z: 6.5, w: 4.6, lv: 7.4 }, // §4 gorge waypoint
+  { x: -18.5, z: 7.3, w: 4.8, lv: 7.15 },
+  { x: -15, z: 8, w: 5.0, lv: 7.0 }, // §4: exits E behind the castle plateau
+  { x: -10, z: 8.6, w: 5.2, lv: 6.8 },
+  { x: -4, z: 9.4, w: 5.5, lv: 6.6 },
+  { x: 6, z: 11, w: 6.0, lv: 6.3 },
+  { x: 20, z: 13, w: 6.5, lv: 6.0 },
+  { x: 45, z: 16, w: 7.0, lv: 5.5 },
+  { x: 80, z: 22, w: 7.5, lv: 5.0 },
+  { x: 130, z: 30, w: 8.0, lv: 4.4 },
+  { x: 200, z: 42, w: 8.5, lv: 3.8 },
+  { x: 250, z: 50, w: 9.0, lv: 3.4 }, // fades off the E map edge
 ]
-const WFALL_LIP = { x: -26.5, z: -40, y: 20.2 }
-const WFALL_BASE = { x: -29.5, z: -35.5, y: 11.0 }
+const WFALL_LIP = { x: -30.5, z: 3, y: 12.5 }
+const WFALL_BASE = { x: -30, z: 2, y: 8.5 }
 
-// --- Sea inlet gorge under the west trestle bridge (−84, −66), 12 m span.
+// --- Sea inlet notch (FRAMING §4): cuts NE from the ocean at (−62, +13) to
+// --- its head at (−55, +6); the west trestle bridge (−59, +9.5, deck 12)
+// --- spans it. Water is sea level 0.
 const INLET_PTS = [
-  { x: -126, z: -62, w: 26 },
-  { x: -110, z: -64, w: 18 },
-  { x: -97, z: -65.5, w: 13 },
-  { x: -87, z: -66.2, w: 10.5 },
-  { x: -80, z: -66.6, w: 8.0 },
-  { x: -76.5, z: -66.8, w: 5.5 }, // inlet head, east tip
+  { x: -66, z: 17, w: 14 }, // open water mouth
+  { x: -62, z: 13, w: 10 },
+  { x: -59, z: 9.5, w: 7.0 }, // bridge crossing
+  { x: -56.5, z: 7, w: 5.0 },
+  { x: -55, z: 6, w: 3.6 }, // inlet head
 ]
 
-// --- Roads: waypoints hand-laid along contours (grading pass refines Y).
-// --- Width 2.6 core + 1.2 feather each side (§5).
+// --- Roads (FRAMING §4/§8, BINDING): S entry crosses the bottom edge near
+// --- fw 0.57 through (−36, +31) → hero (−38, +18) → fork (−49.5, +8.5);
+// --- W branch → inlet bridge; N branch switchback over the north bridge to
+// --- the village; E branch → saddle → castle gate.
+// --- Width 2.6 core + 1.2 feather each side (§5, unchanged).
 const ROAD_DEFS = [
   {
-    name: 'south', // map entry → past the farm → the hero → the fork
+    name: 'south', // bottom-edge entry → hero → fork
     pts: [
-      { x: -22, z: 132 }, { x: -24, z: 120 }, { x: -27, z: 104 }, { x: -30, z: 88 },
-      { x: -31, z: 72 }, { x: -33, z: 58 }, { x: -36, z: 42 }, { x: -37.5, z: 28 },
-      { x: -38, z: 18 } /* hero anchor */, { x: -39.5, z: 10 }, { x: -44, z: 2 },
+      { x: -30, z: 58 }, { x: -31.5, z: 50 }, { x: -33, z: 44 }, { x: -34.5, z: 38 },
+      { x: -36, z: 31 } /* bottom-edge crossing, fw 0.57 */, { x: -37.3, z: 24 },
+      { x: -38, z: 18 } /* hero anchor, ground exactly 10.4 */, { x: -39.8, z: 14 },
+      { x: -43, z: 11 }, { x: -46.5, z: 9.3 }, { x: -49.5, z: 8.5 } /* fork */,
     ],
   },
   {
-    name: 'camp_spur', // east off the south road to the roadside camp
+    name: 'castle', // hero → saddle (−31, +17) y 9.7 → castle gate (−24.8, +19.3)
     pts: [
-      { x: -30, z: 88 }, { x: -20, z: 92 }, { x: -8, z: 93 }, { x: 2, z: 90 }, { x: 8, z: 88 },
+      { x: -38, z: 18 }, { x: -35.5, z: 16.8 }, { x: -34, z: 16.5 }, { x: -32.5, z: 16.7 },
+      { x: -31, z: 17 } /* saddle */, { x: -29, z: 18 }, { x: -27, z: 18.8 },
+      { x: -24.8, z: 19.3 } /* gate arch */, { x: -23.2, z: 19.4 },
     ],
   },
   {
-    name: 'castle', // fork → SW ramp switchback → castle gate (gate faces SW)
-    // first leg leaves due ENE so the mouth clears the south road's arrival
-    // by ~45° — branch mouths meet at road width, never as a merged pad
+    name: 'west', // fork → inlet trestle bridge SE abutment
     pts: [
-      { x: -44, z: 2 }, { x: -36, z: 4.5 }, { x: -31.5, z: 11.5 }, { x: -27.5, z: 15 },
-      { x: -24.5, z: 13.8 }, { x: -23.2, z: 11 }, { x: -23.5, z: 8 }, { x: -22, z: 5.5 },
+      { x: -49.5, z: 8.5 }, { x: -52.5, z: 9 }, { x: -55, z: 10.2 }, { x: -56.6, z: 11.9 },
     ],
   },
   {
-    name: 'west', // fork → coastal rise → trestle bridge south abutment
-    // first leg leaves due W (was WSW) — keeps ≥60° from the north branch so
-    // the two corridors never run side-by-side out of the junction
+    name: 'north', // fork → switchback → north bridge (−41, −1) → village
     pts: [
-      { x: -44, z: 2 }, { x: -52, z: 0 }, { x: -58, z: -6 }, { x: -62, z: -15 },
-      { x: -64, z: -32 }, { x: -69, z: -40 }, { x: -75, z: -47 }, { x: -80, z: -54 },
-      { x: -83, z: -59.5 },
-    ],
-  },
-  {
-    name: 'west_north', // trestle north abutment → up the coast → village
-    pts: [
-      { x: -85, z: -73 }, { x: -84, z: -82 }, { x: -80, z: -94 }, { x: -76, z: -106 },
-      { x: -73, z: -116 }, { x: -70.5, z: -123 },
-    ],
-  },
-  {
-    name: 'north', // fork → massif west flank switchbacks → village
-    pts: [
-      { x: -44, z: 2 }, { x: -46, z: -8 }, { x: -47.5, z: -18 }, { x: -50, z: -30 },
-      { x: -49, z: -42 }, { x: -45.5, z: -50 }, { x: -50, z: -58 }, { x: -55, z: -66 },
-      { x: -54, z: -76 }, { x: -56, z: -88 }, { x: -59, z: -100 }, { x: -63, z: -112 },
-      { x: -67, z: -121 }, { x: -70, z: -126 },
-    ],
-  },
-  {
-    name: 'shrine', // village road → log bridge over the gorge → shrine
-    pts: [
-      { x: -59, z: -100 }, { x: -50, z: -106 }, { x: -42, z: -112 }, { x: -35, z: -117 },
-      { x: -30, z: -118.5 }, { x: -24, z: -118 }, { x: -15, z: -112 }, { x: -5, z: -104 },
-      { x: 5, z: -96 }, { x: 15, z: -88 }, { x: 24, z: -80 }, { x: 32, z: -72 },
-      { x: 38, z: -64 },
+      { x: -49.5, z: 8.5 }, { x: -48, z: 5.5 }, { x: -47, z: 3 } /* §4 switchback */,
+      { x: -44.5, z: 1 }, { x: -42.2, z: 1.8 }, { x: -41, z: 2.9 } /* S abutment */,
+      { x: -41, z: -4.9 } /* N abutment */, { x: -42.5, z: -8 }, { x: -46, z: -12 },
+      { x: -50.5, z: -16.5 } /* village */,
     ],
   },
 ]
 
-// --- Wheat paddocks: rounded-organic patches (centre, rx, rz, rot)
+// --- Wheat paddocks (FRAMING §4): P1 at the hero's E shoulder + its W lobe
+// --- (wheat reads on BOTH shoulders), P2 south of it, the big SE field
+// --- sprawling to z +38. rx ≥ rz kept for the fast bounds test.
 const PADDOCKS = [
-  { x: -34, z: 14, rx: 6.0, rz: 3.6, rot: 0.30 }, // hero's east shoulder
-  { x: -42, z: 26, rx: 8.0, rz: 4.6, rot: -0.18 },
-  { x: -30, z: 30, rx: 6.6, rz: 4.0, rot: 0.42 },
-  { x: -20, z: 52, rx: 8.2, rz: 4.6, rot: 0.12 }, // south foreground pair
-  { x: 1, z: 36, rx: 9.0, rz: 5.0, rot: -0.30 },
+  { x: -37, z: 15.5, rx: 4.0, rz: 2.75, rot: 0.18 }, // P1, ~8×5.5
+  { x: -40.5, z: 16, rx: 2.1, rz: 1.6, rot: -0.35 }, // P1 west lobe, ~3×4
+  { x: -36.5, z: 22.5, rx: 6.0, rz: 3.5, rot: -0.10 }, // P2, ~12×7
+  { x: -29.5, z: 28.5, rx: 7.0, rz: 4.5, rot: 0.28 }, // big SE field, ~14×9
+  { x: -27.5, z: 34.5, rx: 5.5, rz: 3.8, rot: -0.15 }, // SE sprawl to z +38
 ]
 
-// --- Flat pads: castle / village / shrine / camp (+ the farm terrace)
+// --- Flat pads. Castle plateau is its own authored stage (kind 'castle' is
+// --- kept only so road points near the gate get pinned during grading).
 const PADS = [
-  { x: -20, z: 4, r: 19, h: 14.0, kind: 'castle' }, // plateau surface (smax'd)
-  { x: -70, z: -128, r: 15, h: 24.0, kind: 'village' },
-  { x: 38, z: -64, r: 9, h: 18.0, kind: 'shrine' },
-  { x: 8, z: 88, r: 7, h: 8.0, kind: 'camp' },
-  { x: -36, z: 22, r: 15, h: 10.0, kind: 'farm' },
+  { x: -23.5, z: 17, r: 8, h: 10.5, kind: 'castle' },
+  { x: -50.5, z: -16.5, r: 7.5, h: 11.5, kind: 'village' },
+  { x: -12, z: -12, r: 5, h: 12.0, kind: 'shrine' },
+  { x: -32, z: 46, r: 6, h: 9.5, kind: 'camp' },
+  { x: -37, z: 15.5, r: 6, h: 10.45, kind: 'farm' },
   // bridge abutments — decks must meet solid ground at both ends
-  { x: -84, z: -59.8, r: 5.5, h: 18.0, kind: 'abutment' }, // trestle south
-  { x: -85, z: -73.2, r: 5.5, h: 18.0, kind: 'abutment' }, // trestle north
-  { x: -34.5, z: -117.8, r: 4.5, h: 26.0, kind: 'abutment' }, // log west
-  { x: -25.5, z: -118.2, r: 4.5, h: 26.0, kind: 'abutment' }, // log east
+  { x: -41, z: 2.9, r: 2.6, h: 13.5, kind: 'abutment' }, // north bridge S
+  { x: -41, z: -4.9, r: 2.6, h: 13.5, kind: 'abutment' }, // north bridge N
+  { x: -56.6, z: 11.9, r: 2.6, h: 12.0, kind: 'abutment' }, // inlet SE
+  { x: -61.4, z: 7.1, r: 2.4, h: 12.0, kind: 'stack' }, // inlet NW sea-stack
 ]
 
 // --- Forest stands (authored clump anchors): centre, radius, strength
 const STANDS = [
-  { x: -54, z: 42, r: 17, s: 1.0 }, // west of the south road
-  { x: -22, z: 70, r: 13, s: 0.9 },
-  { x: -70, z: 6, r: 11, s: 0.9 }, // coastal lip groves
-  { x: -64, z: -28, r: 12, s: 0.85 },
-  { x: -18, z: -36, r: 16, s: 1.0 }, // massif top pines
-  { x: -8, z: -44, r: 13, s: 0.95 },
-  { x: 20, z: -34, r: 14, s: 0.9 }, // east river bank
-  { x: 2, z: 16, r: 9, s: 0.7 }, // castle east flank
-  { x: -46, z: -84, r: 18, s: 0.9 }, // north plateau woods
-  { x: -14, z: -84, r: 16, s: 0.85 },
-  { x: 16, z: -110, r: 20, s: 0.9 },
-  { x: -88, z: -104, r: 14, s: 0.8 },
-  { x: 60, z: -60, r: 16, s: 0.8 },
-  { x: 96, z: -34, r: 18, s: 0.8 }, // east highland fringe
-  { x: 60, z: 46, r: 14, s: 0.75 }, // south-east lowland copses
-  { x: 30, z: 78, r: 12, s: 0.7 },
-  { x: -36, z: 60, r: 9, s: 0.65 }, // roadside grove, south approach
-  { x: 148, z: -104, r: 30, s: 1.0 }, // NE ridge forest
-  { x: 180, z: -140, r: 34, s: 1.0 },
-  // the top-of-frame band: frame01's upstage is heavily wooded under fog
-  { x: -30, z: -160, r: 22, s: 0.9 },
-  { x: 10, z: -150, r: 18, s: 0.85 },
+  { x: -47.5, z: 27.5, r: 7, s: 1.0 }, // SW forest knoll — bottom-left mass
+  { x: -53, z: 13, r: 6, s: 0.9 }, // forest band west of the fork
+  { x: -51, z: 19, r: 5, s: 0.85 },
+  { x: -32.5, z: 5.5, r: 3, s: 0.9 }, // massif summit knob landmark pines
+  { x: -36.5, z: 8, r: 4, s: 0.5 }, // massif terrace conifers
+  { x: -49.5, z: -12, r: 5, s: 0.85 }, // olive-gold autumn grove site
+  { x: -45, z: -25, r: 6, s: 0.9 }, // north valley knoll woods
+  { x: -28, z: -20, r: 6, s: 0.85 },
+  { x: -38, z: -35, r: 10, s: 0.9 },
+  { x: -20, z: -40, r: 8, s: 0.85 },
+  { x: -13, z: 1, r: 6, s: 0.75 }, // backdrop cliffs east of the gorge
+  { x: -22, z: 34, r: 6, s: 0.55 }, // SE lowland copses
+  { x: -44, z: 40, r: 8, s: 0.7 },
+  // fog band, top of frame and beyond
+  { x: -52, z: -60, r: 15, s: 0.9 },
+  { x: -15, z: -65, r: 14, s: 0.85 },
+  { x: 15, z: -55, r: 12, s: 0.8 },
+  { x: -70, z: -90, r: 16, s: 0.85 },
+  { x: 40, z: -90, r: 18, s: 0.8 },
+  { x: -30, z: -120, r: 20, s: 0.9 },
+  { x: 10, z: -150, r: 20, s: 0.85 },
   { x: -60, z: -172, r: 20, s: 0.9 },
-  { x: 42, z: -172, r: 22, s: 0.9 },
-  { x: 92, z: -152, r: 20, s: 0.85 },
-  { x: -10, z: -202, r: 24, s: 0.95 },
-  { x: 62, z: -212, r: 24, s: 0.9 },
-  { x: -92, z: -202, r: 18, s: 0.85 },
-  { x: 132, z: -192, r: 26, s: 0.95 },
-  { x: -130, z: -160, r: 16, s: 0.8 },
-  // far south-east so free-orbit never shows bare plains
+  { x: 60, z: -190, r: 24, s: 0.9 },
+  { x: -10, z: -210, r: 24, s: 0.95 },
+  { x: 148, z: -104, r: 30, s: 1.0 }, // NE ridge forest (out of shot)
+  { x: 180, z: -140, r: 34, s: 1.0 },
+  // south + east so free-orbit never shows bare plains
+  { x: -30, z: 70, r: 14, s: 0.8 },
+  { x: -62, z: 60, r: 12, s: 0.75 },
+  { x: 12, z: 82, r: 14, s: 0.7 },
+  { x: 60, z: 40, r: 14, s: 0.7 },
+  { x: 90, z: -30, r: 18, s: 0.75 },
   { x: 150, z: 120, r: 20, s: 0.75 },
-  { x: 90, z: 180, r: 18, s: 0.7 },
-  { x: 205, z: 60, r: 16, s: 0.7 },
 ]
 
-// POI table (y snapped to pads at build time)
+// POI table (FRAMING §8.4 — these exact coordinates; y snapped at build time)
 const POI_DEFS = [
-  { name: 'Grandpine Castle', x: -20, z: 4, kind: 'castle' },
-  { name: 'Ferren Hamlet', x: -70, z: -128, kind: 'village' },
-  { name: 'Windward Shrine', x: 38, z: -64, kind: 'shrine' },
-  { name: 'Trestle Crossing', x: -84, z: -66.3, kind: 'bridge' },
-  { name: 'North Gorge Bridge', x: -30, z: -118.4, kind: 'bridge' },
-  { name: 'Paddock Farm', x: -36, z: 22, kind: 'farm' },
-  { name: 'Roadside Camp', x: 8, z: 88, kind: 'camp' },
+  { name: 'Grandpine Castle', x: -24.5, z: 16, kind: 'castle' },
+  { name: 'Ferren Hamlet', x: -50.5, z: -16.5, kind: 'village' },
+  { name: 'Windward Shrine', x: -12, z: -12, kind: 'shrine' },
+  { name: 'Inlet Trestle', x: -59, z: 9.5, kind: 'bridge' },
+  { name: 'North Gorge Bridge', x: -41, z: -1, kind: 'bridge' },
+  { name: 'Paddock Farm', x: -37, z: 15.5, kind: 'farm' },
+  { name: 'Roadside Camp', x: -32, z: 46, kind: 'camp' },
 ]
+
+// --- Massif + cliff stamp constants (shared by the height author and the
+// --- rock stencil so texture always agrees with geometry)
+const M_APRON = { cx: -35, cz: 4.5, rx: 10, rz: 10.5, top: 11.3, rise: 1.7, fw: 2.2, wob: 0.5 }
+const M_TIER1 = { cx: -36.3, cz: 4, rx: 6.8, rz: 7.0, top: 13.0, rise: 2.8, fw: 1.6, wob: 0.5 }
+const M_TIER2 = { cx: -33.8, cz: 5, rx: 4.8, rz: 4.6, top: 15.0, rise: 2.3, fw: 1.5, wob: 0.45 }
+const M_KNOB = { cx: -32.5, cz: 5.5, rx: 3.9, rz: 3.0, top: 16.5, rise: 1.8, fw: 1.5, wob: 0.3 }
+const M_SHLDR = { cx: -28.7, cz: 3.2, rx: 3.2, rz: 4.0, top: 12.5, rise: 3.0, fw: 1.4, wob: 0.4 }
+const M_NFLNK = { cx: -36, cz: -5.5, rx: 6.0, rz: 3.2, top: 12.8, rise: 2.2, fw: 2.6, wob: 0.5 }
+const BACKDROP = [
+  { cx: -15.5, cz: 5, rx: 5.5, rz: 5.5, top: 13.0, rise: 2.4, fw: 1.5, wob: 0.5 },
+  { cx: -9, cz: 3.5, rx: 6.2, rz: 5.8, top: 15.2, rise: 2.3, fw: 1.5, wob: 0.5 },
+]
+const KNOLLS = [
+  { cx: -45, cz: -25, rx: 5.5, rz: 4.5, top: 13.4, rise: 2.4, fw: 1.5, wob: 0.5 },
+  { cx: -45.5, cz: -24.5, rx: 3.2, rz: 2.6, top: 15.4, rise: 2.2, fw: 1.4, wob: 0.4 },
+  { cx: -28, cz: -20, rx: 5.0, rz: 4.2, top: 13.2, rise: 2.3, fw: 1.5, wob: 0.5 },
+  { cx: -27.6, cz: -20.3, rx: 2.9, rz: 2.5, top: 15.5, rise: 2.4, fw: 1.4, wob: 0.4 },
+]
+
+// Rock stencil: 1 on the massif's limestone benches (texture follows the
+// stamp GEOMETRY, never elevation); the grassy summit knob is carved out.
+function massifStoneAt(x, z) {
+  if (x < -46 || x > -23 || z < -9 || z > 16) return 0
+  let m = 0
+  for (const t of [M_TIER1, M_TIER2, M_SHLDR]) {
+    const er = ellipseR(x, z, t.cx, t.cz, t.rx, t.rz, 0)
+    const v = sstep(1.08, 0.94, er)
+    if (v > m) m = v
+  }
+  const erK = ellipseR(x, z, M_KNOB.cx, M_KNOB.cz, M_KNOB.rx * 0.92, M_KNOB.rz * 0.92, 0)
+  return m * (1 - sstep(1.0, 0.78, erK))
+}
 
 // ===========================================================================
 // 6. Field grids (0.5 m/texel) — river / inlet / road data rasterized once
@@ -697,231 +742,219 @@ function forestMaskAt(x, z) {
   return clamp01(acc) * rag
 }
 
-// The full height author. `fs` is the field set; flags gate the road-grade
-// and micro-detail stages so the road pre-pass can query virgin terrain.
+// One terraced bench stamp: flat top, near-vertical riser of `rise` metres
+// over `fw` metres of run, ragged rim via noise wobble. Returns the stamped
+// surface (combine with smax so stacked benches read as a stepped cake —
+// the quantisation lives in the HEIGHTFIELD, not in the albedo).
+function benchStamp(x, z, t, h) {
+  const er = ellipseR(x, z, t.cx, t.cz, t.rx, t.rz, 0)
+  const rEff = (t.rx + t.rz) * 0.5
+  let mIn = (1 - er) * rEff
+  if (t.wob > 0) mIn += t.wob * fbm(x * 0.23 + t.cx, z * 0.23 + t.cz, 2, 2.2, 0.5)
+  if (mIn <= -0.3) return h
+  const u = clamp01((mIn + 0.3) / (t.fw + 0.3))
+  const surf = t.top - t.rise * (1 - sstep(0, 1, u)) + 0.06 * vnoise(x * 0.31 + t.cx, z * 0.31)
+  return smax(h, surf, 0.45)
+}
+
+// The full height author (FRAMING §4/§8 — the tabletop-miniature world).
+// `fs` is the field set; flags gate the road-grade and micro-detail stages
+// so the road pre-pass can query virgin terrain.
 function authorHeight(x, z, fs, useRoads, useMicro) {
-  // ---- A. macro base: south lowland → terraced north/east highland -------
-  const nBig = fbm(x * 0.0062 + 11.3, z * 0.0062, 3, 2.1, 0.5)
-  let h = 8.2 + 2.1 * nBig
-  const northT = sstep(30, -160, z)
-  h += 24.5 * Math.pow(northT, 1.25)
+  // ---- A. macro base: low rolling grassland; slow far-north/far-east rise
+  let h = 9.8 + 1.1 * fbm(x * 0.012 + 11.3, z * 0.012, 3, 2.1, 0.5)
+  const northT = sstep(-48, -210, z)
+  h += 13.0 * Math.pow(northT, 1.2)
   const eastT = sstep(24, 128, x) * sstep(40, -60, z)
   h += 9.0 * eastT
   const neM = sstep(105, 148, x) * sstep(-70, -112, z)
-  if (neM > 0) h += neM * (4.5 + 8.0 * ridged(x * 0.021, z * 0.021, 3))
-  h += 1.55 * fbm(x * 0.021 + 5.1, z * 0.021, 3, 2.1, 0.5)
+  if (neM > 0) h += neM * (6.0 + 10.0 * ridged(x * 0.021, z * 0.021, 3))
+  if (h > 40) h = 40 + (h - 40) * 0.35
 
-  // ---- B. terracing: quantised cliff-banded steps in the highland --------
-  // ART_BIBLE §5: terraces of 4–11 m per step, and frame01 makes them hard
-  // GEOMETRY — flat shelf tops, near-vertical risers — never a rounded ramp
-  // wearing a stripe texture. terrW saturates fast so the north/east
-  // highland is fully quantised, not half-melted.
-  const terrW = sstep(13.0, 15.5, h) * clamp01(Math.max(northT * 2.0, eastT * 1.6, neM * 1.5))
-  if (terrW > 0.001) {
-    const wob = 2.2 * fbm(x * 0.03 + 2.2, z * 0.03, 3, 2.1, 0.5)
-    const step = 5.4 + 2.4 * (0.5 + 0.5 * vnoise(x * 0.0085 + 5.5, z * 0.0085)) // 5.4–7.8 m
-    h = lerp(h, benchify(h, 12, step, wob, 0.85), terrW)
-  }
-  // soft ceiling: the far-NE crests top out ~+42 (art bible ridge band)
-  if (h > 38) h = 38 + (h - 38) * 0.35
-
-  // ---- C. hero grass shelf (x −80…−10, z −15…+60, +9…+12) ----------------
+  // ---- B. hero grass shelf (x −62…−16, z −2…+45, y 9.5…11.5) -------------
   {
-    const m = boxMask(x, -80, -10, 16) * boxMask(z, -15, 60, 18)
+    const m = boxMask(x, -62, -16, 10) * boxMask(z, -2, 45, 10)
     if (m > 0.001) {
-      const dxh = x + 38
-      const dzh = z - 18
-      const bump = 0.5 * Math.exp(-(dxh * dxh + dzh * dzh) / 300)
-      const shelf = 9.9 + 1.05 * fbm(x * 0.041 + 7.7, z * 0.041, 3, 2.1, 0.5) + bump
+      const shelf =
+        10.15 +
+        0.42 * fbm(x * 0.035 + 7.7, z * 0.035, 3, 2.1, 0.5) +
+        0.22 * fbm(x * 0.09 + 2.3, z * 0.09, 3, 2.1, 0.5)
       h = lerp(h, shelf, m * 0.95)
     }
   }
+  // SE field flats y 9.5 (big wheat field ground)
+  {
+    const m = boxMask(x, -36, -16, 7) * boxMask(z, 21, 42, 6)
+    if (m > 0.001) h = lerp(h, 9.5 + 0.18 * fbm(x * 0.07 + 3.1, z * 0.07, 3, 2.1, 0.5), m)
+  }
+  // north valley: rolling low band y 10–14 (z −8…−45)
+  {
+    const m = boxMask(x, -72, -6, 12) * boxMask(z, -46, -6, 8)
+    if (m > 0.001) {
+      const valley = 11.4 + 1.4 * fbm(x * 0.03 + 4.9, z * 0.03, 3, 2.1, 0.5)
+      h = lerp(h, valley, m * 0.9)
+    }
+  }
 
-  // ---- D. flat pads: village / shrine / camp / farm ----------------------
-  // (castle is stage E; bridge abutments come after the river carve)
+  // ---- C. flat pads: village / shrine / camp / farm ----------------------
+  // (castle plateau is stage E; bridge abutments come after the carves)
   for (let i = 0; i < PADS.length; i++) {
     const p = PADS[i]
-    if (p.kind === 'castle' || p.kind === 'abutment') continue
+    if (p.kind === 'castle' || p.kind === 'abutment' || p.kind === 'stack') continue
     const dx = x - p.x
     const dz = z - p.z
     const d2 = dx * dx + dz * dz
     if (d2 > p.r * p.r * 1.9) continue
     const d = Math.sqrt(d2)
     const m = sstep(p.r * 1.32, p.r * 0.58, d)
-    if (m > 0.001) h = lerp(h, p.h + 0.14 * vnoise(x * 0.3 + i, z * 0.3), m)
+    if (m > 0.001) h = lerp(h, p.h + 0.1 * vnoise(x * 0.3 + i, z * 0.3), m)
   }
 
-  // ---- E. castle plateau: crisp escarpment, SW ramp sector for the road --
+  // ---- D. SW forest knoll (−47.5, +27.5), crown y 12 + fork rise ---------
+  h = benchStamp(x, z, { cx: -47.5, cz: 27.5, rx: 7, rz: 5, top: 12.0, rise: 2.6, fw: 3.5, wob: 0.6 }, h)
+  h = benchStamp(x, z, { cx: -49.5, cz: 8.5, rx: 4, rz: 3.5, top: 11.05, rise: 1.3, fw: 2.5, wob: 0.3 }, h)
+
+  // ---- E. central limestone massif — the frame's structural anchor -------
+  // Stacked bench stamps: grassy apron toe (y ~11 at (−36.5, +13.5)), two
+  // limestone bands with lips at y 13 and y 15, the grassy summit knob at
+  // y 16.5 (−32.5, +5.5), the E shoulder falls terrace y 12.5, and the N
+  // flank descending to ~13 by z −8. Each riser is 1.5–2.8 m of REAL
+  // geometry — flat lit top, near-vertical shadowed face.
+  if (x > -50 && x < -20 && z > -12 && z < 18) {
+    h = benchStamp(x, z, M_APRON, h)
+    h = benchStamp(x, z, M_TIER1, h)
+    h = benchStamp(x, z, M_TIER2, h)
+    h = benchStamp(x, z, M_KNOB, h)
+    h = benchStamp(x, z, M_SHLDR, h)
+    h = benchStamp(x, z, M_NFLNK, h)
+  }
+
+  // ---- F. castle plateau: flat y 10.5, x −30…−17, z +12…+22 --------------
   {
-    const er = ellipseR(x, z, -20, 4, 18, 15, 0.35) + 0.05 * fbm(x * 0.16 + 1.1, z * 0.16, 2, 2.2, 0.5)
-    if (er < 1.02) {
-      const ang = Math.atan2(z - 4, x + 20) // SW ≈ +2.36 rad
-      let dAng = Math.abs(ang - 2.36)
-      if (dAng > Math.PI) dAng = 2 * Math.PI - dAng
-      const sector = sstep(1.05, 0.35, dAng) // 1 in the SW ramp wedge
-      const rimMetres = (1 - Math.min(er, 1)) * 16.5 // ≈ metres inside the rim
-      const edgeW = lerp(2.6, 12.0, sector)
-      const eT = clamp01(rimMetres / edgeW)
-      const top = 14.05 + 0.16 * vnoise(x * 0.24 + 3.3, z * 0.24)
-      let target = lerp(h, top, sstep(0, 1, eT))
-      // cliff sectors: quantise the escarpment into hard strata benches —
-      // lit shelf tops, shadowed near-vertical risers, a crisp top lip
-      // (frame01's castle plateau is a stepped cake, not a ramp). The SW
-      // wedge keeps its smooth ramp so the road can climb it.
-      if (sector < 0.98) {
-        const wobc = 1.1 * fbm(x * 0.07 + 4.1, z * 0.07, 2, 2.2, 0.5)
-        const q = Math.min(benchify(target, 14.05, 4.6, wobc, 0.8), top)
-        target = lerp(q, target, Math.max(sector, sstep(0.93, 1.0, eT)))
-      }
-      if (target > h) h = target
-      // hard-flat courtyard core: the keep must sit dead level
-      const dcx = x + 20
-      const dcz = z - 4
-      const dc = Math.sqrt(dcx * dcx + dcz * dcz)
-      if (dc < 12.5) {
-        const m = sstep(12.5, 9.8, dc)
-        h = lerp(h, 14.05 + 0.1 * vnoise(x * 0.3 + 9.1, z * 0.3), m)
-      }
+    const dcp =
+      sdRoundBox(x, z, -23.5, 17, 6.5, 5.0, 0, 2.2) +
+      0.35 * fbm(x * 0.14 + 1.1, z * 0.14, 2, 2.2, 0.5)
+    if (dcp < 2.0) {
+      const top = 10.5 + 0.05 * vnoise(x * 0.25 + 3.3, z * 0.25)
+      const w = sstep(1.6, -0.8, dcp) // crisp 1 m riser: S cliff to 9.5 etc.
+      h = lerp(h, top, w)
+    }
+  }
+  // saddle (−31, +17) y 9.7 on the road to the castle gate
+  {
+    const dsq = (x + 31) * (x + 31) + (z - 17) * (z - 17)
+    if (dsq < 22) {
+      const w = Math.exp(-dsq / 4.5)
+      if (h > 9.7) h = lerp(h, 9.7, w * 0.92)
     }
   }
 
-  // ---- F. central limestone massif — terraced plateau, waterfall host ----
-  // Footprint pulled north (z −56…−24 core) so the pool and the river reach
-  // east of it sit at its SOUTH TOE, open to the camera — frame01 shows the
-  // falls column and blue water in front of the massif, never hidden behind
-  // a wall of it.
-  {
-    let d = sdRoundBox(x, z, -18, -40, 16.5, 16.0, 0.10, 9)
-    d += 1.6 * fbm(x * 0.075 + 9.2, z * 0.075, 2, 2.2, 0.5) // ragged silhouette
-    const faceW = 7.0 + 2.0 * vnoise(x * 0.05 + 1.9, z * 0.05)
-    if (d < faceW) {
-      const u = clamp01(1 - d / faceW) // 0 at outer toe → 1 on the plateau
-      const crown = 3.3 * sstep(-24, -50, z) // band climbs upstage: 20.6 → 23.9
-      const top = 20.6 + crown + 0.7 * fbm(x * 0.055 + 4.4, z * 0.055, 2, 2.2, 0.5)
-      // eased core profile, then quantised into two hard benches anchored at
-      // the plateau top: the face reads as stacked shelves with lit tops and
-      // shadowed near-vertical risers, never a rounded striped ramp
-      let surf = lerp(9.6, top, sstep(0, 1, u))
-      const wob = 1.5 * fbm(x * 0.06 + 8.8, z * 0.06, 2, 2.2, 0.5)
-      surf = Math.min(benchify(surf, top, (top - 9.6) * 0.5, wob, 0.8), top + 0.6)
-      // river-corridor clip: the channel and a low apron stay OPEN where the
-      // river skirts the massif toe (frame01: water at the cliff base with a
-      // low grassy near bank — never buried in a slot canyon). The apron
-      // power curve keeps everything within ~5 m of the bank under ~1 m of
-      // rise so the 28°-pitch camera still sees the water surface.
-      const rs = sampleField(fs, fs.riverDist, x, z)
-      const rw = sampleField(fs, fs.riverHalfW, x, z)
-      if (rs < rw + 9) {
-        const lv = sampleField(fs, fs.riverLevel, x, z)
-        const a = clamp01((rs - rw) / 9)
-        const rim = lv + 0.9 + 13 * Math.pow(a, 4.5)
-        if (surf > rim) surf = rim
-      }
-      // SW view-lane saddle: the massif's SW corner sweeps back into a low
-      // re-entrant so the falls column and plunge pool are open to the boot
-      // camera (frame01 stages the falls inside exactly this kind of notch)
-      const lane = Math.exp(-((x + 31.5) * (x + 31.5) + (z + 24) * (z + 24)) / 30)
-      if (lane > 0.03) surf = lerp(surf, Math.min(surf, 11.6), sstep(0.06, 0.5, lane))
-      h = smax(h, surf, 0.9)
-    }
+  // ---- G. backdrop cliffs (x −20…−2, z −2…+12, y 12–16, hazed) + north
+  // ---- valley knolls (y 15–16 near (−45, −25) and (−28, −20)) ------------
+  if (x > -24 && x < 0 && z > -8 && z < 14) {
+    for (let i = 0; i < BACKDROP.length; i++) h = benchStamp(x, z, BACKDROP[i], h)
+  }
+  if (z > -32 && z < -12 && x > -54 && x < -20) {
+    for (let i = 0; i < KNOLLS.length; i++) h = benchStamp(x, z, KNOLLS[i], h)
   }
 
-  // ---- G. west coast: hard-lipped near-vertical cliffs into the sea ------
+  // ---- H. west coast: hard lip y 8–8.5, near-vertical banded face to sea -
   {
-    const cw0 = 4.4 + 1.5 * vnoise(z * 0.07 + 6.6, 3.3)
     const d = x - coastX(z)
-    if (d < cw0 + 11.5) {
-      const dxc = x + 79
-      const dzc = z + 8
-      const cove = Math.exp(-(dxc * dxc + dzc * dzc) / 64) // pier cove (−79, −8)
-      if (cove > 0.02) h = lerp(h, 1.15, cove * 0.92)
-      const cw = lerp(cw0, 11.0, cove)
-      const t = clamp01(d / cw)
-      // the shelf holds level to a hard lip at ~0.6·cw, then the face drops
-      // near-vertically to the waterline (frame01's coast is a sheer banded
-      // wall, not a mossy ramp). The cove keeps a soft walkable beach.
-      let shaped = sstep(0.04, 0.62, t)
-      shaped = lerp(shaped, sstep(0, 1, Math.pow(t, 0.68)), cove)
-      const floor =
-        -0.35 - 5.9 * sstep(0, 26, -d) + 0.3 * fbm(x * 0.05 + 2.8, z * 0.05, 2, 2.2, 0.5)
-      const hh = lerp(floor, h, shaped)
-      let out = hh
-      const bw = 1 - sstep(0.12, 0.45, cove)
-      if (bw > 0.01 && hh > 1.2 && hh < h - 0.4) {
-        // quantise the face into strata benches, step size wandering along
-        // the shore so the wall reads as layered rock, not an extrusion
-        const lgate = 0.5 + 0.5 * vnoise(z * 0.11 + 8.2, 2.7)
-        const wobg = 1.0 * fbm(z * 0.09 + 3.3, x * 0.09, 2, 2.2, 0.5)
-        out = lerp(hh, clamp(benchify(hh, h, 4.2 + 3.2 * lgate, wobg, 0.7), floor, h), bw)
+    if (d < 7.5) {
+      const lipY = 8.25 + 0.2 * vnoise(z * 0.13 + 6.6, 3.3)
+      // beach cove (−78, −40) and the small pier cove (−64.5, −16.3) soften
+      // the wall into a walkable pocket
+      const cove = Math.max(
+        Math.exp(-((x + 78) * (x + 78) + (z + 40.5) * (z + 40.5)) / 46),
+        Math.exp(-((x + 64.8) * (x + 64.8) + (z + 16.3) * (z + 16.3)) / 22)
+      )
+      if (d > -0.6) {
+        // shelf → lip: hold a level lip crest, blend to inland by ~6 m
+        const w = 1 - sstep(1.2, 6.0, d)
+        h = lerp(h, lipY, w)
+        if (cove > 0.03) h = lerp(h, 0.9, cove * 0.94)
+      } else {
+        // the face: near-vertical drop quantised into 1.8–2.4 m strata
+        // benches (geometry, not stripes), then the sea floor
+        const faceW = 2.6
+        const t = clamp01((-0.6 - d) / faceW)
+        const floor = -0.5 - 5.4 * sstep(1.5, 11, -d) + 0.25 * fbm(x * 0.05 + 2.8, z * 0.05, 2, 2.2, 0.5)
+        let hh = lerp(lipY, floor, sstep(0, 1, Math.pow(t, 0.85)))
+        if (hh > 0.8 && cove < 0.25) {
+          const wobg = 0.8 * fbm(z * 0.11 + 3.3, x * 0.11, 2, 2.2, 0.5)
+          hh = clamp(benchify(hh, lipY, 2.1 + 0.5 * vnoise(z * 0.09 + 8.2, 2.7), wobg, 0.8), floor, lipY)
+        }
+        if (cove > 0.03) hh = lerp(hh, Math.max(floor, 0.35), cove)
+        h = Math.min(h, hh)
       }
-      h = out
     }
   }
 
-  // ---- H. sea inlet gorge (trestle bridge site) --------------------------
+  // ---- I. sea inlet notch (west trestle bridge site, water y 0) ----------
   {
     const s = sampleField(fs, fs.inletDist, x, z)
     const hw = sampleField(fs, fs.inletHalfW, x, z)
-    if (s < hw * 1.15) {
+    if (s < hw * 1.1) {
       const u = clamp01(s / hw)
-      const carve = -1.35 + 0.5 * u * u + Math.pow(u, 3.4) * 26
+      const carve = -1.1 + 0.4 * u * u + Math.pow(u, 3.2) * 11.5
       if (carve < h) h = carve
     }
   }
 
-  // ---- I. river channel + banks + plunge pool ----------------------------
+  // ---- J. river: perched headwater with hugging banks, the 4 m falls face,
+  // ---- and the walled gorge run (floor 4–6 m between real cliff walls) ---
   {
     const s = sampleField(fs, fs.riverDist, x, z)
     const hw = sampleField(fs, fs.riverHalfW, x, z)
     const bankW = 3.2
     if (s < hw + bankW) {
       const lv = sampleField(fs, fs.riverLevel, x, z)
+      const gorge = sstep(11.5, 9.8, lv) // 1 on the gorge run, 0 on headwater
       if (s < hw) {
-        const bed = lv - 1.38 + Math.pow(s / hw, 2) * 1.74
+        // bed: shallow rocky channel (deep enough to read as water)
+        const bed = lv - 0.62 + Math.pow(s / hw, 2) * 0.34
         if (bed < h) h = bed
       } else {
         const u = (s - hw) / bankW
         const bankY = lv + 0.3 + 2.4 * u * u
         const w = 1 - sstep(0.62, 1.0, u)
-        if (h < bankY) h = lerp(h, bankY, w) // fill low ground up to the lip
-        // CUT lowland banks down to a hugging grass lip (≤0.3 m over the
-        // water at the edge) so the channel is open water in the hero shot,
-        // not a hidden slot. The highland course (lv > 14) keeps its raised
-        // rims — the perched gorge below handles that read.
-        else h = lerp(h, bankY, w * sstep(14, 11, lv))
-      }
-    }
-    // upstream gorge shoulders: the highland course is perched above the
-    // terraced plateaus in places — hold the rims up so it reads as a gorge.
-    // Applies OUTSIDE the channel only: fades in from the bank edge, back to
-    // natural ground by ~9 m out.
-    if (s > hw + 1.2 && s < hw + 9) {
-      const lv2 = sampleField(fs, fs.riverLevel, x, z)
-      if (lv2 > 14) {
-        const wIn = sstep(hw + 1.2, hw + 2.6, s)
-        const wOut = 1 - sstep(hw + 5.5, hw + 9, s)
-        const shoulder = lv2 + 0.42
-        if (h < shoulder) h = lerp(h, shoulder, wIn * wOut)
+        if (h < bankY) h = lerp(h, bankY, w) // fill low ground: hold the water
+        else {
+          // headwater: CUT high ground down to a hugging grass lip so the
+          // stream reads as open water from the 28° camera. Gorge run: keep
+          // a narrow floor margin + one mid-ledge, then let the stamped
+          // cliff walls stand — the falls face and slot walls come free.
+          const hug = lerp(h, bankY, w) // low hugging banks
+          let walled = h
+          if (u < 0.42) walled = Math.min(walled, lv + 0.35) // floor margin
+          else if (u < 0.78) walled = Math.min(walled, lv + 2.3) // mid-ledge bench
+          h = lerp(hug, walled, gorge)
+        }
       }
     }
   }
 
-  // ---- I2. bridge abutment pads (after the carves: decks sit flush on
-  // ---- solid flattened rims, while the channel/gorge below stays open) ---
+  // ---- K. bridge abutments + the inlet NW sea-stack (after the carves) ---
   for (let i = 0; i < PADS.length; i++) {
     const p = PADS[i]
-    if (p.kind !== 'abutment') continue
+    if (p.kind !== 'abutment' && p.kind !== 'stack') continue
     const dx = x - p.x
     const dz = z - p.z
     const d2 = dx * dx + dz * dz
     if (d2 > p.r * p.r * 1.9) continue
     const d = Math.sqrt(d2)
     const m = sstep(p.r * 1.32, p.r * 0.58, d)
-    // guard: level the rims, never fill the gorge below the deck
-    if (m > 0.001 && h > p.h - 6) h = lerp(h, p.h + 0.14 * vnoise(x * 0.3 + i, z * 0.3), m)
+    if (m < 0.001) continue
+    if (p.kind === 'stack') {
+      // stone pillar footing rising out of the inlet mouth
+      h = Math.max(h, lerp(h, p.h + 0.1 * vnoise(x * 0.3 + i, z * 0.3), sstep(p.r * 1.1, p.r * 0.5, d)))
+    } else if (h > p.h - 6) {
+      h = lerp(h, p.h + 0.1 * vnoise(x * 0.3 + i, z * 0.3), m)
+    }
   }
 
-  // ---- J. road grading ---------------------------------------------------
+  // ---- L. road grading ---------------------------------------------------
   if (useRoads) {
     const m = sampleField(fs, fs.roadMask, x, z)
     if (m > 0.004) {
@@ -930,7 +963,7 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
     }
   }
 
-  // ---- K. micro detail, masked off roads / fields / beds -----------------
+  // ---- M. micro detail, masked off roads / fields / beds / crisp lips ----
   if (useMicro) {
     let protect = 0
     if (useRoads) protect = Math.min(1, sampleField(fs, fs.roadMask, x, z) * 1.35)
@@ -939,10 +972,27 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
     const rs = sampleField(fs, fs.riverDist, x, z)
     const rw = sampleField(fs, fs.riverHalfW, x, z)
     if (rs < rw + 1.2) protect = 1
+    // keep the verified landmarks crisp: summit knob crown, castle plateau
+    // core, the coast lip band
+    const erK = ellipseR(x, z, M_KNOB.cx, M_KNOB.cz, M_KNOB.rx, M_KNOB.rz, 0)
+    protect = Math.max(protect, sstep(0.9, 0.6, erK))
+    if (x > -29 && x < -18 && z > 13 && z < 21) protect = 1
+    const dCoast = x - coastX(z)
+    if (dCoast > -3.4 && dCoast < 2.0) protect = Math.max(protect, 0.8)
     const det =
-      0.34 * fbm(x * 0.115 + 1.6, z * 0.115, 2, 2.2, 0.5) +
-      0.11 * fbm(x * 0.33 + 8.4, z * 0.33, 2, 2.2, 0.5)
-    h += det * (1 - 0.88 * protect)
+      0.24 * fbm(x * 0.115 + 1.6, z * 0.115, 2, 2.2, 0.5) +
+      0.09 * fbm(x * 0.33 + 8.4, z * 0.33, 2, 2.2, 0.5)
+    h += det * (1 - 0.9 * protect)
+  }
+
+  // ---- N. hard ceilings (FRAMING §8.5) -----------------------------------
+  if (x > -50 && x < -20 && z > -10 && z < 15 && h > 17) h = 17 // massif crown is the local max
+  if (z < -8 && z > -45 && h > 16) h = 16 // north valley band
+
+  // ---- O. hero anchor: ground at (−38, +18) is EXACTLY 10.4 --------------
+  {
+    const dsq = (x + 38) * (x + 38) + (z - 18) * (z - 18)
+    if (dsq < 30) h += (10.4 - h) * Math.exp(-dsq / 7)
   }
 
   return h
