@@ -78,14 +78,19 @@ const PAL = {
   KEEP_MID: rgb(0xd6d0bd),
   KEEP_DARK: rgb(0xb2ad9b),
   KEEP_MORTAR: rgb(0x9b9787),
-  CURT_LIT: rgb(0xe2ddcc),
-  CURT_MID: rgb(0xc2bdac),
-  CURT_DARK: rgb(0x8e8b7d),
-  CURT_MORTAR: rgb(0x84806f),
-  PAVE_LIT: rgb(0xd9d3c1),
-  PAVE_MID: rgb(0xbcb6a4),
-  PAVE_DARK: rgb(0x94907f),
-  PAVE_MORTAR: rgb(0x83806f),
+  // INTEGRATION (round 2): the curtain ring is most of the castle's screen
+  // area, and at CURT_MID/DARK it read as a grey keep — frame01's castle is
+  // the brightest warm-white mass in the frame (it is the eye path's terminus).
+  // Lifted one ramp step toward CASTLE_STONE_LIT #e8e3d3 and warmed; the window
+  // slots, mortar and cobalt roofs still carry all the contrast.
+  CURT_LIT: rgb(0xeae5d5),
+  CURT_MID: rgb(0xd8d2bf),
+  CURT_DARK: rgb(0xaaa593),
+  CURT_MORTAR: rgb(0x9c9887),
+  PAVE_LIT: rgb(0xe0dac8),
+  PAVE_MID: rgb(0xc7c1af),
+  PAVE_DARK: rgb(0xa19d8b),
+  PAVE_MORTAR: rgb(0x8d8a79),
   BARN_WOOD: rgb(0x84633c),
   MOSS: rgb(0x5c7048),
   COBALT_LIT: rgb(0x5477c8),

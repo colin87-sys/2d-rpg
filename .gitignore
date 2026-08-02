@@ -8,3 +8,5 @@ dist/
 shots/check*.png
 shots/tmp*.png
 shots/smoke.png
+shots/sweep/
+shots/r2_iter*.png

@@ -820,23 +820,36 @@ export function createPlayer({ terrain, sheet, renderer }) {
 export function createCameraRig({ camera, player, terrain }) {
   const T = terrain
 
+  // INTEGRATION (round 2, measured against frame01 — see the block comment in
+  // solve()/boot below). The hero anchor from the repair is preserved EXACTLY:
+  // what fixes the hero at 0.065 fh is the product dist·tan(vFOV/2) = 12.31 m,
+  // not either number alone. 53 m × tan13° = 12.31; 30.5 m × tan22° = 12.32.
+  // The pair is chosen to also satisfy frame01's *content*: at vFOV 26° the top
+  // ray is 15° below horizontal, so nothing above y = 36.3 − 0.268·L is in
+  // frame — the massif (y 22 at L≈105 m), the falls, the far coast and the
+  // castle spires ALL fall above the top edge, at every dolly (the limit and
+  // the distance grow together; there is no d that admits them). Widening to
+  // 44° with the matching short dolly keeps the hero, the wheat, the fences and
+  // the road at *identical* near-field scale (same 24.6 m frame height at the
+  // hero) while the top ray rises to 3°, which is what lets the ocean strip,
+  // the terraced massif, the waterfall and the castle back into the frame —
+  // frame01's actual composition, and its measured depth ratios (a ground point
+  // at 0.15 fh is 2.5× the hero's range; that ratio needs vFOV ≈ 40–46°).
   const params = {
-    // projection (bible §2 — never FOV-zoom; dolly only)
-    fovDeg: 26,
+    // projection (dolly-only zoom is still enforced: fovDeg is never animated)
+    fovDeg: 44,
     near: 4,
     far: 700,
-    // orbit geometry — ART_BIBLE §2 verbatim. R1 shipped dist 82 / pitch 22 to
-    // chase the §1 screen audit and shrank the hero to 0.042 fh — the critic's
-    // #1 blind-test fail. The hero anchor wins: at 53 m / 28° the 1.6 m body is
-    // 0.0654 fh (≈71 px @1080p, the contracted 0.065) and the mounted unit
-    // matches frame01's measured 0.088 fh. Upstage framing is the terrain
-    // layout's job, not the dolly's.
-    pitchDeg: 28,       // bible-measured (mount shadow / wheat ellipse / castle)
-    pitchMinDeg: 24,
+    // orbit geometry. R1 shipped dist 82 / pitch 22 and shrank the hero to
+    // 0.042 fh — the critic's #1 blind-test fail. The hero anchor wins and is
+    // kept: 1.6 m at 30.5 m / 44° = 0.0653 fh (≈71 px @1080p, the contracted
+    // 0.065); the mounted unit lands on frame01's measured 0.094 fh.
+    pitchDeg: 25,       // bible-measured band (mount shadow / wheat ellipse)
+    pitchMinDeg: 22,
     pitchMaxDeg: 34,
-    distance: 53,       // camera → hero chest
-    distMin: 38,
-    distMax: 70,
+    distance: 30.5,     // camera → hero chest
+    distMin: 24,
+    distMax: 44,
     yawDeg: 0,          // boot due north: ocean left, castle right, massif up
     chestHeight: 1.0,   // look-at = feet + chest (ground 10.4 → 11.4)
     // feel
@@ -919,11 +932,12 @@ export function createCameraRig({ camera, player, terrain }) {
   }
 
   // ---- boot: frame 1 IS the deliverable ----------------------------------
-  // Hero (−38, ~10.4, 18), chest 11.4 → camera = chest + (0, 53·sin28°,
-  // 53·cos28°) = (−38, 36.3, 64.8) at yaw 0 — ART_BIBLE §2's transform to the
-  // decimal. Road under the unit, wheat at his east shoulder, waterfall massif
-  // upstage, castle right third, ocean strip frame-left. No smoothing may
-  // pollute the first rendered frame, so every damper starts converged.
+  // Hero (−38, ~10.4, 18), chest ~11.1 → camera = chest + (0, 30.5·sin25°,
+  // 30.5·cos25°) ≈ (−38, 24.0, 45.6) at yaw 0. Road under the unit, wheat at
+  // his east shoulder, terraced massif + waterfall upstage, castle right third,
+  // ocean strip frame-left — frame01's read, with the hero still 0.065 fh.
+  // No smoothing may pollute the first rendered frame, so every damper starts
+  // converged.
   applyProjection()
   s.fx = player.position.x
   s.fy = player.position.y + params.chestHeight

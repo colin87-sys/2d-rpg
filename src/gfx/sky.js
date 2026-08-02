@@ -315,8 +315,15 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
     fogColor: '#bcc8b2',
     fogDensityBase: 0.0072, // bible §4 verbatim, authored at the §2 53 m dolly
     fogDollyRef: 53,        // dolly the bible authored k against (§2)
-    fogDolly: 82,           // shipped rig dolly (player.js). Set 53 if the rig
-                            // ever boots at the bible transform.
+    // INTEGRATION (round 2): the shipped rig now boots at 30.5 m with vFOV 44°
+    // — the same 12.31 m hero anchor as the bible's 53 m / 26°, so the frame's
+    // near-field scale is identical, but the frame reaches ~25→250 m instead of
+    // 42→135 m. That IS the depth band the bible authored k = 0.0072 against
+    // (40 % at 100 m, 69 % at 150 m, 87 % at 200 m), so the ratio is 1: haze
+    // reads only where frame01 has it, in the dissolving top band, and the
+    // sharp band keeps its colour. Dividing by the dolly here would have
+    // *tripled* the density and put the milky veil straight back.
+    fogDolly: 53,
     // Published water density multiplier (assignment: the sea must keep its
     // saturation instead of greying out). 0.26 keeps the mid-left ocean band
     // under ~5 % sage — ≥55 % HSV saturation vs OCEAN_MID #2e6f95 after the

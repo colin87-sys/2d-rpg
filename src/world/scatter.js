@@ -177,11 +177,16 @@ const SPECIES = {
 // round 1's 4200/3300 caps bound against the hash-shuffled candidate list,
 // which thinned every stand uniformly to park scatter — the critic's main
 // forest fail. Collision spacing (clearR) is the real density governor now.
+// INTEGRATION (round 2): both tree caps were BINDING (oak 7400/7400, conifer
+// 6853/6800), so the candidate shuffle thinned every clump interior uniformly
+// and grass showed between crowns — the closed-canopy repair could not land
+// while the cap, not clearR, was the governor. Raised until the caps go slack
+// at the tightened grid (§4.1 step 1.22 m vs 1.57 m crowns → 20–40 % overlap).
 const BUDGET = {
-  conifer: 6800, oak: 7400, bush: 2300, rockAll: 950, tuft: 12000,
+  conifer: 11500, oak: 11500, bush: 2300, rockAll: 950, tuft: 12000,
   // wheat is thinned by the paddock fill spacing (see §4.7), not by this cap —
   // the cap must stay slack or it truncates the last paddock scanned.
-  wheat: 2600, flower: 850, fern: 500, blossom: 400, bamboo: 120,
+  wheat: 6000, flower: 850, fern: 500, blossom: 400, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
 
@@ -405,7 +410,14 @@ export function createScatter({ terrain, atlas, renderer }) {
     if (sp.kind === 'tree' && h > 5) h = 5 // bible: never > 5 m
     let wBias = 1
     if (key === 'oak_a' || key === 'oak_b' || key === 'oak_c') wBias = 1.09
-    else if (key === 'wheat_a' || key === 'wheat_b') wBias = 1.12 // packed-mass coverage
+    // INTEGRATION (round 2): the repair packed the paddocks solid, but each
+    // cluster sprite was still ~1.36 m wide — 50 screen px at the shipped rig,
+    // so the mass read as countable chunks with their own dark outlines. In
+    // frame01 a stalk cluster is ~1/20 of the paddock's width. Narrowing the
+    // quad (the art squashes to thinner stalks) and packing the rows tighter
+    // keeps identical coverage and paddock height while the field finally
+    // reads as ONE golden mass with fine striation.
+    else if (key === 'wheat_a' || key === 'wheat_b') wBias = 0.56
     const w = h * fr.aspect * wBias * lerp(0.92, 1.08, rnd())
     // tint: ±6 % value (per-species range — ground cover is lifted so it pops
     // against the terrain) + hue skew along an R↔B axis. Trees carry a WIDE
@@ -514,7 +526,7 @@ export function createScatter({ terrain, atlas, renderer }) {
   // into outrider clusters and pasture keeps only anchored lone trees.
   {
     const rnd = rngFor('trees')
-    const step = 1.45
+    const step = 1.22 // < the 1.57 m pine crown → crowns overlap, canopy closes
     let nConifer = counts.conifer || 0 // budgets are global: count the belt
     let nOak = counts.oak || 0
     // Candidates visited in hash-shuffled order: if a species budget binds,
@@ -793,8 +805,8 @@ export function createScatter({ terrain, atlas, renderer }) {
   // each field's downwind edge instead.
   {
     const rnd = rngFor('wheat')
-    const colStep = 0.66
-    const rowStep = 0.60
+    const colStep = 0.42 // narrower quads (see makeInstance) → tighter packing
+    const rowStep = 0.38
     for (const p of WHEAT_PADDOCKS) {
       const ext = Math.max(p.rx, p.rz) * 1.2
       const cr = Math.cos(p.rot)
