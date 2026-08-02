@@ -3,33 +3,32 @@
    ---------------------------------------------------------------------------
    Shipped-JRPG corner HUD, matched against docs/reference/frame01.png:
 
-     • Top-right glass minimap plate  — 0.20 fw wide, h = 0.92 w (measured
-       331×305 on the 1630×921 plate), outer radius 12, drop shadow, subtle
-       vertical sheen, thin warm-grey hairline frame inset ~7.5 % of the
-       plate width (the image shows ~25 px on a 331 px plate — the map art
+     • Top-right glass minimap plate — §9: 0.20 fw × 0.32 fh (h = 0.9 w),
+       outer radius 12, drop shadow, subtle vertical sheen, inner hairline
+       frame inset 14 px / radius 9 px / 1.5 px #d8dcd2 @ 55 % (the map art
        runs FULL-BLEED underneath it, exactly like the reference where the
        parchment continent crosses the hairline).
-     • The map itself is baked ONCE at construction from terrain.height /
-       terrain.biome on a fixed grid: dark-glass ocean, parchment landmass
-       tinted by biome + elevation, NW hillshading, contour engraving on the
-       rock, forest lobes + stipple, pale coastline fringe with a soft glow
-       bleeding into the water, ochre road polylines, the saturated-cyan
-       river (the only saturated cyan in the frame, per the art bible),
-       cartographic micro-marks (castle keep, hamlet, shrine, pier, bridge
-       decks), parchment blotch + grain, and an unexplored dark-glass
-       falloff — frame01's plate meters ~84 % dark (<70 luma, mean 54):
-       ONE lit continent with every edge drowned in the glass, so the
-       bake sinks the far ridges, snowfield and corners the same way.
+     • The map itself is baked ONCE at construction from the LIVE terrain:
+       the window is framed off a coarse terrain.biome() sweep (land bbox +
+       POIs + ocean margin — no hardcoded snapshot of the layout), then
+       every texel samples terrain.height / terrain.biome. §9 palette:
+       water #1d2b26, lit parchment land #a3835f with #6f5a40 relief-shade
+       hillshading, forest stipple #55603a, mountain hatch #7d7464, roads
+       1 px #c9ac74, river/lakes #3e6472. Plus contour engraving, pale
+       coastline fringe, cartographic micro-marks (castle keep, hamlet,
+       shrine, pier, bridge decks), parchment blotch + grain, and a soft
+       corner vignette that seats the map into the glass without sinking
+       the parchment.
      • Per frame (cheap overlay canvas only): soft camera view-cone, pulsing
        quest pins (cyan shield-teardrop = story, stacked gold diamond =
        quest — both with white anchor dots, straight off frame01), the
        white-core / cyan-glow player chevron with smoothed heading, and a
        slow sonar ping.
      • Region nameplate (top-left, art bible §9): ONE serif small-caps
-       line — "Grandpine Fields · Ferren Coast", region suffix in gold —
-       20 px max, 0.12 em tracking, on the rgba(10,14,10,.45) pill with
-       the gold hairline rule that draws itself; fade-in → hold →
-       fade-out on region change (nearest owning POI, else biome).
+       line — "GRANDPINE FIELDS — Ferren Coast", em-dash separator —
+       20 px max, #f2ead8, 0.12 em tracking, on the rgba(10,14,10,.45)
+       pill with a 1 px gold #c9a84c hairline underline; fade-in (.6 s) →
+       hold → fade-out on region change (nearest owning POI, else biome).
      • Controls hint ships HIDDEN: frame01 has no key strip anywhere and
        §9 bans debug text — a keycap row over grass reads as an engine
        overlay. Integrator flag: window.__ABH_SHOW_HINTS = true before
@@ -114,51 +113,96 @@ const P = {
   plateText: '#f2ead8',
 }
 
-// land tints (r,g,b) — parchment family, biome-keyed
+// land tints (r,g,b) — §9 parchment palette, biome-keyed. Land parchment
+// #a3835f lit / #6f5a40 relief-shade; forest stipple #55603a; mountain
+// hatch #7d7464; water #1d2b26; river/lakes #3e6472.
 const LAND = {
-  grassLo: [128, 129, 80], // sage-olive parchment (low pasture — green cast)
-  grassHi: [178, 143, 96], // warm tan (high shelves) — the west-continent read
-  field: [198, 166, 90], // wheat gold
-  forest: [103, 111, 62],
-  forestDark: [76, 86, 47], // #55603a-class stipple
-  beach: [203, 179, 132],
-  road: [178, 149, 96],
-  rockLo: [150, 139, 111],
-  rockHi: [180, 167, 138],
-  snow: [232, 229, 221],
-  crevice: [108, 88, 62], // #6f5a40 relief shade
-  coast: [224, 207, 166], // pale coastline fringe
+  parch: [163, 131, 95], // #a3835f — the lit land parchment
+  parchHi: [214, 186, 142], // sun-facing lift target
+  field: [189, 158, 96], // wheat paddocks — golden parchment
+  forest: [124, 116, 74], // parchment pulled toward the stipple green
+  forestDark: [85, 96, 58], // #55603a stipple
+  beach: [200, 176, 132],
+  road: [178, 150, 102], // underpaint; the 1 px #c9ac74 stroke reads on top
+  rockLo: [150, 133, 105], // parchment-grey scree
+  rockHi: [176, 163, 138],
+  hatch: [125, 116, 100], // #7d7464 mountain hatch
+  snow: [228, 224, 214],
+  crevice: [111, 90, 64], // #6f5a40 relief shade
+  coast: [218, 198, 154], // pale coastline fringe
 }
-const WATER_SHALLOW = [24, 37, 35]
-const WATER_DEEP = [10, 18, 20]
+const WATER_SHALLOW = [38, 54, 47] // #1d2b26 family — lifted at the shore
+const WATER_DEEP = [23, 34, 30]
 
 const BIOME_ID = { grass: 0, ocean: 1, beach: 2, forest: 3, road: 4, rock: 5, snow: 6, field: 7 }
 
 // ---------------------------------------------------------------------------
-// fixed map window (world metres) — framed on the POI spread so the pin
-// composition matches frame01: ocean field on the west third, parchment land
-// east of it, the camp's gold pin kissing the bottom hairline.
+// map window (world metres) — computed at construction from the LIVE terrain:
+// coarse-sample terrain.biome() over meta.size, frame the land bounding box
+// (plus every POI) with an ocean margin, fit to the panel aspect and clamp
+// inside the world. No hardcoded snapshot of the layout — the terrain is
+// being rebuilt round to round and the map must follow it.
 // ---------------------------------------------------------------------------
 
-// Measured off frame01: the plate is SQUARE — hairline frame 280×281 px with
-// a uniform ~26 px inset on a 331×334 plate (the "shorter" reads come from
-// the gold pin's shadow and the castle sitting behind the glass).
-const PANEL_H_RATIO = 1.0
+// §9: panel is 0.20 fw × 0.32 fh — 320×288 at 1600×900, so h = 0.9 w.
+const PANEL_H_RATIO = 0.9
 const MAP_ASPECT = 1 / PANEL_H_RATIO
-const WIN = (() => {
-  const cx = -50
-  const cz = -37
-  const spanZ = 320
-  const spanX = spanZ * MAP_ASPECT
-  return { xW: cx - spanX / 2, zN: cz - spanZ / 2, spanX, spanZ }
-})()
+const WIN = { xW: -256, zN: -230, spanX: 512, spanZ: 460 } // overwritten live
 
 const BAKE_W = 560
-const BAKE_H = Math.round(BAKE_W / MAP_ASPECT) // 560
+const BAKE_H = Math.round(BAKE_W / MAP_ASPECT) // 504
 
 // world → normalised map coords (0..1, north-up)
 const mapU = (wx) => (wx - WIN.xW) / WIN.spanX
 const mapV = (wz) => (wz - WIN.zN) / WIN.spanZ
+
+/** frame the live continent: land bbox + POIs + margin, aspect-fit, clamped */
+function computeWindow(terrain, meta, pois) {
+  const size = (meta && meta.size) || 512
+  const half = size / 2
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+  const N = 72
+  try {
+    for (let j = 0; j < N; j++) {
+      const z = -half + ((j + 0.5) / N) * size
+      for (let i = 0; i < N; i++) {
+        const x = -half + ((i + 0.5) / N) * size
+        if (terrain.biome(x, z) !== 'ocean') {
+          if (x < x0) x0 = x
+          if (x > x1) x1 = x
+          if (z < z0) z0 = z
+          if (z > z1) z1 = z
+        }
+      }
+    }
+  } catch (_) { /* fall through to full-world */ }
+  for (const p of pois) {
+    if (p.x < x0) x0 = p.x
+    if (p.x > x1) x1 = p.x
+    if (p.z < z0) z0 = p.z
+    if (p.z > z1) z1 = p.z
+  }
+  if (!(x1 > x0) || !(z1 > z0)) { x0 = -half; x1 = half; z0 = -half; z1 = half }
+  // ocean margin so the coastline breathes inside the hairline
+  const mar = Math.max((x1 - x0), (z1 - z0)) * 0.1
+  x0 -= mar; x1 += mar; z0 -= mar; z1 += mar
+  // fit to the panel aspect by growing the short axis
+  let spanX = x1 - x0
+  let spanZ = z1 - z0
+  if (spanX / spanZ < MAP_ASPECT) spanX = spanZ * MAP_ASPECT
+  else spanZ = spanX / MAP_ASPECT
+  if (spanX > size) { spanX = size; spanZ = spanX / MAP_ASPECT }
+  if (spanZ > size) { spanZ = size; spanX = spanZ * MAP_ASPECT }
+  // centre on the framed content, clamped so the window stays in-world
+  let cx = (x0 + x1) / 2
+  let cz = (z0 + z1) / 2
+  cx = clamp(cx, -half + spanX / 2, half - spanX / 2)
+  cz = clamp(cz, -half + spanZ / 2, half - spanZ / 2)
+  WIN.xW = cx - spanX / 2
+  WIN.zN = cz - spanZ / 2
+  WIN.spanX = spanX
+  WIN.spanZ = spanZ
+}
 
 // ---------------------------------------------------------------------------
 // region table — nameplate ownership. The farm POI deliberately owns no
@@ -206,9 +250,11 @@ const CSS = `
 .abh-panel canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
 @keyframes abhIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 
-/* ---- nameplate — §9: single small-caps line on a dark pill ---- */
-.abh-np{position:absolute;display:inline-block;padding:8px 18px 9px 16px;border-radius:10px;
-  background:linear-gradient(180deg,rgba(12,16,12,.44),rgba(8,12,9,.47));
+/* ---- nameplate — §9: "GRANDPINE FIELDS — Ferren Coast", serif small-caps
+   20 px #f2ead8 @ .12em on the rgba(10,14,10,.45) pill, 1 px gold #c9a84c
+   hairline underline, soft shadow, .6 s fade-in ---- */
+.abh-np{position:absolute;display:inline-block;padding:8px 18px 9px 16px;border-radius:12px;
+  background:rgba(10,14,10,.45);
   box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 0 0 1px rgba(226,222,204,.10),inset 0 1px 0 rgba(255,255,255,.05);
   backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
   opacity:0;transform:translateY(-7px);
@@ -221,17 +267,12 @@ const CSS = `
   text-shadow:0 1px 3px rgba(0,0,0,.7),0 0 14px rgba(0,0,0,.35);
   transition:letter-spacing .8s cubic-bezier(.2,.6,.2,1);}
 .abh-np.abh-show .abh-np-t{letter-spacing:.12em;}
-.abh-np-t .sep{color:rgba(217,181,66,.6);margin:0 .28em;}
-.abh-np-t .reg{font-size:.84em;letter-spacing:.14em;color:${P.gold};opacity:.92;}
-.abh-np-r{position:relative;height:5px;margin-top:6px;}
-.abh-np-r i{position:absolute;left:0;right:0;top:2px;height:1px;display:block;
-  background:linear-gradient(90deg,rgba(201,168,76,0) 0%,rgba(201,168,76,.9) 18%,rgba(201,168,76,.9) 82%,rgba(201,168,76,0) 100%);
-  transform:scaleX(0);transform-origin:50% 50%;transition:transform .85s cubic-bezier(.2,.7,.2,1) .1s;}
-.abh-np.abh-show .abh-np-r i{transform:scaleX(1);}
-.abh-np-r b{position:absolute;left:50%;top:0;width:5px;height:5px;margin-left:-2.5px;
-  background:${P.gold};transform:rotate(45deg) scale(0);border-radius:1px;
-  box-shadow:0 0 6px rgba(217,181,66,.55);transition:transform .5s ease .35s;}
-.abh-np.abh-show .abh-np-r b{transform:rotate(45deg) scale(1);}
+.abh-np-t .sep{color:rgba(242,234,216,.72);margin:0 .45em;letter-spacing:0;}
+.abh-np-t .reg{font-size:.88em;letter-spacing:.12em;color:${P.plateText};opacity:.92;}
+.abh-np-r{position:relative;height:4px;margin-top:6px;}
+.abh-np-r i{position:absolute;left:0;right:0;top:1px;height:1px;display:block;
+  background:#c9a84c;opacity:.95;
+  box-shadow:0 1px 2px rgba(0,0,0,.5),0 0 6px rgba(201,168,76,.35);}
 
 /* ---- controls hint — dark-glass chip, frames-4/5 grammar (OFF by
    default; see the __ABH_SHOW_HINTS flag) ---- */
@@ -262,6 +303,9 @@ export function createHUD({ terrain, player }) {
   const seaLevel = meta.seaLevel || 0
   const pois = Array.isArray(meta.poi) ? meta.poi : []
 
+  // frame the map window off the LIVE terrain before anything maps coords
+  computeWindow(terrain, meta, pois)
+
   // ---------------------------------------------------------------- DOM ----
   if (!document.getElementById(CSS_ID)) {
     const style = document.createElement('style')
@@ -288,7 +332,6 @@ export function createHUD({ terrain, player }) {
   const npRule = document.createElement('div')
   npRule.className = 'abh-np-r'
   npRule.appendChild(document.createElement('i'))
-  npRule.appendChild(document.createElement('b'))
   nameplate.appendChild(npTitle)
   nameplate.appendChild(npRule)
 
@@ -373,12 +416,12 @@ export function createHUD({ terrain, player }) {
         const o = i * 4
 
         if (b === OC) {
-          // dark-glass water — deeper = darker, slight green keeps it alive
+          // §9 water #1d2b26 — near-solid so land/water separate cleanly
           const depth = clamp((seaLevel - h) / 12, 0, 1)
           px[o] = lerp(WATER_SHALLOW[0], WATER_DEEP[0], depth)
           px[o + 1] = lerp(WATER_SHALLOW[1], WATER_DEEP[1], depth)
           px[o + 2] = lerp(WATER_SHALLOW[2], WATER_DEEP[2], depth)
-          px[o + 3] = 146 + 32 * depth // translucent: the scene ghosts through
+          px[o + 3] = 232 + 16 * depth
           continue
         }
 
@@ -391,8 +434,8 @@ export function createHUD({ terrain, player }) {
         const gdz = (zp - zm) / (2 * sz)
         const grad = Math.hypot(gdx, gdz)
 
-        // biome base tint — elevation warms the parchment (green shelf low,
-        // tan mesa high: the reference's two-tone landmass read)
+        // biome base tint — §9: land is lit parchment #a3835f; elevation
+        // warms it a touch so the high shelves read
         const hT = clamp((h - 4) / 22, 0, 1)
         let r, g, bl
         if (b === BIOME_ID.field) {
@@ -400,7 +443,7 @@ export function createHUD({ terrain, player }) {
         } else if (b === BIOME_ID.forest) {
           // broad crown-lobes via low-freq noise, so woods read as masses
           const lobe = vnoise(gx * 0.16, gy * 0.16)
-          const t = clamp((lobe - 0.42) * 2.2, 0, 1)
+          const t = clamp((lobe - 0.42) * 2.2, 0, 1) * 0.6
           r = lerp(LAND.forest[0], LAND.forestDark[0], t)
           g = lerp(LAND.forest[1], LAND.forestDark[1], t)
           bl = lerp(LAND.forest[2], LAND.forestDark[2], t)
@@ -415,38 +458,65 @@ export function createHUD({ terrain, player }) {
         } else if (b === BIOME_ID.road) {
           r = LAND.road[0]; g = LAND.road[1]; bl = LAND.road[2]
         } else {
-          // grass — sage-olive low, warming to tan on the high shelves
-          r = lerp(LAND.grassLo[0], LAND.grassHi[0], hT)
-          g = lerp(LAND.grassLo[1], LAND.grassHi[1], hT)
-          bl = lerp(LAND.grassLo[2], LAND.grassHi[2], hT)
+          // grass — the §9 lit parchment, warmed slightly on high shelves
+          r = LAND.parch[0] * (1 + hT * 0.1)
+          g = LAND.parch[1] * (1 + hT * 0.08)
+          bl = LAND.parch[2] * (1 + hT * 0.06)
         }
 
-        // NW hillshade — the cartographic relief that makes it a real map
-        const sh = clamp(-gdx * 0.85 - gdz * 0.62, -0.7, 0.7)
-        let f = 1 + sh * 0.72
+        // NW hillshade — lit faces lift toward the pale parchment, shaded
+        // faces sink toward the #6f5a40 relief-shade (the §9 lit/shade pair)
+        const sh = clamp(-gdx * 0.85 - gdz * 0.62, -1, 1)
+        let f = 1
+        if (sh < 0) {
+          const t = -sh * 0.7
+          r = lerp(r, LAND.crevice[0], t)
+          g = lerp(g, LAND.crevice[1], t)
+          bl = lerp(bl, LAND.crevice[2], t)
+        } else {
+          const t = sh * 0.3
+          r = lerp(r, LAND.parchHi[0], t)
+          g = lerp(g, LAND.parchHi[1], t)
+          bl = lerp(bl, LAND.parchHi[2], t)
+        }
 
-        // steep faces sink toward the relief-shade brown (canyon engraving)
+        // steep faces sink further toward the relief-shade (canyon engraving)
         if (grad > 0.85) {
-          const t = clamp((grad - 0.85) / 1.7, 0, 1) * 0.55
+          const t = clamp((grad - 0.85) / 1.7, 0, 1) * 0.5
           r = lerp(r, LAND.crevice[0], t)
           g = lerp(g, LAND.crevice[1], t)
           bl = lerp(bl, LAND.crevice[2], t)
         }
 
+        // mountain hatch #7d7464 — diagonal strokes on the steeper rock
+        if (b === BIOME_ID.rock && grad > 0.25) {
+          const ph = ((gx - gy) % 7 + 7) % 7
+          if (ph < 1.6) {
+            const t = 0.55 * clamp(grad, 0, 1)
+            r = lerp(r, LAND.hatch[0], t)
+            g = lerp(g, LAND.hatch[1], t)
+            bl = lerp(bl, LAND.hatch[2], t)
+          }
+        }
+
         // engraved contour lines every 6 m (skip flats to avoid banding)
         const m = ((h % 6) + 6) % 6
         if (m < 0.5 && grad > 0.06) {
-          f *= 1 - 0.14 * clamp(grad * 6, 0, 1) * (b === BIOME_ID.rock ? 1.6 : 1)
+          f *= 1 - 0.12 * clamp(grad * 6, 0, 1) * (b === BIOME_ID.rock ? 1.5 : 1)
         }
 
         // parchment blotching (two octaves) + fibre grain
         const bl1 = vnoise(gx * 0.045, gy * 0.045)
         const bl2 = vnoise(gx * 0.11 + 37, gy * 0.11 + 11)
-        f *= 0.945 + (bl1 * 0.6 + bl2 * 0.4) * 0.1
-        const grain = (hash2(gx, gy) - 0.5) * 7
+        f *= 0.955 + (bl1 * 0.6 + bl2 * 0.4) * 0.09
+        const grain = (hash2(gx, gy) - 0.5) * 6
 
-        // sparse dark stipple in the woods
-        if (b === BIOME_ID.forest && hash2(gx * 3 + 7, gy * 3 + 5) < 0.16) f *= 0.86
+        // forest stipple — #55603a flecks over the parchment
+        if (b === BIOME_ID.forest && hash2(gx * 3 + 7, gy * 3 + 5) < 0.22) {
+          r = lerp(r, LAND.forestDark[0], 0.7)
+          g = lerp(g, LAND.forestDark[1], 0.7)
+          bl = lerp(bl, LAND.forestDark[2], 0.7)
+        }
 
         px[o] = clamp(r * f + grain, 0, 255)
         px[o + 1] = clamp(g * f + grain, 0, 255)
@@ -515,8 +585,9 @@ export function createHUD({ terrain, player }) {
     bCtx.lineJoin = 'round'
     bCtx.lineCap = 'round'
     for (let pass = 0; pass < 2; pass++) {
-      bCtx.strokeStyle = pass === 0 ? 'rgba(92,70,42,0.6)' : 'rgba(206,177,120,1)'
-      bCtx.lineWidth = pass === 0 ? 3.0 : 1.6
+      // §9: roads 1 px #c9ac74 (bake is 1.75× panel px) over a dark underlay
+      bCtx.strokeStyle = pass === 0 ? 'rgba(92,70,42,0.55)' : '#c9ac74'
+      bCtx.lineWidth = pass === 0 ? 3.0 : 1.75
       for (const road of roads) {
         const pts = road.points || []
         if (pts.length < 2) continue
@@ -527,13 +598,13 @@ export function createHUD({ terrain, player }) {
       }
     }
 
-    // river — the ONLY saturated cyan on the panel (art bible §3/§10)
+    // river — §9: river/lakes #3e6472 (slate-teal, NOT the scene's cyan)
     const riverPts = (meta.river && meta.river.points) || []
     if (riverPts.length > 1) {
       const passes = [
-        { c: 'rgba(23,74,88,0.9)', w: 3.6 },
-        { c: 'rgba(63,160,185,0.95)', w: 2.2 },
-        { c: 'rgba(140,222,238,0.9)', w: 0.9 },
+        { c: 'rgba(38,62,72,0.9)', w: 3.6 },
+        { c: '#3e6472', w: 2.2 },
+        { c: 'rgba(112,150,164,0.85)', w: 0.9 },
       ]
       for (const p of passes) {
         bCtx.strokeStyle = p.c
@@ -544,7 +615,7 @@ export function createHUD({ terrain, player }) {
         bCtx.stroke()
       }
       // headwater pool + waterfall fleck
-      bCtx.fillStyle = 'rgba(96,190,210,0.85)'
+      bCtx.fillStyle = 'rgba(90,132,148,0.85)'
       bCtx.beginPath()
       bCtx.ellipse(bx(riverPts[0].x), by(riverPts[0].z), 3.2, 2.4, 0, 0, TAU)
       bCtx.fill()
@@ -603,32 +674,21 @@ export function createHUD({ terrain, player }) {
       bCtx.stroke()
     }
 
-    // -- pass 5: unexplored dark-glass falloff ---------------------------
-    // Metered off frame01's plate (10×10 mean-luma grid): the reference
-    // panel is ~84 % dark (<70 luma), mean 54 — one lit parchment heart
-    // centre-left, everything else sunk into the glass, detail dissolving
-    // before it reaches a hairline. Our round-1 bake metered 36 % dark,
-    // mean 102: same parchment, wrong balance — a bright card that made
-    // the whole panel read oversized. Sink the far ridges, the NE
-    // snowfield and every corner; keep the settled west (fork–farm–castle
-    // shelf, the hero's shelf, the hamlet) lit. Circle is fine: the bake
-    // is square. Rendered AFTER the vector overlays so far road tails and
-    // the river's SE exit drown with the land under them, like the map
-    // marks fading out at the edge of frame01's plate.
-    // Tuned against the metered grids (overlay simulated on the round-1
-    // capture): these values forecast mean ~50 / ~77 % dark before the
-    // bright pins redraw on top, vs the reference's 54 / 84 % — while the
-    // castle–fork–hero heart stays under 5 % dimmed.
+    // -- pass 5: gentle edge vignette ------------------------------------
+    // The round-3 critic call: the map must read as LIT parchment, with
+    // land/water separating at panel size. The old heavy radial falloff
+    // (corners at 0.87 α) drowned the whole bake into "dark sludge", so
+    // it is reduced to a soft corner vignette — just enough to seat the
+    // map into the glass without eating the parchment.
     {
-      const fadeCx = 0.45 * W // lit heart sits on the road-fork shelf
-      const fadeCy = 0.62 * H
-      const fadeR = 0.5 * W
+      const fadeCx = 0.5 * W
+      const fadeCy = 0.5 * H
+      const fadeR = 0.74 * W
       const g = bCtx.createRadialGradient(fadeCx, fadeCy, 0, fadeCx, fadeCy, fadeR)
       g.addColorStop(0.0, 'rgba(9,14,13,0)')
-      g.addColorStop(0.38, 'rgba(9,14,13,0.05)')
-      g.addColorStop(0.58, 'rgba(9,14,13,0.36)')
-      g.addColorStop(0.78, 'rgba(9,14,13,0.64)')
-      g.addColorStop(1.0, 'rgba(9,14,13,0.87)') // corners clamp to this
+      g.addColorStop(0.62, 'rgba(9,14,13,0)')
+      g.addColorStop(0.85, 'rgba(9,14,13,0.14)')
+      g.addColorStop(1.0, 'rgba(9,14,13,0.32)')
       bCtx.fillStyle = g
       bCtx.fillRect(0, 0, W, H)
     }
@@ -644,11 +704,8 @@ export function createHUD({ terrain, player }) {
     const vw = window.innerWidth || 1280
     const vh = window.innerHeight || 720
     const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5)
-    // 0.20 fw — the frame01 plate measures 332/1630 = 0.204 fw × 0.360 fh,
-    // so this is NOT oversized; round 1's "too big" read was value balance
-    // (bright card vs dark glass), fixed by the bake's pass-5 falloff.
-    // Never taller than 0.42 fh (ultrawide guard) nor tiny.
-    const w = Math.round(Math.max(Math.min(vw * 0.2, vh * 0.42, 400), Math.min(210, vw * 0.42)))
+    // §9: 0.20 fw wide; the ultrawide guard caps h (= 0.9 w) at 0.32 fh
+    const w = Math.round(Math.max(Math.min(vw * 0.2, vh * 0.356, 400), Math.min(210, vw * 0.42)))
     const h = Math.round(w * PANEL_H_RATIO)
     if (w === layout.w && h === layout.h && dpr === layout.dpr && vw === layout.vw && vh === layout.vh) return
     layout.w = w
@@ -657,12 +714,11 @@ export function createHUD({ terrain, player }) {
     layout.vw = vw
     layout.vh = vh
     layout.s = w / 320 // design scale: bible geometry is quoted at 1600×900
-    layout.inset = Math.round(w * 0.078) // hairline inset ≈26/331, off frame01
+    layout.inset = Math.round(14 * clamp(layout.s, 0.75, 1.35)) // §9: 14 px
 
-    // corner insets measured off frame01: right 15/1630 fw, top 18/921 fh
-    // (the bible's 0.010/0.022 were a touch loose — the image wins)
-    const right = Math.round(Math.max(10, vw * 0.0095))
-    const top = Math.round(Math.max(9, vh * 0.019))
+    // §9 corner insets: 0.010 fw from the right, 0.022 fh from the top
+    const right = Math.round(Math.max(10, vw * 0.01))
+    const top = Math.round(Math.max(10, vh * 0.022))
     panel.style.width = w + 'px'
     panel.style.height = h + 'px'
     panel.style.right = right + 'px'
@@ -747,7 +803,8 @@ export function createHUD({ terrain, player }) {
     }
 
     // -- hairline frame (etched: dark offset line + light line)
-    const r = Math.round(10 * clamp(layout.s, 0.8, 1.35))
+    // §9: inset 14 px, radius 9 px, 1.5 px #d8dcd2 @ 55 %
+    const r = Math.round(9 * clamp(layout.s, 0.8, 1.35))
     ctx.lineWidth = 1.5
     rr(ctx, inset + 0.75, inset + 1.75, w - inset * 2, h - inset * 2, r)
     ctx.strokeStyle = P.hairlineEtch
@@ -1116,15 +1173,14 @@ export function createHUD({ terrain, player }) {
     String(s || '').toLowerCase().replace(/(^|[\s-])\S/g, (c) => c.toUpperCase())
 
   function setPlateText(region) {
-    // §9: one line — "GRANDPINE FIELDS · Ferren Coast". Small-caps serif
-    // renders the mixed-case source exactly like the spec string; the
-    // region suffix keeps the plate's gold accent, inline.
+    // §9: one line — "GRANDPINE FIELDS — Ferren Coast", em-dash separator.
+    // Small-caps serif renders the mixed-case source like the spec string.
     npTitle.textContent = ''
     const t = document.createElement('span')
     t.textContent = region.title
     const sep = document.createElement('span')
     sep.className = 'sep'
-    sep.textContent = '·'
+    sep.textContent = '—'
     const reg = document.createElement('span')
     reg.className = 'reg'
     reg.textContent = titleCase(region.kicker)
