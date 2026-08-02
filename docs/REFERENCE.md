@@ -1,5 +1,9 @@
 # Visual Reference — what we are matching
 
+> **The actual reference images are on disk at `docs/reference/frame01.png` … `frame05.png`.**
+> Open them with the `Read` tool and look at them. This prose exists as a checklist to read
+> *alongside* the images, not as a replacement for them. Where the two disagree, the images win.
+
 Target: the look of **Final Fantasy Brave Exvius / "FF Resonance"**-class HD-2D — high-res
 2D pixel-art sprites composited into a lit 3D miniature-diorama world, shot with a long lens
 and heavy tilt-shift. This document is the ground truth for the art bible, every

@@ -1,5 +1,9 @@
 # Module Contract — Aetherbound Overworld POC
 
+> **Before anything else: open `docs/reference/frame01.png` with the `Read` tool and look at it.**
+> That image is the frame this proof of concept is recreating. `docs/reference/README.md` indexes
+> all five plates. Do not build from the prose descriptions alone.
+
 **Hard rule for every implementer: do not change any exported signature below, and do not
 edit files you do not own.** `src/main.js` and `src/core/engine.js` are owned by the
 integrator. If you need something added to the contract, note it in your return summary
