@@ -173,33 +173,32 @@ const SPECIES = {
   lilypad:  { kind: 'flat',  baseH: 0.46, slopeMax: 1.00, clearR: 0.50, sway: 0,     blobA: 0 },
 }
 
-// Global budgets. Tree budgets are sized so they DON'T bind inside clumps:
-// round 1's 4200/3300 caps bound against the hash-shuffled candidate list,
-// which thinned every stand uniformly to park scatter — the critic's main
-// forest fail. Collision spacing (clearR) is the real density governor now.
-// INTEGRATION (round 2): both tree caps were BINDING (oak 7400/7400, conifer
-// 6853/6800), so the candidate shuffle thinned every clump interior uniformly
-// and grass showed between crowns — the closed-canopy repair could not land
-// while the cap, not clearR, was the governor. Raised until the caps go slack
-// at the tightened grid (§4.1 step 1.22 m vs 1.57 m crowns → 20–40 % overlap).
+// Global budgets — the bible §8 table (conifer 2600, oak 1900, bush 2300,
+// rock+boulder 950, tuft 9000, wheat 1300, flower 700, fern 500; ~19 k total).
+// Round 2 inflated the tree caps to 11500 because the map-wide shuffle was
+// thinning clump interiors; round 3 fixes the CAUSE instead: the in-frame
+// authored stands (§4.0) plant FIRST and can never be starved, the noise-copse
+// field is sparser, and only the far off-frame copses feel a binding cap
+// (uniformly, via the hash-shuffled candidate order — fog eats them anyway).
 const BUDGET = {
-  conifer: 11500, oak: 11500, bush: 2300, rockAll: 950, tuft: 18000,
-  // wheat is thinned by the paddock fill spacing (see §4.7), not by this cap —
-  // the cap must stay slack or it truncates the last paddock scanned.
-  wheat: 6000, flower: 1400, fern: 500, blossom: 400, bamboo: 120,
+  conifer: 2600, oak: 1900, bush: 2300, rockAll: 950, tuft: 9000,
+  // wheat is governed by the paddock fill spacing (§4.7) at ~1300; the cap
+  // carries slack so scan order can never truncate the last paddock.
+  wheat: 1600, flower: 700, fern: 500, blossom: 300, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
 
-// Wheat paddock ellipses — mirrors terrain.js PADDOCKS (authored constants),
-// the same trick props.js uses for the fences. Drives the packed paddock fill
-// (§4.7) and the per-field downwind AO decals (buildBlobs); the biome raster
-// stays the per-sample authority.
+// Wheat paddock ellipses — the FRAMING §4 paddock layout (BINDING): P1 at the
+// hero's shoulder with its small W lobe across the road (wheat reads on BOTH
+// shoulders), P2 south of it, and the big SE field sprawling to z +38. Drives
+// the packed paddock fill scan (§4.7) and the per-field downwind AO decals
+// (buildBlobs); the biome raster stays the per-sample authority, with a
+// relaxed per-paddock fallback so the fill survives terrain.js re-landing.
 const WHEAT_PADDOCKS = [
-  { x: -34, z: 14, rx: 6.0, rz: 3.6, rot: 0.30 },
-  { x: -42, z: 26, rx: 8.0, rz: 4.6, rot: -0.18 },
-  { x: -30, z: 30, rx: 6.6, rz: 4.0, rot: 0.42 },
-  { x: -20, z: 52, rx: 8.2, rz: 4.6, rot: 0.12 },
-  { x: 1, z: 36, rx: 9.0, rz: 5.0, rot: -0.30 },
+  { x: -37, z: 15.5, rx: 4.2, rz: 2.9, rot: 0.10 },   // P1 ~8×5.5
+  { x: -40.5, z: 16, rx: 1.8, rz: 2.1, rot: 0.0 },    // P1 west lobe 3×4
+  { x: -36.5, z: 22.5, rx: 6.2, rz: 3.7, rot: -0.08 },// P2 ~12×7
+  { x: -29.5, z: 29.5, rx: 7.4, rz: 5.1, rot: 0.35 }, // big SE field ~14×9 → z +38
 ]
 
 // ===========================================================================
@@ -216,13 +215,17 @@ export function createScatter({ terrain, atlas, renderer }) {
   const KEEPOUT = []
   const poi = (T.meta && T.meta.poi) || []
   let villagePOI = null
+  // FRAMING solve: the world compressed ~3× — the castle is now a 6.5 m-wide
+  // miniature on a small plateau and the village a handful of hazy rooftops,
+  // so the old 21/15 m discs would sterilise half the composition (they ate
+  // the SE wheat field and the autumn grove). Radii rescaled to the §4 world.
   for (const p of poi) {
-    if (p.kind === 'castle') KEEPOUT.push({ x: p.x, z: p.z, r: 21, ground: 12 })
-    else if (p.kind === 'village') { KEEPOUT.push({ x: p.x, z: p.z, r: 15, ground: 10 }); villagePOI = p }
-    else if (p.kind === 'shrine') KEEPOUT.push({ x: p.x, z: p.z, r: 9.5, ground: 6 })
-    else if (p.kind === 'camp') KEEPOUT.push({ x: p.x, z: p.z, r: 7.5, ground: 4 })
-    else if (p.kind === 'farm') KEEPOUT.push({ x: p.x, z: p.z, r: 16, ground: 0, cropsOK: true })
-    else if (p.kind === 'bridge') KEEPOUT.push({ x: p.x, z: p.z, r: 5.5, ground: 3 })
+    if (p.kind === 'castle') KEEPOUT.push({ x: p.x, z: p.z, r: 8, ground: 6 })
+    else if (p.kind === 'village') { KEEPOUT.push({ x: p.x, z: p.z, r: 5.5, ground: 3.5 }); villagePOI = p }
+    else if (p.kind === 'shrine') KEEPOUT.push({ x: p.x, z: p.z, r: 7, ground: 4.5 })
+    else if (p.kind === 'camp') KEEPOUT.push({ x: p.x, z: p.z, r: 6, ground: 3.5 })
+    else if (p.kind === 'farm') KEEPOUT.push({ x: p.x, z: p.z, r: 9, ground: 0, cropsOK: true })
+    else if (p.kind === 'bridge') KEEPOUT.push({ x: p.x, z: p.z, r: 5, ground: 2.5 })
   }
   // The hero boots at (−38, +18) on the road — guarantee a clean stage.
   KEEPOUT.push({ x: -38, z: 18, r: 3.2, ground: 2.2, heroPad: true })
@@ -244,10 +247,11 @@ export function createScatter({ terrain, atlas, renderer }) {
   // disc, so round 1 grew conifers straight through the barn walls. Oriented
   // rects, half-extents cover the roof/lean-to overhang; trees get extra
   // margin for crown overhang.
-  const STRUCT_CLEAR = [
-    { x: -62, z: 25, rot: 1.25, hx: 3.75, hz: 1.95 },   // barn + east lean-to
-    { x: -59.6, z: 23.2, rot: -0.5, hx: 1.35, hz: 1.0 }, // cart
-  ]
+  // FRAMING solve: the round-2 barn/cart rects sat at old-world coordinates
+  // (now inside the ocean). props.js is re-siting its structures this round;
+  // the farm/village/castle keep-out discs above cover the new footprints, so
+  // the list is empty — the mechanism stays for the next authored structure.
+  const STRUCT_CLEAR = []
   for (const s of STRUCT_CLEAR) { s.c = Math.cos(s.rot); s.s = Math.sin(s.rot) }
   function structClear(x, z, margin) {
     for (let i = 0; i < STRUCT_CLEAR.length; i++) {
@@ -294,26 +298,69 @@ export function createScatter({ terrain, atlas, renderer }) {
     return true
   }
 
-  // ---- Authored south copses. NOTE the geometry, measured this round: the
-  // ---- boot camera sits at z +64.8 looking north and its bottom frame edge
-  // ---- meets the ground near z +34 — round 1 put these discs at z 78–130,
-  // ---- BEHIND the camera, which is why the bottom blur band rendered empty
-  // ---- road and grass. The near ring (z 46–70) now backs up the dedicated
-  // ---- foreground crown belt (§4.0); the far ring keeps free-orbit south
-  // ---- from going bald.
+  // ---- Authored south copses (FRAMING §3 rig: camera z +58.62, bottom frame
+  // ---- edge meets the ground near z +31). Frame01 closes its bottom-LEFT
+  // ---- with the SW forest knoll (authored below) and its bottom-RIGHT with
+  // ---- the SE wheat field — NOT a wall of near-blur crowns, so the round-2
+  // ---- full-width foreground belt is gone. These discs all sit at z ≥ 38,
+  // ---- below the frame, purely so free-orbit south never goes bald.
   const SOUTH_COPSES = [
-    { x: -70, z: 52, r: 15 }, { x: -54, z: 62, r: 17 }, { x: -34, z: 68, r: 14 },
-    { x: -12, z: 58, r: 13 }, { x: 8, z: 66, r: 15 }, { x: -88, z: 68, r: 18 },
-    { x: 28, z: 54, r: 12 },
-    { x: -62, z: 92, r: 19 }, { x: -24, z: 100, r: 18 }, { x: 6, z: 112, r: 16 },
-    { x: -90, z: 118, r: 21 }, { x: 34, z: 92, r: 14 },
+    { x: -52, z: 41, r: 9 }, { x: -20, z: 44, r: 10 }, { x: -60, z: 56, r: 13 },
+    { x: -36, z: 60, r: 12 }, { x: -6, z: 52, r: 11 }, { x: 12, z: 68, r: 13 },
+    { x: -46, z: 78, r: 14 }, { x: -14, z: 88, r: 14 }, { x: 30, z: 50, r: 11 },
   ]
 
-  // ---- Forest mask: organic clump field over the whole map. terrain.biome
-  // ---- 'forest' marks the authored stands (mask 1); a low-frequency noise
-  // ---- adds satellite copses on open grass; a mid-frequency "clearing"
-  // ---- noise eats holes and chews the edges ragged (bible §8 ecotone).
+  // ---- AUTHORED FOREST ZONES (FRAMING §8 → scatter.js, BINDING). These are
+  // ---- the in-frame stands the critic's Defect 6 demands; they are planted
+  // ---- FIRST (pass 4.0) so no budget cap can ever starve them, and they
+  // ---- feed the shared forest mask so bushes/ferns/tufts treat them as real
+  // ---- stands (ecotone fringing, no tufts under closed canopy).
+  //   knoll: dense dark conifer+oak forest, SW knoll x −54…−42, z +22…+33 —
+  //          the bottom-left mass of the frame, deepest shadow ramp.
+  //   band:  forest band west of the fork along the shelf, x −56…−48, z +5…+20.
+  //   grove: olive-gold autumn grove at (−49.5, −12) — frame01's warm cluster
+  //          at (0.31, 0.08); oak_c carries the §10.8 olive ramp.
+  const FOREST_ZONES = [
+    { x: -48, z: 27.5, rx: 6.4, rz: 6.0, density: 1.0, shade: 0.86, conifer: 0.58, gold: false }, // SW knoll
+    { x: -52, z: 12.5, rx: 4.5, rz: 8.2, density: 0.92, shade: 0.95, conifer: 0.52, gold: false }, // fork band
+    { x: -49.5, z: -12, rx: 5.4, rz: 4.6, density: 0.88, shade: 1.02, conifer: 0.0, gold: true },  // autumn grove
+  ]
+  function zoneMaskOne(x, z, zn) {
+    const dx = (x - zn.x) / zn.rx
+    const dz = (z - zn.z) / zn.rz
+    let d = Math.sqrt(dx * dx + dz * dz)
+    // ragged rim: ±0.3 radial noise chews the boundary into fingers so the
+    // edge never reads convex-smooth (Defect 14)
+    d += 0.3 * fbm2(x * 0.13 + 4.2, z * 0.13 - 2.7, 2)
+    return clamp01(1 - sstep(0.55, 1.05, d)) * zn.density
+  }
+  function zoneMask(x, z) {
+    let m = 0
+    for (let i = 0; i < FOREST_ZONES.length; i++) {
+      const v = zoneMaskOne(x, z, FOREST_ZONES[i])
+      if (v > m) m = v
+    }
+    return m
+  }
+
+  // ---- OPEN PASTURE law (FRAMING §8.5): the pasture between the hero and
+  // ---- the SW knoll (fw 0.15–0.45, fh 0.5–0.7 ⇒ x ≈ −49…−39, z ≈ +13…+26)
+  // ---- stays GENUINELY open — lone anchored trees and tufts only. Noise
+  // ---- copses are suppressed here (smooth-edged so the suppression itself
+  // ---- never draws a visible rectangle). Also damps the central stage
+  // ---- (road / paddock / saddle corridor) so random copses never squat on
+  // ---- the eye path.
+  function openPasture(x, z) {
+    const a = sstep(-51, -48, x) * (1 - sstep(-40, -37, x)) * sstep(11, 14, z) * (1 - sstep(24, 27, z))
+    const b = sstep(-45, -42, x) * (1 - sstep(-27, -24, x)) * sstep(12, 15, z) * (1 - sstep(29, 32, z))
+    return Math.max(a, b)
+  }
+
+  // ---- Forest mask: authored zones (above) + terrain.biome 'forest' stands
+  // ---- + a low-frequency noise field of satellite copses on open grass; a
+  // ---- mid-frequency "clearing" noise eats holes and chews edges ragged.
   function forestMask(x, z) {
+    const zm = zoneMask(x, z)
     const b = T.biome(x, z)
     let authored = false
     let m = 0
@@ -321,15 +368,11 @@ export function createScatter({ terrain, atlas, renderer }) {
       authored = true
       m = 1
     } else if (b === 'grass') {
-      // satellite copse field on open grass; the south foreground band
-      // (frame01's bottom blur strip) gets a density bias so the frame's
-      // lower edge dissolves into crowns, not bare pasture.
+      // satellite copse field on open grass — kept sparser than the authored
+      // stands (they spend the same budgets) and fully suppressed on the
+      // open-pasture stage.
       let n = fbm2(x * 0.0115 + 3.1, z * 0.0115 - 7.4, 3)
-      n += 0.25 * sstep(36, 62, z)
-      // threshold a touch higher than round 1: satellite copses spend the
-      // same tree budget as the authored stands — too many diffuse copses
-      // and the caps bind, thinning clump INTERIORS back to park scatter
-      m = sstep(0.33, 0.63, n)
+      m = sstep(0.38, 0.66, n)
       for (let i = 0; i < SOUTH_COPSES.length; i++) {
         const d = SOUTH_COPSES[i]
         const dd = Math.hypot(x - d.x, z - d.z) / d.r
@@ -338,17 +381,19 @@ export function createScatter({ terrain, atlas, renderer }) {
           if (belt > m) m = belt
         }
       }
-    } else return 0
+      m *= 1 - openPasture(x, z)
+    } else if (zm <= 0) return 0
     // glade carve + ragged edges: ~9 m noise pokes clearings into stands and
     // chews the rims into fingers. Authored stands stay SOLID at heart —
     // frame01's clumps have no visible ground inside (bible §8) — while
-    // noise copses fray harder. Round 1 carved 45 % out of authored interiors
-    // too, which opened grass gaps inside every clump; the carve now only
-    // nips the rims of authored stands.
+    // noise copses fray harder.
     const c = fbm2(x * 0.11 - 11.2, z * 0.11 + 5.9, 2)
     m *= 1 - (authored ? 0.22 : 0.7) * sstep(0.5, 0.8, c)
     m = m * sstep(0.06, authored ? 0.3 : 0.5, m + 0.26 * c)
-    return clamp01(m)
+    // authored zones override: solid at heart, their own ragged rim already
+    // applied in zoneMaskOne — the clearing carve only nips them lightly
+    const zc = zm * (1 - 0.18 * sstep(0.55, 0.85, c))
+    return clamp01(Math.max(m, zc))
   }
 
   // ---- Ring probes -------------------------------------------------------
@@ -407,6 +452,14 @@ export function createScatter({ terrain, atlas, renderer }) {
     if (!fr) return null
     const o = opts || {}
     let h = sp.baseH * lerp(0.82, 1.24, rnd()) * (o.scale || 1)
+    if (sp.kind === 'tree') {
+      // Deterministic neighbour decorrelator (bible §8: adjacent crowns must
+      // differ by ≥6 % scale or ≥3° hue — a bible instant-fail): a ~1.3 m
+      // positional checkerboard adds an alternating ±4.5 % scale offset on
+      // top of the random jitter, so even when two neighbours' U(0.82,1.24)
+      // draws coincide they still land ≥6 % apart.
+      h *= ((Math.floor(x / 1.31) + Math.floor(z / 1.31)) & 1) === 0 ? 1.045 : 0.958
+    }
     if (sp.kind === 'tree' && h > 5) h = 5 // bible: never > 5 m
     let wBias = 1
     if (key === 'oak_a' || key === 'oak_b' || key === 'oak_c') wBias = 1.09
@@ -424,7 +477,9 @@ export function createScatter({ terrain, atlas, renderer }) {
     // per-species hueAmp: frame01 mixes olive, yellow-green and blue-green
     // crowns inside a single stand — value-only jitter read as one flat green.
     // Blossoms rotate along a pink↔violet axis instead (frame02 grammar).
-    const v = lerp(sp.vLo !== undefined ? sp.vLo : 0.94, sp.vHi !== undefined ? sp.vHi : 1.06, rnd())
+    // o.tintScale: authored per-zone value multiplier — the SW knoll runs its
+    // whole stand darker (FRAMING §8.1 "deepest shadow ramp").
+    const v = lerp(sp.vLo !== undefined ? sp.vLo : 0.94, sp.vHi !== undefined ? sp.vHi : 1.06, rnd()) * (o.tintScale || 1)
     const hj = rnd() * 2 - 1
     let tr, tg, tb
     if (key.indexOf('blossom') === 0) {
@@ -497,34 +552,90 @@ export function createScatter({ terrain, atlas, renderer }) {
   // 4. PLACEMENT PASSES (fixed order → deterministic under budget caps)
   // =========================================================================
 
-  // ---- 4.0 FOREGROUND CROWN BELT: fill the bottom blur band ---------------
-  // The §2 boot camera (z +64.8, pitch 28°, vFOV 26°) meets the ground with
-  // its bottom frame edge near z +34; crowns rooted in z ≈ 33.5–46.5 rise
-  // into the 0.88–1.0 fh near-blur zone as the big soft out-of-focus masses
-  // frame01 closes its bottom edge with — half the miniature illusion. Large
-  // scale bias so the crowns defocus into fat blobs; the farm keep-out, the
-  // road corridor and the 'field' biome carve the centre automatically, so
-  // the belt flanks the wheat/road stage exactly like the reference. Runs
-  // FIRST so tree budgets can never starve it.
+  // ---- 4.0 AUTHORED STANDS (FRAMING §8 → scatter.js, runs FIRST so budgets
+  // ---- can never starve them): the SW knoll mass, the fork forest band and
+  // ---- the olive-gold autumn grove, each packed solid at heart (crowns
+  // ---- overlapping 20–40 % via clearR), plus olive-gold deciduous outrider
+  // ---- clusters of 2–5 trees off every rim so the boundaries read ragged,
+  // ---- never convex-smooth (Defect 14). Then the 3–5 landmark pines on the
+  // ---- massif summit knob (−32.5, +5.5) that cut the silhouette at the top
+  // ---- of the massif — FRAMING says do not omit them.
   {
-    const rnd = rngFor('foreground')
-    const step = 1.55
-    for (let gz = 33.5; gz <= 46.5; gz += step) {
-      for (let gx = -86; gx <= 30; gx += step) {
-        const jx = gx + (hash2(gx, gz, 231) - 0.5) * step * 1.3
-        const jz = gz + (hash2(gx, gz, 232) - 0.5) * step * 1.3
-        const b = T.biome(jx, jz)
-        if (b !== 'grass' && b !== 'forest') continue
-        const p = 0.86 * (0.58 + 0.42 * (fbm2(jx * 0.05 - 4.4, jz * 0.05 + 8.9, 2) * 0.5 + 0.5))
-        if (hash2(jx, jz, 233) > p) continue
-        const r = hash2(jx, jz, 234)
-        const key =
-          r < 0.30 ? (r < 0.15 ? 'pine_a' : 'pine_b')
-          : r < 0.44 ? 'oak_c' // olive-gold accents read strongly in the near blur
-          : r < 0.74 ? 'oak_a' : 'oak_b'
-        const grp = key.indexOf('pine') === 0 ? 'conifer' : 'oak'
-        plant(key, jx, jz, rnd, grp, { scale: 1.18 + hash2(jx, jz, 235) * 0.26 })
+    const rnd = rngFor('zones')
+    const step = 1.22
+    for (const zn of FOREST_ZONES) {
+      for (let gz = zn.z - zn.rz - 2.5; gz <= zn.z + zn.rz + 2.5; gz += step) {
+        for (let gx = zn.x - zn.rx - 2.5; gx <= zn.x + zn.rx + 2.5; gx += step) {
+          const jx = gx + (hash2(gx, gz, 231) - 0.5) * step * 1.15
+          const jz = gz + (hash2(gx, gz, 232) - 0.5) * step * 1.15
+          const m = zoneMaskOne(jx, jz, zn)
+          if (m <= 0.02) continue
+          const b = T.biome(jx, jz)
+          if (b === 'ocean' || b === 'beach' || b === 'field') continue
+          // solid interior, quadratic thinning on the noise-chewed rim
+          const p = m > 0.55 ? 0.985 : m * m * 1.1
+          if (hash2(jx, jz, 233) > p) continue
+          const r = hash2(jx, jz, 234)
+          let key
+          if (zn.gold) key = r < 0.86 ? 'oak_c' : 'oak_a'
+          else if (r < zn.conifer) {
+            const r1 = hash2(jx, jz, 235)
+            key = r1 < 0.4 ? 'pine_a' : r1 < 0.72 ? 'pine_b' : 'pine_c'
+          } else {
+            const r1 = hash2(jx, jz, 236)
+            key = r1 < 0.14 ? 'oak_c' : r1 < 0.58 ? 'oak_a' : 'oak_b'
+          }
+          const grp = key.indexOf('pine') === 0 ? 'conifer' : 'oak'
+          if (plant(key, jx, jz, rnd, grp, { tintScale: zn.shade })) {
+            // ecotone outriders: olive-gold-biased 2–5-tree clusters flung
+            // off the rim (m 0.06–0.5) — the ragged-edge repair
+            if (m < 0.5 && hash2(jx, jz, 237) < 0.3) {
+              const n = 2 + ((hash2(jx, jz, 238) * 3.4) | 0)
+              for (let k = 0; k < n; k++) {
+                const a = hash2(jx, jz, 240 + k) * Math.PI * 2
+                const d = 1.5 + hash2(jx, jz, 250 + k) * 2.2
+                const ox = jx + Math.cos(a) * d
+                const oz = jz + Math.sin(a) * d
+                const rr = hash2(ox, oz, 239)
+                const kk = zn.gold
+                  ? (rr < 0.8 ? 'oak_c' : 'oak_a')
+                  : rr < 0.42 ? 'oak_c' : rr < 0.66 ? 'oak_a' : (rr < 0.84 ? 'pine_b' : 'pine_a')
+                plant(kk, ox, oz, rnd, kk.indexOf('pine') === 0 ? 'conifer' : 'oak',
+                  { tintScale: lerp(zn.shade, 1, 0.5) })
+              }
+            }
+          }
+        }
       }
+    }
+
+    // ---- landmark summit pines (FRAMING §8.3): 3–5 on the grassy summit
+    // ---- knob (−32.5, +5.5, y ≈ 16.5). Heights sampled at runtime; if the
+    // ---- knob's slope rejects the normal accept path (terrain is being
+    // ---- re-landed concurrently), force-plant so they are NEVER omitted.
+    const KNOB = [
+      [-32.5, 5.5], [-31.3, 4.7], [-33.8, 6.3], [-31.7, 6.8], [-33.3, 4.4],
+    ]
+    let planted = 0
+    for (let i = 0; i < KNOB.length; i++) {
+      if (planted >= 5) break
+      const kx = KNOB[i][0]
+      const kz = KNOB[i][1]
+      const key = i % 3 === 0 ? 'pine_a' : i % 3 === 1 ? 'pine_b' : 'pine_c'
+      if (plant(key, kx, kz, rnd, 'conifer', { scale: 0.92 + hash2(kx, kz, 260) * 0.2 })) planted++
+    }
+    for (let i = 0; planted < 3 && i < KNOB.length; i++) {
+      const kx = KNOB[i][0]
+      const kz = KNOB[i][1]
+      if (T.isWater(kx, kz)) continue
+      const it = makeInstance(i % 2 ? 'pine_b' : 'pine_a', kx, kz, rnd, { scale: 0.95 })
+      if (!it) continue
+      const r = SPECIES.pine_a.clearR * it.w * 0.5
+      if (!occClear(kx, kz, r)) continue
+      occInsert(kx, kz, r)
+      inst.push(it)
+      bump('conifer')
+      planted++
     }
   }
 
@@ -586,6 +697,13 @@ export function createScatter({ terrain, atlas, renderer }) {
           p = 0.16
         } else continue
 
+        // FRAMING §8.3: conifers on the massif terraces — footprint
+        // x −44…−25, z −6…+14, gentle ground on the y ≈ 12–16 terrace band
+        // between the limestone lips. Sampled from the live terrain so the
+        // stands ride the landforms wherever terrain.js finally lands them.
+        const inMassif = jx > -44 && jx < -25 && jz > -6 && jz < 14
+        if (inMassif && y > 11.2 && y < 16.3 && sl < 0.38) p = Math.max(p, 0.22)
+
         if (p <= 0 || hash2(jx, jz, 3) > p) continue
 
         // ---- species: conifers claim altitude + slope + snow; deciduous
@@ -594,8 +712,11 @@ export function createScatter({ terrain, atlas, renderer }) {
         let key
         if (snowy) key = 'pine_snow'
         else {
+          // altitude curve rescaled to the miniature world (FRAMING: local
+          // maximum is the massif crown at y 16.5, not the old +24 plateaus)
           const coniferW =
-            0.22 + 0.55 * sstep(12, 21, y) + 0.35 * sstep(0.16, 0.4, sl) + (b === 'rock' ? 0.5 : 0)
+            0.22 + 0.55 * sstep(11.5, 16, y) + 0.35 * sstep(0.16, 0.4, sl) +
+            (b === 'rock' ? 0.5 : 0) + (inMassif ? 0.45 : 0)
           const r0 = hash2(jx, jz, 4)
           if (r0 < clamp01(coniferW)) {
             const r1 = hash2(jx, jz, 5)

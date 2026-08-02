@@ -38,7 +38,9 @@
  *       semantics — R3 fix: R2 used mix(base, wider, 0.85), which *replaces*
  *       85 % of each level instead of accumulating, measured bloom delta on
  *       the final frame was under 1/255: bloom was silently absent)
- *   → ACES filmic (three-equivalent Hill fit, exposure 1.05) + colour grade
+ *   → ACES filmic (three-equivalent Hill fit, exposure 1.05), bloom composited
+ *     in display space right after the fit (strength 0.30 of a display-referred
+ *     bloom buffer — UnrealBloom semantics), then the colour grade
  *     (bible GLSL verbatim: cool-green lifted blacks, warm cream mids,
  *      saturation 1.08, highlight desat toward #fff3dc, per-channel L/G/G)
  *   → tilt-shift DOF: analytic screen-band CoC, half-res Vogel-disc bokeh
@@ -255,11 +257,20 @@ const BRIGHT_FRAG = PRELUDE + ACES_GLSL + /* glsl */ `
     float w3 = 1.0 / (1.0 + luma(s3) * ex);
     vec3 c = (s0 * w0 + s1 * w1 + s2 * w2 + s3 * w3) / (w0 + w1 + w2 + w3);
 
-    float l = luma(acesFilmic(max(c, 0.0) * ex));
-    float soft = clamp(l - uThreshold + uKnee, 0.0, 2.0 * uKnee);
-    soft = soft * soft / (4.0 * uKnee + 1e-4);
-    float contrib = max(soft, l - uThreshold) / max(l, 1e-4);
-    gl_FragColor = vec4(max(c * contrib, 0.0), 1.0);
+    // Gate AND emit in display space, UnrealBloom semantics — the family the
+    // bible's 0.72/0.30/0.85 triplet belongs to. Two R3 fixes live here:
+    //   1. R2 emitted linear-HDR excess and added it pre-fit, so the ACES
+    //      shoulder compressed the whole composite to ~1/255 — invisible.
+    //   2. LuminosityHighPass outputs the FULL texel colour gated by a
+    //      smoothstep, not the (tiny) excess-over-threshold; the excess form
+    //      left wheat tips at ~0.03 in the pyramid. Full-colour gating puts
+    //      them at ~0.75 and the 0.30 strength finally reads as a kiss.
+    // The knee doubles as the smoothstep width; fog (~0.60 display) sits
+    // below threshold − knee, so the haze contributes nothing at all.
+    vec3 mapped = acesFilmic(max(c, 0.0) * ex);
+    float l = luma(mapped);
+    float contrib = smoothstep(uThreshold - uKnee, uThreshold + uKnee, l);
+    gl_FragColor = vec4(mapped * contrib, 1.0);
   }
 `
 
@@ -352,14 +363,18 @@ const GRADE_FRAG = PRELUDE + ACES_GLSL + /* glsl */ `
 
   void main() {
     vec3 c = texture2D(tScene, vUv).rgb;
-    if (uBloomStrength > 0.0) {
-      c += texture2D(tBloom, vUv).rgb * uBloomStrength;
-    }
 
     // ACES filmic (three-equivalent), exposure baked as exposure/0.6
     c = max(c, 0.0);
     c *= uExposure / 0.6;
     c = acesFilmic(c);
+
+    // Bloom composite in display space (the bright pass emits tonemapped
+    // values — see BRIGHT_FRAG). Adding pre-fit let the ACES shoulder eat
+    // the entire 0.30-strength contribution.
+    if (uBloomStrength > 0.0) {
+      c = clamp(c + texture2D(tBloom, vUv).rgb * uBloomStrength, 0.0, 1.0);
+    }
 
     // -- grade, ART_BIBLE §7 verbatim --------------------------------------
     float l = luma(c);
