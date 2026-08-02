@@ -682,14 +682,25 @@ export function createCameraRig({ camera, player, terrain }) {
     near: 4,
     far: 700,
     // orbit geometry
-    pitchDeg: 28,       // measured off frame01's foreshortening — NOT 50°
-    pitchMinDeg: 24,
-    pitchMaxDeg: 34,
-    pitchRefDist: 53,   // pitch eases flatter as the dolly pulls out…
-    pitchPerMeter: 0.18, // …by this many degrees per metre of distance
-    distance: 53,       // camera → hero chest (60 px hero at 921 px frame)
-    distMin: 38,
-    distMax: 70,
+    // NOTE (integrator): the bible's §2 transform (pitch 28° / dist 53) is
+    // geometrically incompatible with its own §1 screen audit — at 53 m with a
+    // 26° vFOV the frame only spans ~28–90 m of view depth, so the castle,
+    // massif, waterfall, trestle bridge and ocean all land ABOVE the top edge.
+    // Solved for the transform that actually lands the §1 audit (castle 0.73 fw
+    // / 0.43 fh, falls 0.61/0.13, massif 0.69/0.11, ocean strip 0.02 fw,
+    // trestle 0.15/0.10, hero 0.50/0.61) while keeping the long lens at 26°.
+    pitchDeg: 22,       // orbit elevation about the hero
+    pitchMinDeg: 18,
+    pitchMaxDeg: 28,
+    pitchRefDist: 82,   // pitch eases flatter as the dolly pulls out…
+    pitchPerMeter: 0.12, // …by this many degrees per metre of distance
+    distance: 82,       // camera → hero chest
+    distMin: 58,
+    distMax: 118,
+    // The camera aims ABOVE the hero's chest: that tilt is what opens the top
+    // of the frame onto the massif/coast instead of burying them off-screen.
+    aimUp: 4.54,
+    aimUpRefDist: 82,   // aimUp scales with the dolly so framing holds on zoom
     yawDeg: 0,          // boot due north: ocean left, castle right, massif up
     chestHeight: 1.0,   // look-at = feet + chest (ground 10.4 → 11.4)
     // feel
@@ -772,7 +783,9 @@ export function createCameraRig({ camera, player, terrain }) {
     }
     _pos.y += s.lift
     camera.position.copy(_pos)
-    _look.set(lookX, lookY, lookZ)
+    // aim above the chest — opens the upstage (massif, falls, castle, coast)
+    const aim = params.aimUp * (dist / params.aimUpRefDist)
+    _look.set(lookX, lookY + aim + s.lift * 0.5, lookZ)
     camera.lookAt(_look)
   }
 

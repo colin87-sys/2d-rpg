@@ -163,7 +163,11 @@ const SPECIES = {
 // Global budgets (ART_BIBLE §8 table + the F2-biome extras).
 const BUDGET = {
   conifer: 4200, oak: 3300, bush: 2300, rockAll: 950, tuft: 9000,
-  wheat: 1300, flower: 700, fern: 500, blossom: 400, bamboo: 120,
+  // wheat was 1300: at ~3.7 clusters/m² over the three paddocks the billboards
+  // packed edge-to-edge into a bristle mat that read as stubble, not a field.
+  // Thinned so the gold ground texture carries the paddock and the stalks read
+  // as texture over it (frame01's paddocks show ground between the heads).
+  wheat: 620, flower: 700, fern: 500, blossom: 400, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
 

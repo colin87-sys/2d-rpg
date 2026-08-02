@@ -346,8 +346,11 @@ const OCEAN_FRAG = /* glsl */ `
     vec3 N = normalize(vec3(-(dhx + rx * 0.35), 1.0, -(dhz + rz * 0.35)));
 
     // ---- depth colour ramp (slate-teal, never navy — bible §10.5) ---------
-    vec3 c = mix(uShallow, uMid, smoothstep(1.5, 7.0, depth));
-    c = mix(c, uDeep, smoothstep(7.0, 22.0, depth));
+    // The shipped terrain's shelf bottoms out at ~6.5 m, so the authored
+    // 7→22 m band meant uDeep was mathematically unreachable and the whole sea
+    // rendered as uShallow/uMid pale cyan. Ramp rescaled to the real bathymetry.
+    vec3 c = mix(uShallow, uMid, smoothstep(0.5, 2.2, depth));
+    c = mix(c, uDeep, smoothstep(2.2, 5.4, depth));
     // the signature: bright turquoise band hugging the coast
     c = mix(c, uTurq, smoothstep(7.0, 0.8, sd) * 0.70);
 
@@ -355,7 +358,7 @@ const OCEAN_FRAG = /* glsl */ `
     vec2 sp = vec2(vWorld.x * 0.155, vWorld.z * 0.048);
     sp += vec2(uTime * 0.011, uTime * 0.004);
     float st = fbm3(sp + fbm2(sp * 1.9) * 0.42);
-    c = mix(c, uStreakTint, smoothstep(0.60, 0.86, st) * 0.30);
+    c = mix(c, uStreakTint, smoothstep(0.60, 0.86, st) * 0.18);
     c = mix(c, uDeep * 0.82, smoothstep(0.40, 0.16, st) * 0.22 * smoothstep(2.0, 8.0, depth));
 
     // ---- sparse mid-sea whitecaps off swell crests ------------------------
@@ -380,8 +383,11 @@ const OCEAN_FRAG = /* glsl */ `
 
     // ---- fresnel toward the sage horizon ----------------------------------
     vec3 V = normalize(cameraPosition - vWorld);
-    float fres = pow(1.0 - max(dot(N, V), 0.0), 3.5);
-    c = mix(c, uSkyTint, fres * 0.42);
+    // Exponent raised from 3.5: the shipped camera reads the sea at 8–18° of
+    // grazing, where a 3.5 falloff pinned fresnel near 0.5 over the whole sheet
+    // and turned the ocean into a pale sage mirror.
+    float fres = pow(1.0 - max(dot(N, V), 0.0), 5.5);
+    c = mix(c, uSkyTint, fres * 0.30);
 
     // ---- animated sun glitter (f2's specular sheet) -----------------------
     vec2 cell = floor(vWorld.xz * 1.55);
@@ -536,6 +542,9 @@ function resolveFallsSpecs(terrain, riverSpecs) {
       } catch (_) {}
       pool.y = Number.isFinite(wh) && wh > 0.5 ? wh : Math.max(lip.y - (w.drop ?? w.height ?? 9), 0.5)
     }
+    // A pool that sits at or above the lip inverts the sheet (it gets extruded
+    // upward off the cliff top). Clamp to a real drop.
+    if (!(pool.y < lip.y - 0.5)) pool.y = lip.y - (w.drop ?? w.height ?? 9)
     out.push({ lip, pool, width: Number.isFinite(w.width) ? w.width : 4.4 })
   }
 
@@ -543,8 +552,14 @@ function resolveFallsSpecs(terrain, riverSpecs) {
   else push(raw)
 
   if (!out.length) {
-    // ART_BIBLE §1: lip (−26, −40) at +20 → pool (−31, −33) at +11, 9 m drop
-    const poolLvl = riverSpecs?.[0]?.pts?.[0]?.level ?? 11
+    // ART_BIBLE §1: lip (−26, −40) at +20 → pool (−31, −33) at +11, 9 m drop.
+    // riverSpecs[0].pts[0] is the HEADWATER (above the lip, ~+29 here), so
+    // keying the pool off it inverted the sheet. Ask the terrain instead.
+    let poolLvl = 11
+    try {
+      const wh = terrain?.waterHeight?.(-31, -33)
+      if (Number.isFinite(wh) && wh > 0.5 && wh < 19) poolLvl = wh
+    } catch (_) {}
     out.push({
       lip: new THREE.Vector3(-26, 20, -40),
       pool: new THREE.Vector3(-31, poolLvl, -33),
@@ -1152,7 +1167,8 @@ export function createWater({ terrain, renderer, sky } = {}) {
   const params = {
     swellAmp: 1.0, // multiplier over the authored 3-wave set (~±0.15 m total)
     swellSpeed: 0.85, // toy-world seas run slow
-    glitter: 0.85,
+    glitter: 0.38, // was 0.85 — the grazing shipped camera spreads the lobe
+                   // across the whole sheet instead of a compact sun track
     flowBase: 0.85, // river m/s
     flowRapid: 1.7, // extra m/s at full rapids
   }

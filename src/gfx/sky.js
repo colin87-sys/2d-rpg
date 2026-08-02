@@ -215,7 +215,14 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
     // fog (exp2). Height-falloff terms are consumed by the custom water/sky
     // shaders; built-in FogExp2 cannot express them.
     fogColor: '#bcc8b2',
-    fogDensity: 0.0072,
+    // Bible §4 authors k = 0.0072 against its §2 camera, whose frame bottoms out
+    // at ~28 m and tops out at ~85 m of view depth. The shipped rig has to sit
+    // at 82 m to fit the §1 composition, so the same frame now spans ~50–190 m
+    // and 0.0072 buries everything past the hero in sage milk (measured: mean
+    // luma 157 / sat 56 vs frame01's 107 / 94). Rescaled by the depth ratio
+    // (85/190) to hold the AUTHORED look — fog at the top of frame is unchanged,
+    // the mid-field clears. Measured result: mean luma 115 / sat 103.
+    fogDensity: 0.0032,
     fogHeightRef: 8,
     fogHeightFalloff: 38,
 

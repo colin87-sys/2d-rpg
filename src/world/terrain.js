@@ -1614,18 +1614,25 @@ uniform vec3 uOceanFloor;`
 
   // ---- rock: wall projections keep strata horizontal on cliffs ----
   float axf = smoothstep(0.35, 0.65, abs(nrm.x) / (abs(nrm.x) + abs(nrm.z) + 1e-4));
-  vec3 wallC = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 6.2).rgb,
-                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 6.2).rgb, axf);
-  vec3 wallF = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 2.1).rgb,
-                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 2.1).rgb, axf);
-  vec3 rock = mix(wallC, wallF, 0.35);
-  rock = mix(rock, texture2D(uRock, wxz / 8.5).rgb, smoothstep(0.62, 0.88, nrm.y));
+  // paintRock lays ~21 strata per tile, so a 6.2 m tile made each stratum 30 cm
+  // thick — at the shipped camera's 100–160 m that is a 2–6 px hairline and the
+  // whole massif read as printed topographic contours. Scaled to the bible's
+  // 4–11 m terrace regime (~0.7 m per stratum) and the fine octave pulled back.
+  vec3 wallC = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 14.0).rgb,
+                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 14.0).rgb, axf);
+  vec3 wallF = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 4.6).rgb,
+                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 4.6).rgb, axf);
+  vec3 rock = mix(wallC, wallF, 0.22);
+  rock = mix(rock, texture2D(uRock, wxz / 8.5).rgb, smoothstep(0.55, 0.82, nrm.y));
   rock *= mix(0.90, 1.10, mac.r);
 
   vec3 sand = texture2D(uSand, wxz / 3.1).rgb;
 
   // ---- layer masks ----
-  float rockM = max(1.0 - smoothstep(0.66, 0.86, nrm.y), cA.g * 0.9);
+  // was smoothstep(0.66, 0.86): 40° shoulders came out 55 % rock, which spread
+  // the strata banding across gentle grass slopes. Rock now belongs to real
+  // cliff faces (and wherever the terrain explicitly stencils it in cA.g).
+  float rockM = max(1.0 - smoothstep(0.58, 0.79, nrm.y), cA.g * 0.9);
   rockM = clamp(rockM + (mac2.b - 0.5) * 0.22, 0.0, 1.0);
   float moss = smoothstep(0.80, 0.93, nrm.y) * (1.0 - smoothstep(0.30, 0.60, cA.g))
              * smoothstep(0.45, 0.85, mac2.r) * 0.6;

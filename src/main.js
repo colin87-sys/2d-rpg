@@ -51,7 +51,12 @@ async function boot() {
   let frames = 0
   const tick = () => {
     requestAnimationFrame(tick)
-    const dt = Math.min(engine.clock.getDelta(), 1 / 20)
+    // Simulation dt is clamped so a slow frame can never tunnel the player or
+    // spike the wind. The HUD is *presentation* — its nameplate timeline has to
+    // run on the wall clock, or on a software-GL box (2–4 fps) the plate never
+    // finishes its intro before a screenshot lands.
+    const wallDt = engine.clock.getDelta()
+    const dt = Math.min(wallDt, 1 / 20)
     const t = engine.clock.elapsedTime
     const inp = input.poll()
 
@@ -62,7 +67,7 @@ async function boot() {
     props.update(t, camera)
     player.update(dt, inp, camera)
     rig.update(dt, inp)
-    hud.update(dt)
+    hud.update(wallDt)
     post.render(dt)
 
     if (++frames === 4) {

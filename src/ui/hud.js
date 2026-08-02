@@ -106,21 +106,21 @@ const P = {
 
 // land tints (r,g,b) — parchment family, biome-keyed
 const LAND = {
-  grassLo: [141, 131, 88], // sage-olive parchment (low pasture)
-  grassHi: [172, 140, 95], // warm tan (high shelves) — the west-continent read
-  field: [196, 165, 92], // wheat gold
-  forest: [106, 113, 66],
-  forestDark: [80, 89, 50], // #55603a-class stipple
+  grassLo: [128, 129, 80], // sage-olive parchment (low pasture — green cast)
+  grassHi: [178, 143, 96], // warm tan (high shelves) — the west-continent read
+  field: [198, 166, 90], // wheat gold
+  forest: [103, 111, 62],
+  forestDark: [76, 86, 47], // #55603a-class stipple
   beach: [203, 179, 132],
   road: [178, 149, 96],
-  rockLo: [152, 141, 114],
-  rockHi: [176, 164, 136],
+  rockLo: [150, 139, 111],
+  rockHi: [180, 167, 138],
   snow: [232, 229, 221],
   crevice: [108, 88, 62], // #6f5a40 relief shade
-  coast: [222, 205, 164], // pale coastline fringe
+  coast: [224, 207, 166], // pale coastline fringe
 }
-const WATER_SHALLOW = [26, 38, 32]
-const WATER_DEEP = [13, 21, 19]
+const WATER_SHALLOW = [24, 37, 35]
+const WATER_DEEP = [10, 18, 20]
 
 const BIOME_ID = { grass: 0, ocean: 1, beach: 2, forest: 3, road: 4, rock: 5, snow: 6, field: 7 }
 
@@ -130,7 +130,10 @@ const BIOME_ID = { grass: 0, ocean: 1, beach: 2, forest: 3, road: 4, rock: 5, sn
 // east of it, the camp's gold pin kissing the bottom hairline.
 // ---------------------------------------------------------------------------
 
-const PANEL_H_RATIO = 0.92 // measured 305/331 off frame01
+// Measured off frame01: the plate is SQUARE — hairline frame 280×281 px with
+// a uniform ~26 px inset on a 331×334 plate (the "shorter" reads come from
+// the gold pin's shadow and the castle sitting behind the glass).
+const PANEL_H_RATIO = 1.0
 const MAP_ASPECT = 1 / PANEL_H_RATIO
 const WIN = (() => {
   const cx = -50
@@ -141,7 +144,7 @@ const WIN = (() => {
 })()
 
 const BAKE_W = 560
-const BAKE_H = Math.round(BAKE_W / MAP_ASPECT) // 515
+const BAKE_H = Math.round(BAKE_W / MAP_ASPECT) // 560
 
 // world → normalised map coords (0..1, north-up)
 const mapU = (wx) => (wx - WIN.xW) / WIN.spanX
@@ -225,15 +228,15 @@ const CSS = `
   font-size:10px;letter-spacing:.04em;color:rgba(233,238,224,.66);text-align:right;
   text-shadow:0 1px 2px rgba(0,0,0,.8);opacity:0;animation:abhHintIn 1s ease .9s forwards;
   white-space:nowrap;}
-@keyframes abhHintIn{to{opacity:.85}}
+@keyframes abhHintIn{to{opacity:.78}}
 .abh-hint .k{display:inline-block;min-width:15px;padding:1px 4px 2px;margin:0 1px;
   border-radius:3.5px;text-align:center;font-size:9px;letter-spacing:.02em;
   color:rgba(240,244,232,.8);
   background:linear-gradient(180deg,rgba(34,40,32,.55),rgba(12,16,12,.6));
   border:1px solid rgba(216,222,206,.26);border-bottom-width:2px;
   box-shadow:0 1px 2px rgba(0,0,0,.4);}
-.abh-hint .s{opacity:.45;margin:0 6px 0 5px;}
-.abh-hint .w{opacity:.85;margin-left:3px;font-variant-caps:small-caps;
+.abh-hint .s{opacity:.45;margin:0 7px;}
+.abh-hint .w{opacity:.85;margin-left:5px;font-variant-caps:small-caps;
   font-family:var(--abh-serif);font-size:10.5px;letter-spacing:.08em;}
 @media (max-width:640px){.abh-hint{display:none}}
 `
@@ -357,7 +360,7 @@ export function createHUD({ terrain, player }) {
           px[o] = lerp(WATER_SHALLOW[0], WATER_DEEP[0], depth)
           px[o + 1] = lerp(WATER_SHALLOW[1], WATER_DEEP[1], depth)
           px[o + 2] = lerp(WATER_SHALLOW[2], WATER_DEEP[2], depth)
-          px[o + 3] = 150 + 26 * depth // translucent: the scene ghosts through
+          px[o + 3] = 146 + 32 * depth // translucent: the scene ghosts through
           continue
         }
 
@@ -370,8 +373,9 @@ export function createHUD({ terrain, player }) {
         const gdz = (zp - zm) / (2 * sz)
         const grad = Math.hypot(gdx, gdz)
 
-        // biome base tint
-        const hT = clamp((h - 6) / 26, 0, 1)
+        // biome base tint — elevation warms the parchment (green shelf low,
+        // tan mesa high: the reference's two-tone landmass read)
+        const hT = clamp((h - 4) / 22, 0, 1)
         let r, g, bl
         if (b === BIOME_ID.field) {
           r = LAND.field[0]; g = LAND.field[1]; bl = LAND.field[2]
@@ -400,8 +404,8 @@ export function createHUD({ terrain, player }) {
         }
 
         // NW hillshade — the cartographic relief that makes it a real map
-        const sh = clamp(-gdx * 0.45 - gdz * 0.34, -0.6, 0.6)
-        let f = 1 + sh * 0.62
+        const sh = clamp(-gdx * 0.85 - gdz * 0.62, -0.7, 0.7)
+        let f = 1 + sh * 0.72
 
         // steep faces sink toward the relief-shade brown (canyon engraving)
         if (grad > 0.85) {
@@ -414,7 +418,7 @@ export function createHUD({ terrain, player }) {
         // engraved contour lines every 6 m (skip flats to avoid banding)
         const m = ((h % 6) + 6) % 6
         if (m < 0.5 && grad > 0.06) {
-          f *= 1 - 0.11 * clamp(grad * 6, 0, 1) * (b === BIOME_ID.rock ? 1.55 : 1)
+          f *= 1 - 0.14 * clamp(grad * 6, 0, 1) * (b === BIOME_ID.rock ? 1.6 : 1)
         }
 
         // parchment blotching (two octaves) + fibre grain
@@ -493,8 +497,8 @@ export function createHUD({ terrain, player }) {
     bCtx.lineJoin = 'round'
     bCtx.lineCap = 'round'
     for (let pass = 0; pass < 2; pass++) {
-      bCtx.strokeStyle = pass === 0 ? 'rgba(92,70,42,0.55)' : 'rgba(201,172,116,0.95)'
-      bCtx.lineWidth = pass === 0 ? 2.9 : 1.5
+      bCtx.strokeStyle = pass === 0 ? 'rgba(92,70,42,0.6)' : 'rgba(206,177,120,1)'
+      bCtx.lineWidth = pass === 0 ? 3.0 : 1.6
       for (const road of roads) {
         const pts = road.points || []
         if (pts.length < 2) continue
@@ -592,7 +596,8 @@ export function createHUD({ terrain, player }) {
     const vw = window.innerWidth || 1280
     const vh = window.innerHeight || 720
     const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5)
-    const w = Math.round(Math.max(Math.min(vw * 0.2, 400), Math.min(210, vw * 0.42)))
+    // 0.20 fw, but never taller than 0.42 fh (ultrawide guard) nor tiny
+    const w = Math.round(Math.max(Math.min(vw * 0.2, vh * 0.42, 400), Math.min(210, vw * 0.42)))
     const h = Math.round(w * PANEL_H_RATIO)
     if (w === layout.w && h === layout.h && dpr === layout.dpr && vw === layout.vw && vh === layout.vh) return
     layout.w = w
@@ -601,7 +606,7 @@ export function createHUD({ terrain, player }) {
     layout.vw = vw
     layout.vh = vh
     layout.s = w / 320 // design scale: bible geometry is quoted at 1600×900
-    layout.inset = Math.round(w * 0.075) // hairline inset, measured off frame01
+    layout.inset = Math.round(w * 0.078) // hairline inset ≈26/331, off frame01
 
     const right = Math.round(Math.max(10, vw * 0.01))
     const top = Math.round(Math.max(10, vh * 0.022))
@@ -978,13 +983,13 @@ export function createHUD({ terrain, player }) {
     ctx.fill()
 
     ctx.rotate(heading)
-    ctx.scale(s, s)
+    ctx.scale(s * 1.12, s * 1.12)
     const dart = () => {
       ctx.beginPath()
-      ctx.moveTo(0, -8)
-      ctx.lineTo(5.5, 6)
-      ctx.lineTo(0, 3.2)
-      ctx.lineTo(-5.5, 6)
+      ctx.moveTo(0, -8.2)
+      ctx.lineTo(5.6, 6)
+      ctx.lineTo(0, 3.1)
+      ctx.lineTo(-5.6, 6)
       ctx.closePath()
     }
     ctx.save()
@@ -994,14 +999,16 @@ export function createHUD({ terrain, player }) {
     ctx.fill()
     ctx.restore()
     dart()
-    const df = ctx.createLinearGradient(0, -8, 0, 6)
-    df.addColorStop(0, '#ffffff')
-    df.addColorStop(1, '#bfeaf6')
+    // white leading edge melting into the reference's saturated cyan
+    const df = ctx.createLinearGradient(0, -8.2, 0, 6)
+    df.addColorStop(0, '#f4feff')
+    df.addColorStop(0.45, '#8ce4fa')
+    df.addColorStop(1, '#38b7e4')
     ctx.fillStyle = df
     ctx.fill()
     ctx.lineWidth = 1.25
     ctx.lineJoin = 'round'
-    ctx.strokeStyle = '#0e3a44'
+    ctx.strokeStyle = '#0b3742'
     ctx.stroke()
     ctx.restore()
   }
@@ -1013,8 +1020,10 @@ export function createHUD({ terrain, player }) {
   const np = {
     phase: 'idle', // idle | in | hold | out
     timer: 0,
-    current: null, // region key currently on screen / last announced
+    current: null, // region currently on screen / last announced
     pending: DEFAULT_REGION,
+    candidate: DEFAULT_REGION, // hysteresis: must win 2 consecutive polls
+    candidateHits: 2,
     pollT: 999, // force an immediate first poll
     bootDelay: 1.2, // let the first frames land clean, like frame01
   }
@@ -1059,11 +1068,18 @@ export function createHUD({ terrain, player }) {
       if (np.bootDelay > 0) return
     }
 
-    // poll the region ~4×/s — plenty, and keeps terrain queries trivial
+    // poll the region ~4×/s; a new region must win two consecutive polls
+    // before it becomes pending (no nameplate flicker on a boundary)
     np.pollT += dt
     if (np.pollT > 0.25 && player && player.position) {
       np.pollT = 0
-      np.pending = regionAt(player.position.x, player.position.z)
+      const seen = regionAt(player.position.x, player.position.z)
+      if (seen.title === np.candidate.title) {
+        if (++np.candidateHits >= 2) np.pending = np.candidate
+      } else {
+        np.candidate = seen
+        np.candidateHits = 1
+      }
     }
 
     const changed = !np.current || np.pending.title !== np.current.title
@@ -1087,7 +1103,7 @@ export function createHUD({ terrain, player }) {
         break
       case 'hold':
         // a region change mid-hold restarts the cycle via fade-out
-        if (changed || np.timer > 4.6) {
+        if (changed || np.timer > 7.0) {
           nameplate.classList.remove('abh-show')
           np.phase = 'out'
           np.timer = 0
@@ -1113,7 +1129,11 @@ export function createHUD({ terrain, player }) {
   relayout()
 
   function update(dt) {
-    const step = typeof dt === 'number' && isFinite(dt) ? clamp(dt, 0, 0.1) : 0.016
+    // Ceiling was 0.1 s: on a software-GL box (2–3 fps) the HUD's own clock ran
+    // at ~25 % of wall time, so the nameplate needed ~20 s of real time to
+    // finish its intro and never made it into a screenshot. 0.5 still absorbs a
+    // tab-restore spike without stalling the timeline on slow hardware.
+    const step = typeof dt === 'number' && isFinite(dt) ? clamp(dt, 0, 0.5) : 0.016
     elapsed += step
     // cheap per-frame guard: catches DPR flips resize events can miss
     if (

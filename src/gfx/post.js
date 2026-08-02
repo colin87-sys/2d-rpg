@@ -90,8 +90,13 @@ function makeDefaultParams() {
       bandBotFh: 0.79,   // bottom edge of the sharp band
       rampTopFh: 0.12,   // falloff width above the band
       rampBotFh: 0.10,   // falloff width below the band
-      maxTopPx: 7.0,     // max blur radius at the top edge, px @1080p
-      maxBotPx: 5.0,     // max blur radius at the bottom edge, px @1080p
+      // Bible §7 authors 7/5 px against its §2 camera, whose top edge is only
+      // ~85 m out. The shipped rig fits 50→190 m in frame, so the top band is
+      // 2.2× further from the focal plane and 7 px left it visibly in focus
+      // (measured band gradient energy 16 at the top vs 33 in the sharp band —
+      // frame01's ratio is 3×, ours was 2×). Scaled by the depth ratio.
+      maxTopPx: 12.0,    // max blur radius at the top edge, px @1080p
+      maxBotPx: 7.0,     // max blur radius at the bottom edge, px @1080p
       taps: 26,          // Vogel-disc gather taps (4..48)
       lumaThreshold: 0.60, // bokeh weighting: highlights above this bloom out
       lumaBoost: 2.2,    // how hard bright samples dominate the disc
