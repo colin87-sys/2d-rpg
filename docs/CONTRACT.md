@@ -163,3 +163,21 @@ biome data, with POI pins and a player arrow), plus a location nameplate. Mounte
 
 `window.__POC` is exposed for the screenshot harness: `{ ready: boolean, engine }`. Set
 `ready = true` once the first frame with full world content has drawn.
+
+---
+
+## Build & verification (no bundler)
+
+The page runs as **native ES modules with an import map** — there is no bundler in the loop.
+`import * as THREE from 'three'` and `import { X } from 'three/addons/...'` both resolve.
+Do not add build steps, and do not import anything that is not already in `node_modules`.
+
+Verify your work with:
+
+```
+node tools/shot.mjs shots/check.png --w 1600 --h 900
+```
+
+It boots a static server, renders in headless Chromium (SwiftShader — software GL, so keep an
+eye on cost), waits for `window.__POC.ready`, screenshots, and prints all console output plus
+page errors. **A clean console is part of "done".** Then `Read` the PNG and look at it.
