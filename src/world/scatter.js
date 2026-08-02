@@ -220,8 +220,8 @@ export function createScatter({ terrain, atlas, renderer }) {
   // so the old 21/15 m discs would sterilise half the composition (they ate
   // the SE wheat field and the autumn grove). Radii rescaled to the §4 world.
   for (const p of poi) {
-    if (p.kind === 'castle') KEEPOUT.push({ x: p.x, z: p.z, r: 8, ground: 6 })
-    else if (p.kind === 'village') { KEEPOUT.push({ x: p.x, z: p.z, r: 5.5, ground: 3.5 }); villagePOI = p }
+    if (p.kind === 'castle') KEEPOUT.push({ x: p.x, z: p.z, r: 6.5, ground: 3.5 })
+    else if (p.kind === 'village') { KEEPOUT.push({ x: p.x, z: p.z, r: 4, ground: 2.5 }); villagePOI = p }
     else if (p.kind === 'shrine') KEEPOUT.push({ x: p.x, z: p.z, r: 7, ground: 4.5 })
     else if (p.kind === 'camp') KEEPOUT.push({ x: p.x, z: p.z, r: 6, ground: 3.5 })
     else if (p.kind === 'farm') KEEPOUT.push({ x: p.x, z: p.z, r: 9, ground: 0, cropsOK: true })
@@ -323,7 +323,7 @@ export function createScatter({ terrain, atlas, renderer }) {
   const FOREST_ZONES = [
     { x: -48, z: 27.5, rx: 6.4, rz: 6.0, density: 1.0, shade: 0.86, conifer: 0.58, gold: false }, // SW knoll
     { x: -52, z: 12.5, rx: 4.5, rz: 8.2, density: 0.92, shade: 0.95, conifer: 0.52, gold: false }, // fork band
-    { x: -49.5, z: -12, rx: 5.4, rz: 4.6, density: 0.88, shade: 1.02, conifer: 0.0, gold: true },  // autumn grove
+    { x: -49.5, z: -12, rx: 5.6, rz: 4.8, density: 1.0, shade: 1.02, conifer: 0.0, gold: true },  // autumn grove
   ]
   function zoneMaskOne(x, z, zn) {
     const dx = (x - zn.x) / zn.rx
@@ -424,12 +424,15 @@ export function createScatter({ terrain, atlas, renderer }) {
   // ---- Special-stand discs (decided up front so the generic tree pass can
   // ---- leave them alone): the designated blossom valley SE of the village
   // ---- and the bamboo stand at the village fringe (frame02 biome grammar).
-  const BLOSSOM_C = villagePOI
-    ? { x: villagePOI.x + 16, z: villagePOI.z + 18, r: 26 }
-    : { x: -54, z: -110, r: 26 }
+  // FRAMING re-site: the village moved to (−50.5, −16.5), so the old
+  // village-relative offsets would drop the blossom valley ON the massif.
+  // Blossom lives in the fog-hidden north-east valley pocket (≥ 70 m out,
+  // never mid-frame); bamboo hugs the village's west fringe, shy of the
+  // coast lip (~x −67 at that latitude).
+  const BLOSSOM_C = { x: -10, z: -28, r: 13 }
   const BAMBOO_C = villagePOI
-    ? { x: villagePOI.x + 16, z: villagePOI.z + 6, r: 7.5 }
-    : { x: -54, z: -122, r: 7.5 }
+    ? { x: villagePOI.x - 6, z: villagePOI.z - 2.5, r: 5.5 }
+    : { x: -56.5, z: -19, r: 5.5 }
   const inDisc = (x, z, d, f) => {
     const dx = x - d.x
     const dz = z - d.z
@@ -639,6 +642,44 @@ export function createScatter({ terrain, atlas, renderer }) {
     }
   }
 
+  // ---- 4.0b ROADSIDE CROWDING: trees/bushes hug ~35 % of every shoulder ---
+  // Frame01's road is lined with conifers and round crowns 1–3 m off the
+  // ochre; a longitudinal noise gate keeps runs broken so it never reads as
+  // a picket row. Species and size alternate. Runs BEFORE the map-wide pass:
+  // the §8 oak cap binds against the far noise copses, and the roadside mix
+  // (the most-seen trees in the frame) must never be what gets starved.
+  {
+    const rnd = rngFor('roadside')
+    const step = 1.7
+    for (let gz = -LIM; gz <= LIM; gz += step) {
+      for (let gx = -LIM; gx <= LIM; gx += step) {
+        const jx = gx + (hash2(gx, gz, 31) - 0.5) * step
+        const jz = gz + (hash2(gx, gz, 32) - 0.5) * step
+        if (T.onRoad(jx, jz) > 0.02) continue
+        const near = roadNear(jx, jz, 2.3)
+        if (near < 0.3) continue // not in the 1–3 m shoulder band
+        // longitudinal gate: ~35–40 % of road length gets crowding
+        const gate = fbm2(jx * 0.045 + 7.7, jz * 0.045 - 3.3, 2)
+        if (gate < 0.14) continue
+        if (hash2(jx, jz, 33) > 0.42) continue
+        const b = T.biome(jx, jz)
+        if (b !== 'grass' && b !== 'forest') continue
+        const r = hash2(jx, jz, 34)
+        const key =
+          r < 0.34 ? (r < 0.17 ? 'pine_a' : 'pine_b')
+          : r < 0.62 ? (r < 0.48 ? 'oak_a' : 'oak_b')
+          : r < 0.72 ? 'oak_c'
+          : r < 0.9 ? (r < 0.82 ? 'bush_a' : 'bush_b')
+          : 'bush_c'
+        const grp = key.indexOf('pine') === 0 ? 'conifer' : key.indexOf('oak') === 0 ? 'oak' : 'bush'
+        if (grp === 'conifer' && (counts.conifer || 0) >= BUDGET.conifer) continue
+        if (grp === 'oak' && (counts.oak || 0) >= BUDGET.oak) continue
+        if (grp === 'bush' && (counts.bush || 0) >= BUDGET.bush) continue
+        plant(key, jx, jz, rnd, grp)
+      }
+    }
+  }
+
   // ---- 4.1 TREES: jittered-grid blue-noise over the whole map -------------
   // Grid 1.45 m ≈ the bible's 1.2–2.2 m in-clump crown spacing; the forest
   // mask thresholds acceptance so interiors are packed solid, edges fray
@@ -713,9 +754,11 @@ export function createScatter({ terrain, atlas, renderer }) {
         if (snowy) key = 'pine_snow'
         else {
           // altitude curve rescaled to the miniature world (FRAMING: local
-          // maximum is the massif crown at y 16.5, not the old +24 plateaus)
+          // maximum is the massif crown at y 16.5, not the old +24 plateaus).
+          // Base raised 0.22 → 0.40: frame01's stands are conifer-led even on
+          // the low shelf, and the §8 budget split (2600/1900) says the same.
           const coniferW =
-            0.22 + 0.55 * sstep(11.5, 16, y) + 0.35 * sstep(0.16, 0.4, sl) +
+            0.40 + 0.45 * sstep(11.5, 16, y) + 0.35 * sstep(0.16, 0.4, sl) +
             (b === 'rock' ? 0.5 : 0) + (inMassif ? 0.45 : 0)
           const r0 = hash2(jx, jz, 4)
           if (r0 < clamp01(coniferW)) {
@@ -756,42 +799,6 @@ export function createScatter({ terrain, atlas, renderer }) {
             }
           }
         }
-      }
-    }
-  }
-
-  // ---- 4.2 ROADSIDE CROWDING: trees/bushes hug ~35 % of every shoulder ----
-  // Frame01's road is lined with conifers and round crowns 1–3 m off the
-  // ochre; a longitudinal noise gate keeps runs broken so it never reads as
-  // a picket row. Species and size alternate.
-  {
-    const rnd = rngFor('roadside')
-    const step = 1.7
-    for (let gz = -LIM; gz <= LIM; gz += step) {
-      for (let gx = -LIM; gx <= LIM; gx += step) {
-        const jx = gx + (hash2(gx, gz, 31) - 0.5) * step
-        const jz = gz + (hash2(gx, gz, 32) - 0.5) * step
-        if (T.onRoad(jx, jz) > 0.02) continue
-        const near = roadNear(jx, jz, 2.3)
-        if (near < 0.3) continue // not in the 1–3 m shoulder band
-        // longitudinal gate: ~35–40 % of road length gets crowding
-        const gate = fbm2(jx * 0.045 + 7.7, jz * 0.045 - 3.3, 2)
-        if (gate < 0.14) continue
-        if (hash2(jx, jz, 33) > 0.42) continue
-        const b = T.biome(jx, jz)
-        if (b !== 'grass' && b !== 'forest') continue
-        const r = hash2(jx, jz, 34)
-        const key =
-          r < 0.34 ? (r < 0.17 ? 'pine_a' : 'pine_b')
-          : r < 0.62 ? (r < 0.48 ? 'oak_a' : 'oak_b')
-          : r < 0.72 ? 'oak_c'
-          : r < 0.9 ? (r < 0.82 ? 'bush_a' : 'bush_b')
-          : 'bush_c'
-        const grp = key.indexOf('pine') === 0 ? 'conifer' : key.indexOf('oak') === 0 ? 'oak' : 'bush'
-        if (grp === 'conifer' && (counts.conifer || 0) >= BUDGET.conifer) continue
-        if (grp === 'oak' && (counts.oak || 0) >= BUDGET.oak) continue
-        if (grp === 'bush' && (counts.bush || 0) >= BUDGET.bush) continue
-        plant(key, jx, jz, rnd, grp)
       }
     }
   }
@@ -940,24 +947,41 @@ export function createScatter({ terrain, atlas, renderer }) {
       const ext = Math.max(p.rx, p.rz) * 1.2
       const cr = Math.cos(p.rot)
       const sr = Math.sin(p.rot)
-      let row = 0
-      for (let oz = -ext; oz <= ext; oz += rowStep, row++) {
-        const stag = row & 1 ? colStep * 0.5 : 0
-        for (let ox = -ext + stag; ox <= ext; ox += colStep) {
-          if ((counts.wheat || 0) >= BUDGET.wheat) break
-          // full-amplitude jitter: no residual row/lattice read survives
-          const lx = ox + (hash2(p.x + ox, p.z + oz, 101) - 0.5) * colStep * 0.9
-          const lz = oz + (hash2(p.x + ox, p.z + oz, 102) - 0.5) * rowStep * 0.9
-          const jx = p.x + lx * cr - lz * sr
-          const jz = p.z + lx * sr + lz * cr
-          if (T.biome(jx, jz) !== 'field') continue
-          if (hash2(jx, jz, 103) > 0.955) continue // rare micro-gaps only
-          const key = hash2(jx, jz, 104) < 0.55 ? 'wheat_a' : 'wheat_b'
-          if (!accepts(key, jx, jz)) continue
-          const it = makeInstance(key, jx, jz, rnd)
-          if (it) { inst.push(it); bump('wheat') }
+      // fill(false): biome-strict — terrain's 'field' raster is the authority.
+      // fill(true): relaxed geometric fallback bound to the §4 ellipse itself —
+      // terrain.js is re-landing this round, and a paddock that misses its
+      // biome raster must still read golden (Defect 6's centre-right bare
+      // lawn came from exactly this failure mode).
+      const fill = (relaxed) => {
+        let planted = 0
+        let row = 0
+        for (let oz = -ext; oz <= ext; oz += rowStep, row++) {
+          const stag = row & 1 ? colStep * 0.5 : 0
+          for (let ox = -ext + stag; ox <= ext; ox += colStep) {
+            if ((counts.wheat || 0) >= BUDGET.wheat) break
+            // full-amplitude jitter: no residual row/lattice read survives
+            const lx = ox + (hash2(p.x + ox, p.z + oz, 101) - 0.5) * colStep * 0.9
+            const lz = oz + (hash2(p.x + ox, p.z + oz, 102) - 0.5) * rowStep * 0.9
+            const jx = p.x + lx * cr - lz * sr
+            const jz = p.z + lx * sr + lz * cr
+            const b = T.biome(jx, jz)
+            if (relaxed) {
+              if (b !== 'field' && b !== 'grass') continue
+              const d = Math.sqrt((lx / p.rx) * (lx / p.rx) + (lz / p.rz) * (lz / p.rz))
+              if (d > 0.96) continue // stay inside the fence line
+            } else if (b !== 'field') continue
+            if (hash2(jx, jz, 103) > 0.955) continue // rare micro-gaps only
+            const key = hash2(jx, jz, 104) < 0.55 ? 'wheat_a' : 'wheat_b'
+            if (!accepts(key, jx, jz)) continue
+            const it = makeInstance(key, jx, jz, rnd)
+            if (it) { inst.push(it); bump('wheat'); planted++ }
+          }
         }
+        return planted
       }
+      const got = fill(false)
+      const expect = Math.PI * p.rx * p.rz * 6.2 // clusters/m² at this packing
+      if (got < expect * 0.25) fill(true)
     }
   }
 
@@ -966,34 +990,56 @@ export function createScatter({ terrain, atlas, renderer }) {
   // dense along the road feather, absent under closed canopy and on fields.
   {
     const rnd = rngFor('tufts')
-    // INTEGRATION (round 2): at 1.85 m the pasture still showed 40 m² patches
-    // of untextured green at the shipped framing (bible §8 hard fail) — the
-    // grass reads as a flat plane where frame01's is dressed everywhere.
     const step = 1.48
+    // The §8 budget (9000 over the 512² map) binds — so ordering matters.
+    // Phase A dresses the CAMERA-VISIBLE stage (the §6 composition lives in
+    // x −66…−12, z −26…+38) at full density first: the no-bare-40 m² rule is
+    // enforced where the critic can see it. Phase B spends the remainder over
+    // the rest of the map in hash-shuffled order, so when the cap bites, the
+    // thinning is uniform — never a truncated corner.
+    const ROI = { x0: -66, x1: -12, z0: -26, z1: 38 }
+    const inROI = (x, z) => x > ROI.x0 && x < ROI.x1 && z > ROI.z0 && z < ROI.z1
+    const tuftTry = (gx, gz) => {
+      if ((counts.tuft || 0) >= BUDGET.tuft) return
+      const jx = gx + (hash2(gx, gz, 111) - 0.5) * step * 1.2
+      const jz = gz + (hash2(gx, gz, 112) - 0.5) * step * 1.2
+      const b = T.biome(jx, jz)
+      let p
+      if (b === 'grass' || b === 'forest') {
+        const m = forestMask(jx, jz)
+        if (m > 0.78) return // closed canopy — no visible ground
+        // meadow waves with a raised FLOOR: the floor guarantees the
+        // §8 ~400 tufts/ha minimum everywhere on open grass — no bald 40 m²
+        const meadow = 0.5 + 0.5 * fbm2(jx * 0.03 + 23.4, jz * 0.03 - 8.8, 3)
+        p = 0.25 * (0.58 + 0.82 * meadow)
+        const road = T.onRoad(jx, jz)
+        if (road > 0.02 && road < 0.3) p *= 1.35 // tufts crowd the feathered edge
+      } else if (b === 'rock' || b === 'snow') p = 0.10
+      else if (b === 'beach') p = 0.07
+      else return
+      if (hash2(jx, jz, 113) > p) return
+      const key = hash2(jx, jz, 114) < 0.55 ? 'grass_tuft_a' : 'grass_tuft_b'
+      plant(key, jx, jz, rnd, 'tuft')
+    }
+    // Phase A: the visible stage, row-major (small, never near the cap)
+    for (let gz = ROI.z0; gz <= ROI.z1; gz += step) {
+      for (let gx = ROI.x0; gx <= ROI.x1; gx += step) tuftTry(gx, gz)
+    }
+    // Phase B: everything else, hash-shuffled
+    const cand = []
     for (let gz = -LIM; gz <= LIM; gz += step) {
       for (let gx = -LIM; gx <= LIM; gx += step) {
-        if ((counts.tuft || 0) >= BUDGET.tuft) break
-        const jx = gx + (hash2(gx, gz, 111) - 0.5) * step * 1.2
-        const jz = gz + (hash2(gx, gz, 112) - 0.5) * step * 1.2
-        const b = T.biome(jx, jz)
-        let p
-        if (b === 'grass' || b === 'forest') {
-          const m = forestMask(jx, jz)
-          if (m > 0.78) continue // closed canopy — no visible ground
-          // meadow waves, but with a raised FLOOR: round 1's troughs left
-          // 40 m²+ of pasture with nothing on it (a §8 hard fail) — the
-          // floor now guarantees ≥ ~400 tufts/ha everywhere on open grass
-          const meadow = 0.5 + 0.5 * fbm2(jx * 0.03 + 23.4, jz * 0.03 - 8.8, 3)
-          p = 0.25 * (0.58 + 0.82 * meadow)
-          const road = T.onRoad(jx, jz)
-          if (road > 0.02 && road < 0.3) p *= 1.35 // tufts crowd the feathered edge
-        } else if (b === 'rock' || b === 'snow') p = 0.10
-        else if (b === 'beach') p = 0.07
-        else continue
-        if (hash2(jx, jz, 113) > p) continue
-        const key = hash2(jx, jz, 114) < 0.55 ? 'grass_tuft_a' : 'grass_tuft_b'
-        plant(key, jx, jz, rnd, 'tuft')
+        if (!inROI(gx, gz)) cand.push(gx, gz)
       }
+    }
+    const order = new Uint32Array(cand.length / 2)
+    for (let i = 0; i < order.length; i++) order[i] = i
+    const sortKey = new Float64Array(order.length)
+    for (let i = 0; i < order.length; i++) sortKey[i] = hash2(cand[i * 2], cand[i * 2 + 1], 778)
+    order.sort((a, b) => sortKey[a] - sortKey[b])
+    for (let oi = 0; oi < order.length; oi++) {
+      if ((counts.tuft || 0) >= BUDGET.tuft) break
+      tuftTry(cand[order[oi] * 2], cand[order[oi] * 2 + 1])
     }
   }
 
@@ -1029,7 +1075,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     const step = 2.6
     for (let gz = -LIM; gz <= LIM; gz += step) {
       for (let gx = -LIM; gx <= LIM; gx += step) {
-        if ((counts.fern || 0) >= 600) break
+        if ((counts.fern || 0) >= BUDGET.fern) break
         const jx = gx + (hash2(gx, gz, 181) - 0.5) * step
         const jz = gz + (hash2(gx, gz, 182) - 0.5) * step
         const b = T.biome(jx, jz)
@@ -1385,7 +1431,7 @@ export function createScatter({ terrain, atlas, renderer }) {
       uniforms: {
         uCellVis: uCellVis,
         uFadeRange: uFadeRange,
-        uFogDensity: { value: 0.0072 }, // bible §4 — attenuates blobs into the haze
+        uFogDensity: { value: 0.0095 }, // FRAMING §8 sky note — attenuates blobs into the haze
         uColor: { value: new THREE.Color(0x241611) },
       },
       vertexShader: /* glsl */ `
@@ -1434,12 +1480,13 @@ export function createScatter({ terrain, atlas, renderer }) {
       `,
       transparent: true,
       depthWrite: false,
-      // INTEGRATION (round 2): makeBasis(t1·rx, n, (n×t1)·rz) is LEFT-handed
-      // (det = −rx·rz), which mirrors the quad and flipped every blob to
-      // back-facing — so not one contact shadow in the scene was ever drawn
-      // (bible instant-fail #4, and a big part of why the frame read brighter
-      // and flatter than frame01). DoubleSide is the safe fix: the decal is a
-      // flat ground quad, there is no back to hide.
+      // ROUND 2 found the same left-handed basis bug player.js just fixed:
+      // makeBasis(t1·rx, n, (n×t1)·rz) has det = −rx·rz (t1×n = −(n×t1)),
+      // which mirrors the quad winding and flipped every blob to back-facing —
+      // not one contact shadow ever drew (bible instant-fail #4). ROUND 3
+      // fixes the basis itself (t2 = t1×n, det now +rx·rz, front-facing) and
+      // KEEPS DoubleSide as belt-and-braces — a ground decal has no back to
+      // hide, and a future edit must never silently re-cull the shadows.
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -1,
@@ -1462,7 +1509,7 @@ export function createScatter({ terrain, atlas, renderer }) {
       T.normal(it.x, it.z, nrm)
       if (nrm.y < 0.2) nrm.set(0, 1, 0)
       t1.copy(sd).addScaledVector(nrm, -sd.dot(nrm)).normalize()
-      t2.crossVectors(nrm, t1)
+      t2.crossVectors(t1, nrm) // t1×n keeps the basis RIGHT-handed (see note above)
       const lift = 0.035 + 0.03 * rx
       pos.set(it.x + t1.x * rx * 0.18, T.height(it.x, it.z), it.z + t1.z * rx * 0.18)
         .addScaledVector(nrm, lift)
@@ -1487,7 +1534,7 @@ export function createScatter({ terrain, atlas, renderer }) {
       const ax = Math.cos(p.rot)
       const az = Math.sin(p.rot)
       t1.set(ax, 0, az).addScaledVector(nrm, -(ax * nrm.x + az * nrm.z)).normalize()
-      t2.crossVectors(nrm, t1)
+      t2.crossVectors(t1, nrm) // right-handed, matching the item blobs
       pos.set(p.x, T.height(p.x, p.z), p.z).addScaledVector(nrm, 0.07)
       m4.makeBasis(t1.clone().multiplyScalar(rx), nrm.clone(), t2.clone().multiplyScalar(rz))
       m4.setPosition(pos)
