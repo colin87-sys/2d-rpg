@@ -16,16 +16,26 @@
        bleeding into the water, ochre road polylines, the saturated-cyan
        river (the only saturated cyan in the frame, per the art bible),
        cartographic micro-marks (castle keep, hamlet, shrine, pier, bridge
-       decks) and parchment blotch + grain.
+       decks), parchment blotch + grain, and an unexplored dark-glass
+       falloff — frame01's plate meters ~84 % dark (<70 luma, mean 54):
+       ONE lit continent with every edge drowned in the glass, so the
+       bake sinks the far ridges, snowfield and corners the same way.
      • Per frame (cheap overlay canvas only): soft camera view-cone, pulsing
        quest pins (cyan shield-teardrop = story, stacked gold diamond =
        quest — both with white anchor dots, straight off frame01), the
        white-core / cyan-glow player chevron with smoothed heading, and a
        slow sonar ping.
-     • Region nameplate (top-left, art bible §9): serif small-caps, gold
-       kicker + hairline rule that draws itself, fade-in → hold → fade-out
-       on region change (region = nearest owning POI, else biome).
-     • Low-opacity keycap controls hint, bottom-right.
+     • Region nameplate (top-left, art bible §9): ONE serif small-caps
+       line — "Grandpine Fields · Ferren Coast", region suffix in gold —
+       20 px max, 0.12 em tracking, on the rgba(10,14,10,.45) pill with
+       the gold hairline rule that draws itself; fade-in → hold →
+       fade-out on region change (nearest owning POI, else biome).
+     • Controls hint ships HIDDEN: frame01 has no key strip anywhere and
+       §9 bans debug text — a keycap row over grass reads as an engine
+       overlay. Integrator flag: window.__ABH_SHOW_HINTS = true before
+       createHUD(), or load with ?hints=1. When shown it is a compact
+       dark-glass chip (rgba(13,18,14,.6) fill, #d8dcd2 hairline, 12 px
+       radius, #f2ead8 serif small-caps, 3 grouped hints max).
 
    Contract (frozen):  createHUD({ terrain, player }) -> { update(dt), dom }
    No THREE import needed — pure DOM + Canvas2D. No fonts, no images, no
@@ -196,23 +206,23 @@ const CSS = `
 .abh-panel canvas{position:absolute;left:0;top:0;width:100%;height:100%;display:block;}
 @keyframes abhIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
 
-/* ---- nameplate ---- */
-.abh-np{position:absolute;display:inline-block;padding:9px 20px 11px 18px;border-radius:9px;
-  background:linear-gradient(180deg,rgba(14,19,14,.42),rgba(8,12,9,.48));
+/* ---- nameplate — §9: single small-caps line on a dark pill ---- */
+.abh-np{position:absolute;display:inline-block;padding:8px 18px 9px 16px;border-radius:10px;
+  background:linear-gradient(180deg,rgba(12,16,12,.44),rgba(8,12,9,.47));
   box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 0 0 1px rgba(226,222,204,.10),inset 0 1px 0 rgba(255,255,255,.05);
   backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
   opacity:0;transform:translateY(-7px);
   transition:opacity .9s ease,transform .9s ease;}
 .abh-np.abh-show{opacity:1;transform:none;
   transition:opacity .6s cubic-bezier(.25,.6,.25,1),transform .6s cubic-bezier(.25,.6,.25,1);}
-.abh-np-k{font-family:var(--abh-serif);font-size:10px;letter-spacing:.36em;color:${P.gold};
-  opacity:.92;text-shadow:0 1px 2px rgba(0,0,0,.65);padding-left:2px;white-space:nowrap;}
 .abh-np-t{font-family:var(--abh-serif);font-variant-caps:small-caps;
-  font-size:clamp(17px,1.45vw,21px);letter-spacing:.22em;color:${P.plateText};
-  line-height:1.28;margin-top:2px;white-space:nowrap;
+  font-size:clamp(15px,1.25vw,20px);letter-spacing:.22em;color:${P.plateText};
+  line-height:1.3;white-space:nowrap;
   text-shadow:0 1px 3px rgba(0,0,0,.7),0 0 14px rgba(0,0,0,.35);
   transition:letter-spacing .8s cubic-bezier(.2,.6,.2,1);}
-.abh-np.abh-show .abh-np-t{letter-spacing:.13em;}
+.abh-np.abh-show .abh-np-t{letter-spacing:.12em;}
+.abh-np-t .sep{color:rgba(217,181,66,.6);margin:0 .28em;}
+.abh-np-t .reg{font-size:.84em;letter-spacing:.14em;color:${P.gold};opacity:.92;}
 .abh-np-r{position:relative;height:5px;margin-top:6px;}
 .abh-np-r i{position:absolute;left:0;right:0;top:2px;height:1px;display:block;
   background:linear-gradient(90deg,rgba(201,168,76,0) 0%,rgba(201,168,76,.9) 18%,rgba(201,168,76,.9) 82%,rgba(201,168,76,0) 100%);
@@ -223,21 +233,23 @@ const CSS = `
   box-shadow:0 0 6px rgba(217,181,66,.55);transition:transform .5s ease .35s;}
 .abh-np.abh-show .abh-np-r b{transform:rotate(45deg) scale(1);}
 
-/* ---- controls hint ---- */
-.abh-hint{position:absolute;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
-  font-size:10px;letter-spacing:.04em;color:rgba(233,238,224,.66);text-align:right;
-  text-shadow:0 1px 2px rgba(0,0,0,.8);opacity:0;animation:abhHintIn 1s ease .9s forwards;
-  white-space:nowrap;}
-@keyframes abhHintIn{to{opacity:.78}}
-.abh-hint .k{display:inline-block;min-width:15px;padding:1px 4px 2px;margin:0 1px;
-  border-radius:3.5px;text-align:center;font-size:9px;letter-spacing:.02em;
-  color:rgba(240,244,232,.8);
-  background:linear-gradient(180deg,rgba(34,40,32,.55),rgba(12,16,12,.6));
-  border:1px solid rgba(216,222,206,.26);border-bottom-width:2px;
-  box-shadow:0 1px 2px rgba(0,0,0,.4);}
-.abh-hint .s{opacity:.45;margin:0 7px;}
-.abh-hint .w{opacity:.85;margin-left:5px;font-variant-caps:small-caps;
-  font-family:var(--abh-serif);font-size:10.5px;letter-spacing:.08em;}
+/* ---- controls hint — dark-glass chip, frames-4/5 grammar (OFF by
+   default; see the __ABH_SHOW_HINTS flag) ---- */
+.abh-hint{position:absolute;display:flex;align-items:center;column-gap:8px;
+  padding:7px 15px 8px;border-radius:12px;white-space:nowrap;
+  background:rgba(13,18,14,.6);
+  box-shadow:inset 0 0 0 1px rgba(216,220,210,.55),inset 0 1px 0 rgba(255,255,255,.06),0 4px 12px rgba(0,0,0,.4);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+  opacity:0;animation:abhHintIn 1s ease .9s forwards;}
+@keyframes abhHintIn{to{opacity:.92}}
+.abh-hint .k{display:inline-block;padding:1px 6px 2px;border-radius:4px;
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:9.5px;letter-spacing:.03em;color:${P.plateText};
+  background:linear-gradient(180deg,rgba(46,54,44,.85),rgba(20,26,20,.9));
+  box-shadow:inset 0 0 0 1px rgba(216,220,210,.30),0 1px 2px rgba(0,0,0,.45);}
+.abh-hint .w{font-family:var(--abh-serif);font-variant-caps:small-caps;
+  font-size:11px;letter-spacing:.09em;color:${P.plateText};opacity:.9;margin-left:-2px;}
+.abh-hint .s{color:rgba(217,181,66,.55);font-size:10px;}
 @media (max-width:640px){.abh-hint{display:none}}
 `
 
@@ -271,30 +283,36 @@ export function createHUD({ terrain, player }) {
 
   const nameplate = document.createElement('div')
   nameplate.className = 'abh-np'
-  const npKicker = document.createElement('div')
-  npKicker.className = 'abh-np-k'
   const npTitle = document.createElement('div')
   npTitle.className = 'abh-np-t'
   const npRule = document.createElement('div')
   npRule.className = 'abh-np-r'
   npRule.appendChild(document.createElement('i'))
   npRule.appendChild(document.createElement('b'))
-  nameplate.appendChild(npKicker)
   nameplate.appendChild(npTitle)
   nameplate.appendChild(npRule)
+
+  // Controls hint ships OFF — the reference frame has no key strip and §9
+  // bans debug text; the hero shot must read as a shipped game. Integrator
+  // switch: set window.__ABH_SHOW_HINTS = true before createHUD(), or load
+  // the page with ?hints=1. Shown form is a compact 3-group glass chip.
+  let showHints = false
+  try {
+    if (window.__ABH_SHOW_HINTS != null) showHints = !!window.__ABH_SHOW_HINTS
+    else showHints = /[?&]hints=(1|true)\b/.test(String(window.location.search || ''))
+  } catch (_) { /* no window / opaque location — ship without hints */ }
 
   const hint = document.createElement('div')
   hint.className = 'abh-hint'
   const key = (k) => `<span class="k">${k}</span>`
   hint.innerHTML =
-    key('W') + key('A') + key('S') + key('D') + `<span class="w">Move</span><span class="s">·</span>` +
+    key('WASD') + `<span class="w">Move</span><span class="s">·</span>` +
     key('Shift') + `<span class="w">Run</span><span class="s">·</span>` +
-    key('Q') + key('E') + `<span class="w">Rotate</span><span class="s">·</span>` +
-    key('+') + key('−') + `<span class="w">Zoom</span>`
+    key('Q·E') + `<span class="w">Camera</span>`
 
   root.appendChild(panel)
   root.appendChild(nameplate)
-  root.appendChild(hint)
+  if (showHints) root.appendChild(hint)
   mount.appendChild(root)
 
   const sCtx = staticCanvas.getContext('2d')
@@ -584,6 +602,36 @@ export function createHUD({ terrain, player }) {
       bCtx.lineTo(bx(pier.x + dx * (pier.length || 5)), by(pier.z + dz * (pier.length || 5)))
       bCtx.stroke()
     }
+
+    // -- pass 5: unexplored dark-glass falloff ---------------------------
+    // Metered off frame01's plate (10×10 mean-luma grid): the reference
+    // panel is ~84 % dark (<70 luma), mean 54 — one lit parchment heart
+    // centre-left, everything else sunk into the glass, detail dissolving
+    // before it reaches a hairline. Our round-1 bake metered 36 % dark,
+    // mean 102: same parchment, wrong balance — a bright card that made
+    // the whole panel read oversized. Sink the far ridges, the NE
+    // snowfield and every corner; keep the settled west (fork–farm–castle
+    // shelf, the hero's shelf, the hamlet) lit. Circle is fine: the bake
+    // is square. Rendered AFTER the vector overlays so far road tails and
+    // the river's SE exit drown with the land under them, like the map
+    // marks fading out at the edge of frame01's plate.
+    // Tuned against the metered grids (overlay simulated on the round-1
+    // capture): these values forecast mean ~50 / ~77 % dark before the
+    // bright pins redraw on top, vs the reference's 54 / 84 % — while the
+    // castle–fork–hero heart stays under 5 % dimmed.
+    {
+      const fadeCx = 0.45 * W // lit heart sits on the road-fork shelf
+      const fadeCy = 0.62 * H
+      const fadeR = 0.5 * W
+      const g = bCtx.createRadialGradient(fadeCx, fadeCy, 0, fadeCx, fadeCy, fadeR)
+      g.addColorStop(0.0, 'rgba(9,14,13,0)')
+      g.addColorStop(0.38, 'rgba(9,14,13,0.05)')
+      g.addColorStop(0.58, 'rgba(9,14,13,0.36)')
+      g.addColorStop(0.78, 'rgba(9,14,13,0.64)')
+      g.addColorStop(1.0, 'rgba(9,14,13,0.87)') // corners clamp to this
+      bCtx.fillStyle = g
+      bCtx.fillRect(0, 0, W, H)
+    }
   })()
 
   // ===================================================================
@@ -596,7 +644,10 @@ export function createHUD({ terrain, player }) {
     const vw = window.innerWidth || 1280
     const vh = window.innerHeight || 720
     const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5)
-    // 0.20 fw, but never taller than 0.42 fh (ultrawide guard) nor tiny
+    // 0.20 fw — the frame01 plate measures 332/1630 = 0.204 fw × 0.360 fh,
+    // so this is NOT oversized; round 1's "too big" read was value balance
+    // (bright card vs dark glass), fixed by the bake's pass-5 falloff.
+    // Never taller than 0.42 fh (ultrawide guard) nor tiny.
     const w = Math.round(Math.max(Math.min(vw * 0.2, vh * 0.42, 400), Math.min(210, vw * 0.42)))
     const h = Math.round(w * PANEL_H_RATIO)
     if (w === layout.w && h === layout.h && dpr === layout.dpr && vw === layout.vw && vh === layout.vh) return
@@ -608,8 +659,10 @@ export function createHUD({ terrain, player }) {
     layout.s = w / 320 // design scale: bible geometry is quoted at 1600×900
     layout.inset = Math.round(w * 0.078) // hairline inset ≈26/331, off frame01
 
-    const right = Math.round(Math.max(10, vw * 0.01))
-    const top = Math.round(Math.max(10, vh * 0.022))
+    // corner insets measured off frame01: right 15/1630 fw, top 18/921 fh
+    // (the bible's 0.010/0.022 were a touch loose — the image wins)
+    const right = Math.round(Math.max(10, vw * 0.0095))
+    const top = Math.round(Math.max(9, vh * 0.019))
     panel.style.width = w + 'px'
     panel.style.height = h + 'px'
     panel.style.right = right + 'px'
@@ -624,7 +677,7 @@ export function createHUD({ terrain, player }) {
     dCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
     nameplate.style.left = Math.round(Math.max(14, vw * 0.012)) + 'px'
-    nameplate.style.top = Math.round(Math.max(12, vh * 0.022)) + 'px'
+    nameplate.style.top = top + 'px' // top-aligned with the minimap plate
     hint.style.right = right + 'px'
     hint.style.bottom = Math.round(Math.max(12, vh * 0.02)) + 'px'
 
@@ -1058,9 +1111,26 @@ export function createHUD({ terrain, player }) {
     return BIOME_REGIONS[biome] || DEFAULT_REGION
   }
 
+  // 'FERREN COAST' → 'Ferren Coast' (suffix source is the old kicker text)
+  const titleCase = (s) =>
+    String(s || '').toLowerCase().replace(/(^|[\s-])\S/g, (c) => c.toUpperCase())
+
   function setPlateText(region) {
-    npKicker.textContent = region.kicker
-    npTitle.textContent = region.title
+    // §9: one line — "GRANDPINE FIELDS · Ferren Coast". Small-caps serif
+    // renders the mixed-case source exactly like the spec string; the
+    // region suffix keeps the plate's gold accent, inline.
+    npTitle.textContent = ''
+    const t = document.createElement('span')
+    t.textContent = region.title
+    const sep = document.createElement('span')
+    sep.className = 'sep'
+    sep.textContent = '·'
+    const reg = document.createElement('span')
+    reg.className = 'reg'
+    reg.textContent = titleCase(region.kicker)
+    npTitle.appendChild(t)
+    npTitle.appendChild(sep)
+    npTitle.appendChild(reg)
   }
 
   function updateNameplate(dt) {

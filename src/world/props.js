@@ -4,12 +4,15 @@
 // Hand-built diorama architecture derived from terrain.meta.poi, matched to
 // docs/reference/frame01.png:
 //
-//   castle  — cream gothic keep on a balustraded motte behind a grey
-//             crenellated curtain wall: huge frontal cobalt gable with an
-//             arched tracery window, twin facade towers, asymmetric round
-//             spires (tallest tip 6.5 m), gatehouse with arch + raised
-//             portcullis, buttresses, gold finials, wind-waved pennants,
-//             and a flagstone stair approach that meets the road.
+//   castle  — warm-white gothic keep on a balustraded motte behind a cream
+//             crenellated curtain wall (ART_BIBLE castle-stone ramp): huge
+//             frontal cobalt gable with an arched tracery window, dark
+//             window slits punched into every wall face, twin facade
+//             towers, asymmetric round spires (tallest tip 6.5 m),
+//             gatehouse to the §5 chart heights with arch + portcullis,
+//             enlarged gold finials that read at frame scale, pennants,
+//             and a solid stone ramp descending from the gate arch to the
+//             road mouth (no floating slabs).
 //   village — 11 houses of 4 plans (plaster / timber-framed), slate tile
 //             roofs with ridge caps and chimneys, well, red-awning market
 //             stall, barrels, a few warm lit windows.
@@ -75,10 +78,15 @@ const PAL = {
   KEEP_MID: rgb(0xd6d0bd),
   KEEP_DARK: rgb(0xb2ad9b),
   KEEP_MORTAR: rgb(0x9b9787),
-  CURT_LIT: rgb(0xbfc5b2),
-  CURT_MID: rgb(0x9aa392),
-  CURT_DARK: rgb(0x77816f),
-  CURT_MORTAR: rgb(0x525d4c),
+  CURT_LIT: rgb(0xe2ddcc),
+  CURT_MID: rgb(0xc2bdac),
+  CURT_DARK: rgb(0x8e8b7d),
+  CURT_MORTAR: rgb(0x84806f),
+  PAVE_LIT: rgb(0xd9d3c1),
+  PAVE_MID: rgb(0xbcb6a4),
+  PAVE_DARK: rgb(0x94907f),
+  PAVE_MORTAR: rgb(0x83806f),
+  BARN_WOOD: rgb(0x84633c),
   MOSS: rgb(0x5c7048),
   COBALT_LIT: rgb(0x5477c8),
   COBALT: rgb(0x35549c),
@@ -145,7 +153,7 @@ function paintMasonry(g, S, rnd, o) {
     while (x < S) {
       const bw = o.blockW * (0.75 + rnd() * 0.6)
       let base = mixc(o.lit, o.mid, Math.pow(rnd(), 1.4))
-      if (rnd() < 0.1) base = mixc(o.mid, o.dark, 0.4 + rnd() * 0.5)
+      if (rnd() < (o.darkP === undefined ? 0.1 : o.darkP)) base = mixc(o.mid, o.dark, 0.4 + rnd() * 0.5)
       // slight hue wobble so courses never read flat
       base = mixc(base, [base[0] + 8, base[1] + 4, base[2] - 6], rnd() * 0.5)
       g.fillStyle = css(base)
@@ -243,37 +251,34 @@ function paintTiles(g, S, rnd, o) {
 // Cobalt spire roofing: vertical panel strips with shingle courses, a few
 // near-white specular streak panels (the plate's signature roof glints).
 function paintCobalt(g, S, rnd) {
-  g.fillStyle = css(PAL.COBALT)
+  // Biased toward ROOF_COBALT_LIT #5477c8 — the round-1 roofs authored at the
+  // #35549c base fogged down to slate. Wider strips so the courses survive
+  // frame scale, and a guaranteed ROOF_SPEC streak roughly every third flute.
+  g.fillStyle = css(PAL.COBALT_LIT)
   g.fillRect(0, 0, S, S)
-  const stripW = 18
-  const rowH = 24
+  const stripW = 26
+  const rowH = 30
   for (let x = 0; x < S; x += stripW) {
-    let base = mixc(PAL.COBALT, PAL.COBALT_LIT, Math.pow(rnd(), 1.3) * 0.9)
-    if (rnd() < 0.12) base = mixc(PAL.COBALT, PAL.COBALT_DARK, 0.45)
+    let base = mixc(PAL.COBALT_LIT, PAL.COBALT, Math.pow(rnd(), 1.6) * 0.6)
+    if (rnd() < 0.08) base = mixc(PAL.COBALT, PAL.COBALT_DARK, 0.3)
     g.fillStyle = css(base)
     g.fillRect(x, 0, stripW - 1, S)
-    g.fillStyle = css(shade(base, 1.12))
-    g.fillRect(x, 0, 1.6, S) // strip edge catch-light
+    g.fillStyle = css(shade(base, 1.14))
+    g.fillRect(x, 0, 2, S) // strip edge catch-light
     const off = (x / stripW) % 2 ? rowH * 0.5 : 0
     for (let y = -rowH; y < S + rowH; y += rowH) {
       const yy = y + off
-      g.fillStyle = css(mixc(base, PAL.COBALT_DARK, 0.75))
-      g.fillRect(x, ((yy % S) + S) % S, stripW - 1, 2) // course shadow line
-      g.fillStyle = css(shade(base, 1.1))
-      g.fillRect(x + 1, (((yy + 2) % S) + S) % S, stripW * 0.55, 1.2)
-      if (rnd() < 0.1) {
-        g.globalAlpha = 0.25
-        g.fillStyle = css(PAL.COBALT_DARK)
-        g.fillRect(x + 2, (((yy + 4) % S) + S) % S, stripW - 5, rowH * 0.6)
-        g.globalAlpha = 1
-      }
+      g.fillStyle = css(mixc(base, PAL.COBALT_DARK, 0.55))
+      g.fillRect(x, ((yy % S) + S) % S, stripW - 1, 1.6) // course shadow line
+      g.fillStyle = css(shade(base, 1.12))
+      g.fillRect(x + 1, (((yy + 2) % S) + S) % S, stripW * 0.6, 1.2)
     }
-    if (rnd() < 0.2) {
-      g.globalAlpha = 0.5
+    if ((x / stripW) % 3 === 1 || rnd() < 0.12) {
+      g.globalAlpha = 0.65
       g.fillStyle = css(PAL.COBALT_SPEC)
-      g.fillRect(x + 2, 0, 2.6, S) // specular flute streak
-      g.globalAlpha = 0.22
-      g.fillRect(x + 5, 0, 2, S)
+      g.fillRect(x + 3, 0, 3, S) // specular flute streak (the plate's glint)
+      g.globalAlpha = 0.3
+      g.fillRect(x + 7, 0, 2, S)
       g.globalAlpha = 1
     }
   }
@@ -755,7 +760,7 @@ function buildCastle(ctx, poi) {
   segs.push([P[6], [gx + 1.4, 6]])
   segs.push([[gx - 1.4, 6], P[7]])
 
-  const WALL_H = 1.6
+  const WALL_H = 2.2 // §5 chart: curtain wall 2.6 to merlon top (2.2 + cap + 0.3)
   for (const [a, b] of segs) {
     const dx = b[0] - a[0]
     const dz = b[1] - a[1]
@@ -777,6 +782,12 @@ function buildCastle(ctx, poi) {
     }
     crenels(put, 'curtain', a[0] + nx * 0.29, a[1] + nz * 0.29, b[0] + nx * 0.29, b[1] + nz * 0.29,
       WALL_H + 0.1, { w: 0.3, h: 0.3, d: 0.19, pitch: 0.62 })
+    // dark window slits on every outer wall face — the plate's architecture tell
+    const nS = Math.max(1, Math.floor(L / 2.0))
+    for (let k = 0; k < nS; k++) {
+      const tt = (k + 0.5) / nS
+      put.box('dark', 0.13, 0.38, 0.05, a[0] + ux * tt * L + nx * 0.31, 1.32, a[1] + uz * tt * L + nz * 0.31, { ry: wy })
+    }
   }
 
   // ---- wall turrets with cobalt caps (heights all differ) ----------------
@@ -785,82 +796,94 @@ function buildCastle(ctx, poi) {
     put.cyl('curtain', r * 0.93, r + 0.05, hb, 10, x, 0, z, { uv: 1.2, vlock: true })
     put.cyl('curtain', r + 0.12, r + 0.12, 0.06, 10, x, hb, z, {})
     put.cone('roofCobalt', r + 0.16, hc, 10, x, hb + 0.06, z, { uv: 1.1 })
-    put.sphere('gold', 0.05, x, hb + hc + 0.1, z, {})
-    put.cone('gold', 0.028, 0.13, 6, x, hb + hc + 0.13, z, {})
+    put.sphere('gold', 0.085, x, hb + hc + 0.13, z, {})
+    put.cone('gold', 0.05, 0.22, 6, x, hb + hc + 0.18, z, {})
     if (slits) {
       const ol = Math.hypot(x, z) || 1
       const ox = x / ol
       const oz = z / ol
-      put.box('dark', 0.09, 0.3, 0.05, x + ox * (r + 0.02), hb * 0.45, z + oz * (r + 0.02),
-        { ry: Math.atan2(ox, oz) })
+      for (const yy of [hb * 0.38, hb * 0.68]) {
+        put.box('dark', 0.12, 0.36, 0.05, x + ox * (r + 0.02), yy, z + oz * (r + 0.02),
+          { ry: Math.atan2(ox, oz) })
+      }
     }
   }
-  turret(-5.1, 6, 0.5, 2.35, 0.8, true) // front-left, tallest on the wall
-  turret(5.1, 6, 0.48, 2.2, 0.75, true)
-  turret(-7.5, -3.6, 0.44, 2.05, 0.7, false)
-  turret(7.5, -3.6, 0.44, 2.0, 0.68, false)
-  turret(0, -6, 0.4, 1.85, 0.62, false)
+  turret(-5.1, 6, 0.5, 3.0, 0.92, true) // front-left, tallest on the wall
+  turret(5.1, 6, 0.48, 2.85, 0.85, true)
+  turret(-7.5, -3.6, 0.44, 2.6, 0.76, true)
+  turret(7.5, -3.6, 0.44, 2.52, 0.72, true)
+  turret(0, -6, 0.4, 2.4, 0.66, true)
 
-  // ---- gatehouse: arched portal + raised portcullis, corbelled turrets ---
-  put.box('curtain', 0.78, 2.1, 1.9, gx - 1.02, 0, 6.05, { uv: 1.45, vlock: true })
-  put.box('curtain', 0.78, 2.1, 1.9, gx + 1.02, 0, 6.05, { uv: 1.45, vlock: true })
-  put.arch('curtain', 2.85, 2.1, 0.3, 1.15, 1.35, gx, 0, 6.85, { uv: 1.45 })
-  put.arch('curtain', 2.85, 2.1, 0.3, 1.15, 1.35, gx, 0, 5.25, { uv: 1.45 })
-  put.box('curtain', 3.0, 0.12, 2.1, gx, 2.1, 6.05, { uv: 1.45 })
-  crenels(put, 'curtain', gx - 1.35, 7.0, gx + 1.35, 7.0, 2.22, { w: 0.28, h: 0.3, d: 0.18, pitch: 0.5 })
-  crenels(put, 'curtain', gx - 1.42, 6.75, gx - 1.42, 5.35, 2.22, { w: 0.24, h: 0.26, d: 0.18, pitch: 0.5 })
-  crenels(put, 'curtain', gx + 1.42, 6.75, gx + 1.42, 5.35, 2.22, { w: 0.24, h: 0.26, d: 0.18, pitch: 0.5 })
+  // ---- gatehouse: §5 chart 3.4 tall, gate arch 1.9, raised portcullis ----
+  put.box('curtain', 0.78, 2.8, 1.9, gx - 1.02, 0, 6.05, { uv: 1.45, vlock: true })
+  put.box('curtain', 0.78, 2.8, 1.9, gx + 1.02, 0, 6.05, { uv: 1.45, vlock: true })
+  put.arch('curtain', 2.85, 2.8, 0.3, 1.25, 1.9, gx, 0, 6.85, { uv: 1.45 })
+  put.arch('curtain', 2.85, 2.8, 0.3, 1.25, 1.9, gx, 0, 5.25, { uv: 1.45 })
+  put.box('curtain', 3.0, 0.12, 2.1, gx, 2.8, 6.05, { uv: 1.45 })
+  crenels(put, 'curtain', gx - 1.35, 7.0, gx + 1.35, 7.0, 2.92, { w: 0.28, h: 0.3, d: 0.18, pitch: 0.5 })
+  crenels(put, 'curtain', gx - 1.42, 6.75, gx - 1.42, 5.35, 2.92, { w: 0.24, h: 0.26, d: 0.18, pitch: 0.5 })
+  crenels(put, 'curtain', gx + 1.42, 6.75, gx + 1.42, 5.35, 2.92, { w: 0.24, h: 0.26, d: 0.18, pitch: 0.5 })
   for (const s of [-1, 1]) {
+    // arrow slits on the gatehouse front faces
+    put.box('dark', 0.13, 0.42, 0.05, gx + s * 1.02, 1.4, 7.01, {})
+    put.box('dark', 0.12, 0.32, 0.05, gx + s * 1.02, 2.25, 7.01, {})
     const tx = gx + s * 1.28
-    put.cyl('curtain', 0.2, 0.25, 1.5, 8, tx, 1.35, 6.9, { uv: 1.2 })
-    put.cyl('curtain', 0.26, 0.26, 0.05, 8, tx, 2.85, 6.9, {})
-    put.cone('roofCobalt', 0.3, 0.52, 8, tx, 2.9, 6.9, { uv: 1.1 })
-    put.sphere('gold', 0.04, tx, 3.46, 6.9, {})
+    put.cyl('curtain', 0.2, 0.25, 1.6, 8, tx, 2.0, 6.9, { uv: 1.2 })
+    put.cyl('curtain', 0.26, 0.26, 0.05, 8, tx, 3.6, 6.9, {})
+    put.cone('roofCobalt', 0.32, 0.6, 8, tx, 3.65, 6.9, { uv: 1.1 })
+    put.sphere('gold', 0.07, tx, 4.32, 6.9, {})
+    put.box('dark', 0.1, 0.26, 0.05, tx, 2.6, 7.13, {})
   }
   // portcullis, raised: spiked bars visible in the arch head
   for (let i = -2; i <= 2; i++) {
     const bx2 = gx + i * 0.21
-    put.box('dark', 0.045, 0.72, 0.045, bx2, 0.62, 6.42, {})
-    put.cone('dark', 0.04, 0.12, 4, bx2, 0.52, 6.42, { rx: Math.PI, c: true })
+    put.box('dark', 0.045, 0.9, 0.045, bx2, 0.78, 6.42, {})
+    put.cone('dark', 0.04, 0.12, 4, bx2, 0.68, 6.42, { rx: Math.PI, c: true })
   }
-  put.box('dark', 1.05, 0.045, 0.05, gx, 0.85, 6.42, {})
-  put.box('dark', 1.05, 0.045, 0.05, gx, 1.15, 6.42, {})
-  put.box('stoneBase', 1.9, 0.08, 1.7, gx, -0.03, 6.35, { uv: 1.1 })
+  put.box('dark', 1.05, 0.045, 0.05, gx, 1.08, 6.42, {})
+  put.box('dark', 1.05, 0.045, 0.05, gx, 1.42, 6.42, {})
+  put.box('pave', 1.9, 0.08, 1.7, gx, -0.03, 6.35, { uv: 1.1 })
 
   // stair turret left of the gate (plate: slender spire by the portal)
   put.cyl('curtain', 0.44, 0.52, 0.4, 9, -1.75, -0.15, 6.3, { uv: 1.2 })
-  put.cyl('curtain', 0.36, 0.44, 2.7, 9, -1.75, 0, 6.3, { uv: 1.2, vlock: true })
-  put.cyl('curtain', 0.48, 0.48, 0.06, 9, -1.75, 2.7, 6.3, {})
-  put.cone('roofCobalt', 0.52, 0.85, 9, -1.75, 2.76, 6.3, { uv: 1.1 })
-  put.sphere('gold', 0.045, -1.75, 3.66, 6.3, {})
-  put.box('dark', 0.08, 0.26, 0.05, -1.75, 0.8, 6.78, {})
-  put.box('dark', 0.08, 0.26, 0.05, -1.75, 1.7, 6.78, {})
-  pennant(put.world(-1.75, 3.62, 6.3), yaw, 0xd9b542)
+  put.cyl('curtain', 0.36, 0.44, 3.0, 9, -1.75, 0, 6.3, { uv: 1.2, vlock: true })
+  put.cyl('curtain', 0.48, 0.48, 0.06, 9, -1.75, 3.0, 6.3, {})
+  put.cone('roofCobalt', 0.52, 0.95, 9, -1.75, 3.06, 6.3, { uv: 1.1 })
+  put.sphere('gold', 0.08, -1.75, 4.08, 6.3, {})
+  put.box('dark', 0.12, 0.34, 0.05, -1.75, 0.9, 6.72, {})
+  put.box('dark', 0.12, 0.34, 0.05, -1.75, 1.9, 6.72, {})
+  pennant(put.world(-1.75, 4.0, 6.3), yaw, 0xd9b542)
 
   // ---- courtyard + balustraded motte -------------------------------------
-  put.box('stoneBase', 12.6, 0.06, 9.6, 0, 0.01, -0.2, { uv: 2.3 })
+  put.box('pave', 12.6, 0.06, 9.6, 0, 0.01, -0.2, { uv: 2.3 })
   put.box('keep', 9.8, 1.85, 6.6, 0.15, 0, -1.55, { uv: 1.5, vlock: true })
   put.box('keep', 10.3, 0.55, 7.1, 0.15, -0.2, -1.55, { uv: 1.5 })
   const TY = 1.85
   balustrade(put, 'keep', -4.55, 1.71, -0.75, 1.71, TY, { h: 0.3 })
   balustrade(put, 'keep', 1.45, 1.71, 4.85, 1.71, TY, { h: 0.3 })
+  // arrow-slit windows punched into the motte faces
+  for (const i of [-2, -1, 1, 2]) put.box('dark', 0.15, 0.42, 0.05, 0.35 + i * 1.7, 0.95, 1.78, {})
+  for (const s of [-1, 1]) {
+    for (const zz of [-3.4, -1.2, 0.8]) put.box('dark', 0.15, 0.42, 0.05, 0.15 + s * 4.92, 0.95, zz, { ry: HPI })
+  }
   for (let i = 0; i < 8; i++) {
-    put.box('stoneBase', 1.9, TY - i * (TY / 8), 0.27, 0.35, 0, 1.75 + (i + 0.5) * 0.27, { uv: 1.1 })
+    put.box('pave', 1.9, TY - i * (TY / 8), 0.27, 0.35, 0, 1.75 + (i + 0.5) * 0.27, { uv: 1.1 })
   }
   for (const s of [-1, 1]) {
     put.box('keep', 0.34, 0.8, 0.34, 0.35 + s * 1.25, 0, 2.7, { uv: 1.0 })
-    put.sphere('gold', 0.08, 0.35 + s * 1.25, 0.88, 2.7, {})
+    put.sphere('gold', 0.1, 0.35 + s * 1.25, 0.9, 2.7, {})
   }
 
   // ---- the keep ----------------------------------------------------------
   // nave + the huge frontal cobalt gable
   put.box('keep', 3.2, 1.15, 3.1, 0.2, TY, -1.4, { uv: 1.5, vlock: true })
+  for (const s of [-1, 1]) put.box('dark', 0.13, 0.4, 0.05, 0.2 + s * 1.15, TY + 0.5, 0.17, {})
   put.prism('roofCobalt', 3.44, 1.4, 3.3, 0.2, TY + 1.13, -1.4, { uv: 1.15 })
-  put.sphere('gold', 0.05, 0.2, TY + 2.58, 0.15, {})
-  put.cone('gold', 0.03, 0.16, 6, 0.2, TY + 2.6, 0.15, {})
+  put.sphere('gold', 0.09, 0.2, TY + 2.6, 0.15, {})
+  put.cone('gold', 0.05, 0.24, 6, 0.2, TY + 2.65, 0.15, {})
   // tracery window on the gable face
   put.arch('keep', 0.8, 1.0, 0.1, 0.5, 0.86, 0.2, TY + 1.25, 0.28, { uv: 1.0 })
-  put.box('dark', 0.48, 0.8, 0.05, 0.2, TY + 1.27, 0.26, {})
+  put.box('dark', 0.56, 0.86, 0.05, 0.2, TY + 1.27, 0.26, {})
   put.box('keep', 0.035, 0.68, 0.04, 0.11, TY + 1.29, 0.3, {})
   put.box('keep', 0.035, 0.68, 0.04, 0.29, TY + 1.29, 0.3, {})
   put.box('gold', 0.9, 0.05, 0.1, 0.2, TY + 1.2, 0.28, {})
@@ -873,7 +896,8 @@ function buildCastle(ctx, poi) {
     put.box('keep', 1.05, 0.75, 2.9, 0.2 + s * 2.12, TY, -1.35, { uv: 1.5, vlock: true })
     put.box('roofCobalt', 1.35, 0.055, 3.15, 0.2 + s * 2.17, TY + 0.92, -1.35,
       { rz: -s * 0.28, c: true, uv: 1.15 })
-    put.box('dark', 0.1, 0.32, 0.05, 0.2 + s * 2.12, TY + 0.22, 0.12, {})
+    put.box('dark', 0.14, 0.36, 0.05, 0.2 + s * 2.12, TY + 0.2, 0.13, {})
+    for (const zz of [-0.7, -1.9]) put.box('dark', 0.13, 0.34, 0.05, 0.2 + s * 2.66, TY + 0.24, zz, { ry: HPI })
   }
   // buttresses
   const buttress = (x, z, h) => {
@@ -893,11 +917,13 @@ function buildCastle(ctx, poi) {
     put.box('keep', 0.8, 2.05, 0.8, tx, TY, 0.35, { uv: 1.4, vlock: true })
     put.box('keep', 0.95, 0.08, 0.95, tx, TY + 2.05, 0.35, { uv: 1.0 })
     put.cone('roofCobalt', 0.62, 1.0, 4, tx, TY + 2.13, 0.35, { ry: Math.PI / 4, uv: 1.1 })
-    put.sphere('gold', 0.05, tx, TY + 3.18, 0.35, {})
-    put.cone('gold', 0.03, 0.14, 6, tx, TY + 3.21, 0.35, {})
-    put.box('dark', 0.1, 0.3, 0.05, tx, TY + 0.5, 0.78, {})
-    put.box('dark', 0.1, 0.3, 0.05, tx, TY + 1.15, 0.78, {})
-    pennant(put.world(tx, TY + 3.1, 0.35), yaw, 0x35549c)
+    put.sphere('gold', 0.09, tx, TY + 3.2, 0.35, {})
+    put.cone('gold', 0.05, 0.22, 6, tx, TY + 3.25, 0.35, {})
+    put.box('dark', 0.16, 0.44, 0.05, tx, TY + 0.45, 0.77, {})
+    put.box('dark', 0.16, 0.44, 0.05, tx, TY + 1.1, 0.77, {})
+    put.box('dark', 0.13, 0.3, 0.05, tx, TY + 1.72, 0.77, {})
+    put.box('dark', 0.13, 0.34, 0.05, tx + s * 0.41, TY + 0.6, 0.35, { ry: HPI })
+    pennant(put.world(tx, TY + 3.16, 0.35), yaw, 0x35549c)
   }
   // grand rear spire — the 6.5 m tip
   put.cyl('keep', 0.55, 0.64, 0.5, 9, -1.5, TY - 0.2, -3.0, { uv: 1.3 })
@@ -905,71 +931,92 @@ function buildCastle(ctx, poi) {
   put.cyl('keep', 0.52, 0.52, 0.06, 9, -1.5, TY + 1.5, -3.0, {})
   put.cyl('keep', 0.6, 0.6, 0.07, 9, -1.5, TY + 3.15, -3.0, {})
   put.cone('roofCobalt', 0.66, 1.42, 10, -1.5, TY + 3.22, -3.0, { uv: 1.1 })
-  put.sphere('gold', 0.055, -1.5, TY + 4.68, -3.0, {})
-  put.cone('gold', 0.032, 0.16, 6, -1.5, TY + 4.7, -3.0, {})
-  pennant(put.world(-1.5, TY + 4.6, -3.0), yaw, 0x35549c)
+  put.sphere('gold', 0.12, -1.5, TY + 4.72, -3.0, {})
+  put.cone('gold', 0.055, 0.3, 6, -1.5, TY + 4.78, -3.0, {})
+  pennant(put.world(-1.5, TY + 4.72, -3.0), yaw, 0x35549c)
   for (const s of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
     const px = -1.5 + s[0] * 0.52
     const pz = -3.0 + s[1] * 0.52
     put.cyl('keep', 0.05, 0.068, 0.42, 6, px, TY + 2.9, pz, {})
     put.cone('roofCobalt', 0.095, 0.24, 6, px, TY + 3.32, pz, {})
-    put.sphere('gold', 0.028, px, TY + 3.58, pz, {})
+    put.sphere('gold', 0.05, px, TY + 3.58, pz, {})
   }
-  for (let i = 0; i < 3; i++) put.box('dark', 0.09, 0.28, 0.05, -1.5, TY + 0.5 + i * 0.8, -2.44, {})
+  for (let i = 0; i < 3; i++) put.box('dark', 0.14, 0.4, 0.05, -1.5, TY + 0.5 + i * 0.8, -2.44, {})
+  for (const s of [-1, 1]) put.box('dark', 0.13, 0.36, 0.05, -1.5 + s * 0.52, TY + 1.1, -3.0, { ry: HPI })
   // rear-right and mid-left round towers (asymmetric heights)
   put.cyl('keep', 0.36, 0.45, 2.6, 9, 2.6, TY, -2.75, { uv: 1.3, vlock: true })
   put.cyl('keep', 0.5, 0.5, 0.06, 9, 2.6, TY + 2.6, -2.75, {})
   put.cone('roofCobalt', 0.55, 1.05, 10, 2.6, TY + 2.66, -2.75, { uv: 1.1 })
-  put.sphere('gold', 0.05, 2.6, TY + 3.75, -2.75, {})
-  put.box('dark', 0.09, 0.28, 0.05, 2.6, TY + 0.7, -2.3, {})
-  put.box('dark', 0.09, 0.28, 0.05, 2.6, TY + 1.5, -2.3, {})
+  put.sphere('gold', 0.09, 2.6, TY + 3.78, -2.75, {})
+  put.cone('gold', 0.05, 0.22, 6, 2.6, TY + 3.83, -2.75, {})
+  put.box('dark', 0.13, 0.36, 0.05, 2.6, TY + 0.7, -2.3, {})
+  put.box('dark', 0.13, 0.36, 0.05, 2.6, TY + 1.5, -2.3, {})
   put.cyl('keep', 0.34, 0.42, 1.95, 9, -2.75, TY, -0.5, { uv: 1.3, vlock: true })
   put.cyl('keep', 0.46, 0.46, 0.06, 9, -2.75, TY + 1.95, -0.5, {})
   put.cone('roofCobalt', 0.5, 0.9, 10, -2.75, TY + 2.01, -0.5, { uv: 1.1 })
-  put.sphere('gold', 0.045, -2.75, TY + 2.95, -0.5, {})
+  put.sphere('gold', 0.08, -2.75, TY + 2.98, -0.5, {})
+  put.box('dark', 0.13, 0.34, 0.05, -2.75, TY + 0.55, -0.09, {})
+  put.box('dark', 0.13, 0.34, 0.05, -2.75, TY + 1.25, -0.09, {})
   // rear connecting wing
   put.box('keep', 3.0, 1.0, 1.3, 0.6, TY, -3.55, { uv: 1.5, vlock: true })
   put.prism('roofCobalt', 1.45, 0.5, 3.2, 0.6, TY + 0.98, -3.55, { ry: HPI, uv: 1.15 })
+  put.box('dark', 0.13, 0.34, 0.05, -0.3, TY + 0.4, -2.88, {})
+  put.box('dark', 0.13, 0.34, 0.05, 1.5, TY + 0.4, -2.88, {})
   // nave flank slit rows
   for (const s of [-1, 1]) {
     for (let i = 0; i < 3; i++) {
-      put.box('dark', 0.06, 0.3, 0.1, 0.2 + s * 1.62, TY + 0.38, -0.65 - i * 0.75, {})
+      put.box('dark', 0.12, 0.36, 0.08, 0.2 + s * 1.62, TY + 0.38, -0.65 - i * 0.75, {})
     }
   }
 
-  // ---- flagstone approach: gate -> pad, then a curve to meet the road ----
-  for (let i = 0; i < 4; i++) {
-    put.box('stoneBase', 1.6, 0.06, 0.5, gx, -0.02, 7.3 + i * 0.56, { uv: 1.1 })
-  }
-  for (const s of [-1, 1]) {
-    put.cyl('woodDark', 0.035, 0.045, 1.5, 6, gx + s * 1.3, 0, 7.9, {})
-    put.sphere('gold', 0.035, gx + s * 1.3, 1.54, 7.9, {})
-    pennant(put.world(gx + s * 1.3, 1.44, 7.9), yaw, 0xb0453c)
-  }
-  if (LP) {
-    const A = put.world(gx, 0, 9.35)
-    const bx2 = LP.x
-    const bz2 = LP.z
-    const cxp = A.x + gdx * 2.2
-    const czp = A.z + gdz * 2.2
-    const n = Math.max(3, Math.round(Math.hypot(bx2 - A.x, bz2 - A.z) / 0.62))
+  // ---- solid stone ramp: descends from the gate arch to the road mouth ---
+  // Round 1 floated thin slabs over the plateau lip; every step here is a
+  // full-height block sunk below grade, so the approach reads as masonry.
+  {
+    const A = put.world(gx, 0, 7.0) // gate threshold, at pad height
+    const EX = LP ? LP.x : A.x + gdx * 8
+    const EZ = LP ? LP.z : A.z + gdz * 8
+    const endY = T.height(EX, EZ)
+    const cxp = A.x + gdx * 2.6
+    const czp = A.z + gdz * 2.6
+    const n = Math.max(6, Math.round(Math.hypot(EX - A.x, EZ - A.z) / 0.8))
     let px = A.x
     let pz = A.z
     for (let i = 1; i <= n; i++) {
       const t = i / n
-      const qx = (1 - t) * (1 - t) * A.x + 2 * (1 - t) * t * cxp + t * t * bx2
-      const qz = (1 - t) * (1 - t) * A.z + 2 * (1 - t) * t * czp + t * t * bz2
-      const wy2 = yawX(qx - px, qz - pz)
-      addG(B.stoneBase, gBox(0.62, 0.055, 1.35, (qx + px) / 2, T.height((qx + px) / 2, (qz + pz) / 2) + 0.02,
-        (qz + pz) / 2, { ry: wy2, uv: 1.1 }), null)
+      const qx = (1 - t) * (1 - t) * A.x + 2 * (1 - t) * t * cxp + t * t * EX
+      const qz = (1 - t) * (1 - t) * A.z + 2 * (1 - t) * t * czp + t * t * EZ
+      const mx2 = (px + qx) / 2
+      const mz2 = (pz + qz) / 2
+      const seg = Math.hypot(qx - px, qz - pz)
+      const tm = (i - 0.5) / n
+      const ss = tm * tm * (3 - 2 * tm)
+      const topY = A.y + 0.06 + (endY + 0.05 - A.y - 0.06) * ss
+      const gmin = Math.min(T.height(px, pz), T.height(mx2, mz2), T.height(qx, qz), topY)
+      addG(B.pave, gBox(2.25, topY - gmin + 0.55, seg + 0.34, mx2, gmin - 0.55, mz2,
+        { ry: yawX(qx - px, qz - pz), uv: 1.15 }), null)
       px = qx
       pz = qz
     }
+    // low cheek walls where the ramp leaves the plateau lip
+    for (const s of [-1, 1]) {
+      const wx2 = A.x + gdx * 0.9 - gdz * s * 1.2
+      const wz2 = A.z + gdz * 0.9 + gdx * s * 1.2
+      addG(B.pave, gBox(1.9, 0.5, 0.24, wx2, A.y - 0.05, wz2, { ry: yawX(gdx, gdz), uv: 0.8 }), null)
+    }
+    // red pennant posts framing the ramp foot at the road
+    for (const s of [-1, 1]) {
+      const bxp = EX - gdz * s * 1.45
+      const bzp = EZ + gdx * s * 1.45
+      const byp = T.height(bxp, bzp)
+      addG(B.woodDark, gCyl(0.035, 0.045, 1.5, 6, bxp, byp - 0.05, bzp, {}), null)
+      addG(B.gold, gSphere(0.05, bxp, byp + 1.52, bzp, {}), null)
+      pennant(new THREE.Vector3(bxp, byp + 1.42, bzp), yaw, 0xb0453c)
+      blob(bxp, bzp, 0.24, 0.2, 0.26, 0)
+    }
+    // grounding shade where the ramp meets the road
+    blob(EX, EZ, 1.7, 1.3, 0.22, yaw)
   }
-
-  // grounding shade at the gate mouth (the courtyard floor slab shades itself)
-  const gw = put.world(gx, 0, 6.4)
-  blob(gw.x, gw.z, 2.2, 1.6, 0.26, yaw)
 }
 
 // ===========================================================================
@@ -1490,7 +1537,7 @@ function buildFarm(ctx, poi) {
   const sr = Math.sin(rot)
   let hmin = Infinity
   let hmax = -Infinity
-  for (const [ox, oz] of [[-2.3, -1.7], [2.3, -1.7], [-2.3, 1.7], [2.3, 1.7], [0, 0]]) {
+  for (const [ox, oz] of [[-2.05, -1.55], [2.05, -1.55], [-2.05, 1.55], [2.05, 1.55], [0, 0]]) {
     const h = T.height(bx2 + ox * cr + oz * sr, bz2 - ox * sr + oz * cr)
     if (h < hmin) hmin = h
     if (h > hmax) hmax = h
@@ -1498,25 +1545,28 @@ function buildFarm(ctx, poi) {
   const frame = new THREE.Matrix4().makeRotationY(rot)
   frame.setPosition(bx2, hmin - 0.03, bz2)
   const put = makePut(B, frame)
+  // Scale-chart sized (ridge ~2.6 m, village-house band). Walls use the
+  // 'barnWood' material whose teal emissive floor keeps the shadowed gable
+  // end near #2c3a30 instead of crushing to black.
   const ph = hmax - hmin + 0.4
-  put.box('stoneBase', 4.85, ph, 3.65, 0, 0, 0, { uv: 1.1 })
-  put.box('woodMid', 4.6, 2.0, 3.4, 0, ph, 0, { uv: 2.301, vlock: true })
-  put.prism('woodMid', 4.6, 1.3, 3.4, 0, ph + 2.0, 0, { uv: 2.301 })
-  gableRoof(put, 'roofShingle', 4.6, 3.4, 1.3, 0.28, 0.24, 0, ph + 2.0, 0, { uv: 1.2, ridgeW: 0.15, bkRidge: 'woodDark' })
+  put.box('stoneBase', 4.15, ph, 3.1, 0, 0, 0, { uv: 1.1 })
+  put.box('barnWood', 3.9, 1.55, 2.85, 0, ph, 0, { uv: 1.951, vlock: true })
+  put.prism('barnWood', 3.9, 1.0, 2.85, 0, ph + 1.55, 0, { uv: 1.951 })
+  gableRoof(put, 'roofShingle', 3.9, 2.85, 1.0, 0.26, 0.22, 0, ph + 1.55, 0, { uv: 1.2, ridgeW: 0.14, bkRidge: 'woodDark' })
   // big double door + hayloft on the gable front (+Z)
-  put.box('dark', 1.5, 1.65, 0.08, 0, ph, 1.71, {})
-  put.box('woodDark', 0.09, 1.75, 0.06, -0.82, ph, 1.73, {})
-  put.box('woodDark', 0.09, 1.75, 0.06, 0.82, ph, 1.73, {})
-  put.box('woodDark', 1.74, 0.09, 0.06, 0, ph + 1.72, 1.73, {})
-  put.box('woodDark', 0.06, 1.62, 0.05, 0, ph + 0.01, 1.74, {})
-  put.box('dark', 0.62, 0.62, 0.08, 0, ph + 2.25, 1.71, {})
-  put.box('woodDark', 0.72, 0.07, 0.07, 0, ph + 2.9, 1.74, {})
-  put.box('dark', 0.32, 0.36, 0.07, -1.6, ph + 0.5, 1.71, {})
+  put.box('dark', 1.25, 1.3, 0.08, 0, ph, 1.44, {})
+  put.box('woodDark', 0.09, 1.4, 0.06, -0.7, ph, 1.46, {})
+  put.box('woodDark', 0.09, 1.4, 0.06, 0.7, ph, 1.46, {})
+  put.box('woodDark', 1.48, 0.09, 0.06, 0, ph + 1.38, 1.46, {})
+  put.box('woodDark', 0.06, 1.28, 0.05, 0, ph + 0.01, 1.47, {})
+  put.box('dark', 0.5, 0.5, 0.08, 0, ph + 1.75, 1.44, {})
+  put.box('woodDark', 0.6, 0.07, 0.07, 0, ph + 2.28, 1.47, {})
+  put.box('dark', 0.3, 0.34, 0.07, -1.3, ph + 0.45, 1.44, {})
   // lean-to shelter on the east flank with hay inside
-  for (const zz of [-1.2, 1.2]) put.cyl('woodDark', 0.05, 0.06, 1.15, 6, 3.25, 0.1, zz, {})
-  put.box('roofShingle', 1.6, 0.05, 3.1, 2.85, 1.7, 0, { rz: 0.42, c: true, uv: 1.2 })
-  put.box('hay', 0.62, 0.5, 0.62, 3.0, 0.12, -0.5, { ry: 0.3, uv: 0.7 })
-  blob(bx2, bz2, 3.1, 2.5, 0.38, rot)
+  for (const zz of [-1.0, 1.0]) put.cyl('woodDark', 0.05, 0.06, 1.0, 6, 2.75, 0.1, zz, {})
+  put.box('roofShingle', 1.4, 0.05, 2.65, 2.4, 1.5, 0, { rz: 0.42, c: true, uv: 1.2 })
+  put.box('hay', 0.6, 0.48, 0.6, 2.5, 0.12, -0.45, { ry: 0.3, uv: 0.7 })
+  blob(bx2, bz2, 2.7, 2.2, 0.38, rot)
 
   // hay bales — two out by the visible paddock, the rest in the yard
   const bale = (x, z, ry, standing) => {
@@ -1688,8 +1738,12 @@ function buildMilestones(ctx) {
 
 function buildPier(ctx) {
   const { B, T, meta, rnd, blob } = ctx
-  const pier = meta.extras && meta.extras.pier
-  if (!pier) return
+  // ART_BIBLE §1: small wooden pier at (-76, -8) pointing WSW, deck +0.4,
+  // 5 m long — built even when terrain.meta publishes no pier extra
+  // (frame01 has it and it matters to the coastal silhouette).
+  const pier = (meta.extras && meta.extras.pier) ||
+    { x: -76, z: -8, angle: 2.75, y: 0.4, length: 5 }
+  if (T.height(pier.x, pier.z) > 3.2) return // no cove/beach carved here — skip
   const put = makePut(B, null)
   const dx = Math.cos(pier.angle)
   const dz = Math.sin(pier.angle)
@@ -1717,7 +1771,7 @@ function buildPier(ctx) {
       const qx = pier.x + dx * t + px2 * s * 0.52
       const qz = pier.z + dz * t + pz2 * s * 0.52
       const gy = T.height(qx, qz)
-      const h = deck + 0.14 - (gy - 0.3)
+      const h = Math.max(0.3, deck + 0.14 - (gy - 0.3))
       put.cyl('woodDark', 0.05, 0.065, h, 6, qx, gy - 0.3, qz, {})
     }
     const mxp = pier.x + dx * t
@@ -1761,8 +1815,8 @@ function buildPier(ctx) {
 // ===========================================================================
 
 const BUCKET_KEYS = [
-  'keep', 'curtain', 'roofCobalt', 'roofSlate', 'roofShingle', 'woodDark', 'woodMid',
-  'plaster', 'timber', 'stoneBase', 'hay', 'canvas', 'red', 'gold', 'dark', 'lit', 'rope',
+  'keep', 'curtain', 'pave', 'roofCobalt', 'roofSlate', 'roofShingle', 'woodDark', 'woodMid',
+  'barnWood', 'plaster', 'timber', 'stoneBase', 'hay', 'canvas', 'red', 'gold', 'dark', 'lit', 'rope',
 ]
 
 export function createProps({ terrain, atlas, renderer } = {}) {
@@ -1779,11 +1833,15 @@ export function createProps({ terrain, atlas, renderer } = {}) {
   // ---- procedural material set -------------------------------------------
   const tKeep = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
     lit: PAL.KEEP_LIT, mid: PAL.KEEP_MID, dark: PAL.KEEP_DARK, mortar: PAL.KEEP_MORTAR,
-    courseH: 16, blockW: 30, chip: 0.3, grime: 0.22, moss: null,
+    courseH: 16, blockW: 30, chip: 0.26, grime: 0.1, moss: null, darkP: 0.05,
   }))
   const tCurtain = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
     lit: PAL.CURT_LIT, mid: PAL.CURT_MID, dark: PAL.CURT_DARK, mortar: PAL.CURT_MORTAR,
-    courseH: 18, blockW: 34, chip: 0.18, grime: 0.4, moss: PAL.MOSS,
+    courseH: 20, blockW: 40, chip: 0.22, grime: 0.14, moss: null, darkP: 0.06,
+  }))
+  const tPave = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
+    lit: PAL.PAVE_LIT, mid: PAL.PAVE_MID, dark: PAL.PAVE_DARK, mortar: PAL.PAVE_MORTAR,
+    courseH: 30, blockW: 44, chip: 0.2, grime: 0.16, moss: null, darkP: 0.08,
   }))
   const tStone = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
     lit: PAL.STONE_LIT, mid: PAL.STONE_MID, dark: PAL.STONE_DARK, mortar: PAL.STONE_MORTAR,
@@ -1800,6 +1858,7 @@ export function createProps({ terrain, atlas, renderer } = {}) {
   }))
   const tWoodD = canvasTex(256, aniso, (g, S) => paintWood(g, S, rnd, PAL.WOOD_DARK, 0.36))
   const tWoodM = canvasTex(256, aniso, (g, S) => paintWood(g, S, rnd, PAL.WOOD_MID, 0.42))
+  const tBarn = canvasTex(256, aniso, (g, S) => paintWood(g, S, rnd, PAL.BARN_WOOD, 0.3))
   const tPlaster = canvasTex(256, aniso, (g, S) => paintPlaster(g, S, rnd))
   const tTimber = canvasTex(256, aniso, (g, S) => paintTimber(g, S, rnd))
   const tHay = canvasTex(128, aniso, (g, S) => paintHay(g, S, rnd))
@@ -1813,18 +1872,25 @@ export function createProps({ terrain, atlas, renderer } = {}) {
   const MAT = {
     keep: std(tKeep, 0.92),
     curtain: std(tCurtain, 0.95),
-    roofCobalt: std(tCobalt, 0.55),
+    pave: std(tPave, 0.95),
+    roofCobalt: std(tCobalt, 0.45),
     roofSlate: std(tSlate, 0.85),
     roofShingle: std(tShingle, 0.9),
     woodDark: std(tWoodD, 0.9),
     woodMid: std(tWoodM, 0.88),
+    // teal emissive floor = ART_BIBLE shadow rule: shade never crushes black
+    barnWood: std(tBarn, 0.9, { emissive: 0x16241c }),
     plaster: std(tPlaster, 0.96),
     timber: std(tTimber, 0.96),
     stoneBase: std(tStone, 0.95),
     hay: std(tHay, 1.0),
     canvas: std(tCanvas, 0.92, { side: THREE.DoubleSide }),
     red: std(tRed, 0.8),
-    gold: new THREE.MeshStandardMaterial({ color: 0xd9b542, metalness: 0.55, roughness: 0.38 }),
+    // bright enough that sun glints push past the 0.72 bloom threshold
+    gold: new THREE.MeshStandardMaterial({
+      color: 0xd9b542, metalness: 0.5, roughness: 0.32,
+      emissive: 0xc79a2e, emissiveIntensity: 0.55,
+    }),
     dark: new THREE.MeshStandardMaterial({ color: 0x14171d, roughness: 1 }),
     lit: new THREE.MeshStandardMaterial({
       color: 0x4a3418, emissive: 0xffc668, emissiveIntensity: 2.0, roughness: 0.8,
@@ -1855,6 +1921,8 @@ export function createProps({ terrain, atlas, renderer } = {}) {
   }
 
   // ---- landmarks from terrain.meta.poi -----------------------------------
+  let builtTrestle = false
+  let builtRope = false
   for (const poi of meta.poi || []) {
     if (poi.kind === 'castle') buildCastle(ctx, poi)
     else if (poi.kind === 'village') buildVillage(ctx, poi)
@@ -1864,11 +1932,18 @@ export function createProps({ terrain, atlas, renderer } = {}) {
     else if (poi.kind === 'bridge') {
       if (poi.name && poi.name.indexOf('Trestle') >= 0) {
         buildPlankBridge(ctx, { x: -84, z: -59.8 }, { x: -85, z: -73.2 }, poi.y || 18, 'trestle')
+        builtTrestle = true
       } else {
         buildPlankBridge(ctx, { x: -34.3, z: -117.9 }, { x: -25.7, z: -118.3 }, poi.y || 26, 'rope')
+        builtRope = true
       }
     }
   }
+  // ART_BIBLE §1 lists both crossings in frame01 — build them even when the
+  // terrain publishes no bridge POIs (west trestle upper-left at (-84,-66),
+  // north gorge bridge nearly dissolved in fog).
+  if (!builtTrestle) buildPlankBridge(ctx, { x: -84, z: -59.8 }, { x: -85, z: -73.2 }, 18, 'trestle')
+  if (!builtRope) buildPlankBridge(ctx, { x: -34.3, z: -117.9 }, { x: -25.7, z: -118.3 }, 26, 'rope')
   buildArchBridge(ctx)
   buildSignposts(ctx)
   buildMilestones(ctx)
