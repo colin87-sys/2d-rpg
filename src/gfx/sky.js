@@ -48,15 +48,24 @@
  *     which is exact for meshes, instances, billboards and sprites alike.
  *     scene.fog stays installed as the vehicle for the fogColor/fogDensity
  *     uniforms and as a plain-FogExp2 fallback if the chunks are ever reset.
- *     NOTE: fogHeightRef/fogHeightFalloff are baked into the chunk source at
- *     install (compile-time constants — live edits reach water.js only).
- *   - LAND density: the bible authors k = 0.0072 against its §2 camera at the
- *     53 m dolly. The shipped rig (player.js) sits at 82 m, which stretches
- *     every view distance by 82/53; holding the AUTHORED fog-vs-composition
- *     profile (13 % at the hero, 40 % two hero-distances out, top silhouettes
- *     surviving) therefore needs k scaled by the dolly ratio:
- *     0.0072 × 53/82 = 0.00465. If the rig ever boots at the bible's 53 m,
- *     set params.fogDolly = 53 and this reverts to 0.0072 exactly.
+ *     NOTE: fogHeightRef/fogHeightFalloff (and the waterfall-mist constants)
+ *     are baked into the chunk source at install (compile-time constants —
+ *     live edits reach water.js only).
+ *   - LAND density (ROUND 3): k = 0.0072, bible §4 verbatim, and it is a
+ *     WORLD-SPACE CONSTANT. Earlier rounds scaled k by a camera-dolly ratio
+ *     (fogDollyRef / fogDolly) to "hold the authored profile" — that coupling
+ *     was the round-3 defect: fog is an atmosphere property of the WORLD, and
+ *     any term tying it to camera distance, dolly or viewport makes the haze
+ *     thicken or thin whenever the framing solver moves the camera (at the
+ *     round-2 dolly of 30.5 m the ratio 53/30.5 = 1.74 → 1.74² ≈ 3× the
+ *     effective exp2 extinction — a milky curtain over the whole top band).
+ *     The coupling is REMOVED, not retuned: k must be correct at ANY dolly.
+ *     Curve check at y ≤ 8: 40 % fogged at 100 m, 69 % at 150 m, 87 % at
+ *     200 m — silhouettes survive at the top of frame, detail does not.
+ *   - WATERFALL MIST (bible §4): +15 % local fog density within 30 m of the
+ *     falls base (pool ~(−31, −33), y +11 per §1), below y 12 — baked into
+ *     the fog chunk as a smooth radial/height mask, feathered so there is no
+ *     visible boundary. water.js additionally does its own mist sprites.
  *   - WATER density: pale fog over a dark saturated sea destroys saturation
  *     ~3× faster than over grass (linear-space mixing), which is what greyed
  *     R1's ocean to #70909a. Frame01's sea stays rich teal right up the frame
@@ -93,32 +102,40 @@ function sunDirFromAngles(azDeg, elDeg, out = new THREE.Vector3()) {
 // atmosphere model and never pop against each other.
 // ---------------------------------------------------------------------------
 
-function installHeightFogChunks(heightRef, heightFalloff) {
+function installHeightFogChunks(heightRef, heightFalloff, mist) {
   const REF = Number(heightRef).toFixed(3)
   const FALL = Math.max(Number(heightFalloff), 1e-3).toFixed(3)
+  const MX = Number(mist.x).toFixed(2)
+  const MZ = Number(mist.z).toFixed(2)
+  const MR = Math.max(Number(mist.radius), 1).toFixed(2)
+  const MY = Number(mist.yTop).toFixed(2)
+  const MB = Math.max(Number(mist.boost), 0).toFixed(3)
 
   THREE.ShaderChunk.fog_pars_vertex = /* glsl */ `
 #ifdef USE_FOG
 	varying float vFogDepth;
-	varying float vFogWorldY;
+	varying vec3 vFogWorldPos;
 #endif`
 
   // mvPosition is in scope wherever the stock fog_vertex compiles (that chunk
-  // already reads it). World height = camera height + (view->world rotation of
-  // the view-space position).y; the rotation transpose row is viewMatrix
-  // column 1. Exact for every transform path (instancing, billboards, sprites)
-  // because it runs AFTER mvPosition is final.
+  // already reads it). World pos = cameraPosition + Rᵀ·(view pos): the rows of
+  // the view rotation's transpose are viewMatrix columns 0/1/2. Exact for
+  // every transform path (instancing, billboards, sprites) because it runs
+  // AFTER mvPosition is final.
   THREE.ShaderChunk.fog_vertex = /* glsl */ `
 #ifdef USE_FOG
 	vFogDepth = - mvPosition.z;
-	vFogWorldY = cameraPosition.y + dot( viewMatrix[1].xyz, mvPosition.xyz );
+	vFogWorldPos = cameraPosition + vec3(
+		dot( viewMatrix[0].xyz, mvPosition.xyz ),
+		dot( viewMatrix[1].xyz, mvPosition.xyz ),
+		dot( viewMatrix[2].xyz, mvPosition.xyz ) );
 #endif`
 
   THREE.ShaderChunk.fog_pars_fragment = /* glsl */ `
 #ifdef USE_FOG
 	uniform vec3 fogColor;
 	varying float vFogDepth;
-	varying float vFogWorldY;
+	varying vec3 vFogWorldPos;
 	#ifdef FOG_EXP2
 		uniform float fogDensity;
 	#else
@@ -127,10 +144,18 @@ function installHeightFogChunks(heightRef, heightFalloff) {
 	#endif
 #endif`
 
+  // fogDensity is the WORLD-SPACE constant k (bible §4: 0.0072). No camera
+  // term may ever enter this expression — the haze must read identically at
+  // any dolly. Height falloff per §4: k · exp(−max(0, y − ${REF}) / ${FALL}).
+  // Waterfall mist per §4: +${MB}× k within ${MR} m of the falls base
+  // (${MX}, ${MZ}), below y ${MY}, smoothly feathered on both masks.
   THREE.ShaderChunk.fog_fragment = /* glsl */ `
 #ifdef USE_FOG
 	#ifdef FOG_EXP2
-		float fogHeightK = fogDensity * exp( - max( vFogWorldY - ${REF}, 0.0 ) / ${FALL} );
+		float fogHeightK = fogDensity * exp( - max( vFogWorldPos.y - ${REF}, 0.0 ) / ${FALL} );
+		float fogMist = ( 1.0 - smoothstep( ${MR} * 0.5, ${MR}, distance( vFogWorldPos.xz, vec2( ${MX}, ${MZ} ) ) ) )
+			* ( 1.0 - smoothstep( ${MY} - 2.0, ${MY}, vFogWorldPos.y ) );
+		fogHeightK *= 1.0 + ${MB} * fogMist;
 		float fogFactor = 1.0 - exp( - fogHeightK * fogHeightK * vFogDepth * vFogDepth );
 	#else
 		float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
@@ -309,31 +334,28 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
     hemiGround: '#66744f',
     hemiIntensity: 0.55, // bible §4 verbatim (see sunIntensity note)
 
-    // fog — see the header block for the full derivation. apply() keeps the
-    // derived values in sync; tune via fogDensityBase / fogDolly /
-    // fogWaterAtten, NOT by writing fogDensity directly (apply() overwrites it).
+    // fog — apply() keeps the derived values in sync; tune via fogDensityBase
+    // / fogWaterAtten, NOT by writing fogDensity directly (apply() overwrites
+    // it).
     fogColor: '#bcc8b2',
-    fogDensityBase: 0.0072, // bible §4 verbatim, authored at the §2 53 m dolly
-    fogDollyRef: 53,        // dolly the bible authored k against (§2)
-    // INTEGRATION (round 2): the shipped rig now boots at 30.5 m with vFOV 44°
-    // — the same 12.31 m hero anchor as the bible's 53 m / 26°, so the frame's
-    // near-field scale is identical, but the frame reaches ~25→250 m instead of
-    // 42→135 m. That IS the depth band the bible authored k = 0.0072 against
-    // (40 % at 100 m, 69 % at 150 m, 87 % at 200 m), so the ratio is 1: haze
-    // reads only where frame01 has it, in the dissolving top band, and the
-    // sharp band keeps its colour. Dividing by the dolly here would have
-    // *tripled* the density and put the milky veil straight back.
-    fogDolly: 53,
+    // Bible §4 verbatim. k is a WORLD-SPACE CONSTANT: it must never be scaled
+    // by camera dolly, view distance or viewport size (round-3 defect — see
+    // header). The framing solver may move the camera freely; this stays.
+    fogDensityBase: 0.0072,
     // Published water density multiplier (assignment: the sea must keep its
     // saturation instead of greying out). 0.26 keeps the mid-left ocean band
     // under ~5 % sage — ≥55 % HSV saturation vs OCEAN_MID #2e6f95 after the
     // grade — while the far NW inlet still fades under distance + DOF.
     fogWaterAtten: 0.26,
     // DERIVED (apply() recomputes; initial values match the defaults above):
-    fogLandDensity: 0.0072 * (53 / 82),        // scene.fog + height chunks
-    fogDensity: 0.0072 * (53 / 82) * 0.26,     // PUBLISHED — water.js live-reads
+    fogLandDensity: 0.0072,             // scene.fog + height chunks
+    fogDensity: 0.0072 * 0.26,          // PUBLISHED — water.js live-reads
     fogHeightRef: 8,        // baked into the land chunks at install; water.js
     fogHeightFalloff: 38,   // reads both live per frame
+    // Waterfall mist (bible §4): +15 % local fog within 30 m of the falls
+    // base, below y 12. Baked into the chunk at install; §1: pool (−31, −33),
+    // water +11.
+    fogMist: { x: -31, z: -33, radius: 30, yTop: 12, boost: 0.15 },
 
     // dome
     domeRadius: 600, // stays inside the diorama rig's 700 m far plane
@@ -375,7 +397,7 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
   // Height-falloff fog for every built-in-fog material (terrain, props,
   // scatter, hero). Must run before the first render (it does: materials
   // compile at first renderer.render, well after construction).
-  installHeightFogChunks(params.fogHeightRef, params.fogHeightFalloff)
+  installHeightFogChunks(params.fogHeightRef, params.fogHeightFalloff, params.fogMist)
 
   const group = new THREE.Group()
   group.name = 'SkyRig'
@@ -494,9 +516,9 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
     hemi.intensity = params.hemiIntensity
 
     // derive land + published-water densities (see header). fogDensity is the
-    // value water.js live-reads — it must stay the ATTENUATED one.
-    const kLand =
-      params.fogDensityBase * (params.fogDollyRef / Math.max(1e-3, params.fogDolly))
+    // value water.js live-reads — it must stay the ATTENUATED one. kLand is
+    // the world-space constant, verbatim — NO camera/dolly/viewport term.
+    const kLand = params.fogDensityBase
     params.fogLandDensity = kLand
     params.fogDensity = kLand * params.fogWaterAtten
     fog.color.set(params.fogColor)
