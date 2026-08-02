@@ -1,20 +1,22 @@
 // ---------------------------------------------------------------------------
-// src/world/terrain.js — Aetherbound overworld terrain
+// src/world/terrain.js — Aetherbound overworld terrain (FRAMING.md solve)
 //
-// The stage of the frame01 diorama: a late-morning coastal grassland shelf
-// above a western ocean, a banded limestone massif with a 9 m waterfall,
-// terraced northern plateaus, a castle plateau at the right third, ochre
-// roads, wheat paddocks and a river that runs from the highland to the sea.
+// The stage of the frame01 diorama, rebuilt to the FRAMING §4 tabletop-
+// miniature layout: everything the camera sees lives within ~90 m. A grass
+// shelf at y ~10.4, the central limestone massif (bench lips y 13 / 15,
+// grassy summit knob y 16.5 at (−32.5, +5.5)) with the 4 m waterfall off its
+// E shoulder terrace, the castle plateau flat y 10.5, the hard-lipped west
+// coast (lip y 8–8.5 straight into the sea), the inlet notch under the west
+// trestle, a rolling north valley y 10–14, and the S-curve road graph.
 //
-// The heightfield is AUTHORED, not raw fBm: distance-field landforms
-// QUANTISED into hard 4–11 m terrace benches (flat lit shelf tops,
-// near-vertical shadowed risers — the strata are geometry, not a stripe
-// texture), a hard-lipped near-vertical coast, spline-carved river/inlet
-// with low hugging lowland banks, graded road corridors, with noise only as
-// surface detail. All queries (height / normal / slope / biome / isWater /
-// onRoad / waterHeight) read precomputed grids and are allocation-free;
-// height() reproduces the rendered triangulation exactly, so anything
-// snapped to it sits on the visible surface.
+// The heightfield is AUTHORED, not raw fBm: stacked bench STAMPS quantise
+// every cliff zone into 1.5–2.5 m terraces in the GEOMETRY (flat lit shelf
+// tops, near-vertical shadowed risers); the strata texture is gated by
+// surface normal only — never banded by elevation isolines. All queries
+// (height / normal / slope / biome / isWater / onRoad / waterHeight) read
+// precomputed grids and are allocation-free; height() reproduces the
+// rendered triangulation exactly, so anything snapped to it sits on the
+// visible surface. Ground at (−38, +18) is exactly 10.4.
 //
 // Contract: export function createTerrain({ size, seed, renderer }) : Terrain
 // ---------------------------------------------------------------------------
@@ -352,11 +354,11 @@ const WFALL_BASE = { x: -30, z: 2, y: 8.5 }
 // --- its head at (−55, +6); the west trestle bridge (−59, +9.5, deck 12)
 // --- spans it. Water is sea level 0.
 const INLET_PTS = [
-  { x: -66, z: 17, w: 14 }, // open water mouth
-  { x: -62, z: 13, w: 10 },
-  { x: -59, z: 9.5, w: 7.0 }, // bridge crossing
-  { x: -56.5, z: 7, w: 5.0 },
-  { x: -55, z: 6, w: 3.6 }, // inlet head
+  { x: -66, z: 15, w: 9.0 }, // open water mouth
+  { x: -62, z: 13, w: 7.0 },
+  { x: -59, z: 8.8, w: 5.0 }, // bridge crossing (deck midpoint −59, +9.5)
+  { x: -56.5, z: 6.8, w: 3.6 },
+  { x: -55, z: 6, w: 2.6 }, // inlet head
 ]
 
 // --- Roads (FRAMING §4/§8, BINDING): S entry crosses the bottom edge near
@@ -385,7 +387,7 @@ const ROAD_DEFS = [
   {
     name: 'west', // fork → inlet trestle bridge SE abutment
     pts: [
-      { x: -49.5, z: 8.5 }, { x: -52.5, z: 9 }, { x: -55, z: 10.2 }, { x: -56.6, z: 11.9 },
+      { x: -49.5, z: 8.5 }, { x: -52.5, z: 9.2 }, { x: -54.3, z: 10.8 }, { x: -55.5, z: 13 },
     ],
   },
   {
@@ -421,8 +423,8 @@ const PADS = [
   // bridge abutments — decks must meet solid ground at both ends
   { x: -41, z: 2.9, r: 2.6, h: 13.5, kind: 'abutment' }, // north bridge S
   { x: -41, z: -4.9, r: 2.6, h: 13.5, kind: 'abutment' }, // north bridge N
-  { x: -56.6, z: 11.9, r: 2.6, h: 12.0, kind: 'abutment' }, // inlet SE
-  { x: -61.4, z: 7.1, r: 2.4, h: 12.0, kind: 'stack' }, // inlet NW sea-stack
+  { x: -55.5, z: 13, r: 2.2, h: 12.0, kind: 'abutment' }, // inlet SE
+  { x: -62.5, z: 6, r: 2.4, h: 12.0, kind: 'stack' }, // inlet NW sea-stack
 ]
 
 // --- Forest stands (authored clump anchors): centre, radius, strength
@@ -475,21 +477,24 @@ const POI_DEFS = [
 
 // --- Massif + cliff stamp constants (shared by the height author and the
 // --- rock stencil so texture always agrees with geometry)
-const M_APRON = { cx: -35, cz: 4.5, rx: 10, rz: 10.5, top: 11.3, rise: 1.7, fw: 2.2, wob: 0.5 }
-const M_TIER1 = { cx: -36.3, cz: 4, rx: 6.8, rz: 7.0, top: 13.0, rise: 2.8, fw: 1.6, wob: 0.5 }
-const M_TIER2 = { cx: -33.8, cz: 5, rx: 4.8, rz: 4.6, top: 15.0, rise: 2.3, fw: 1.5, wob: 0.45 }
-const M_KNOB = { cx: -32.5, cz: 5.5, rx: 3.9, rz: 3.0, top: 16.5, rise: 1.8, fw: 1.5, wob: 0.3 }
-const M_SHLDR = { cx: -28.7, cz: 3.2, rx: 3.2, rz: 4.0, top: 12.5, rise: 3.0, fw: 1.4, wob: 0.4 }
-const M_NFLNK = { cx: -36, cz: -5.5, rx: 6.0, rz: 3.2, top: 12.8, rise: 2.2, fw: 2.6, wob: 0.5 }
+// `rise` is the stamp face's full descent (skirt bottom = top − rise); it is
+// kept deep enough to duck under every neighbouring surface so smax stacking
+// never floats a skirt — the VISIBLE band height is lip-to-lip (1.5–2.5 m).
+const M_APRON = { cx: -35, cz: 4.5, rx: 10, rz: 11, top: 11.3, rise: 2.2, fw: 2.2, wob: 0.5 }
+const M_TIER1 = { cx: -36.3, cz: 4, rx: 6.8, rz: 7.0, top: 13.0, rise: 4.0, fw: 1.6, wob: 0.5 }
+const M_TIER2 = { cx: -34.5, cz: 4.5, rx: 3.6, rz: 3.8, top: 15.0, rise: 4.5, fw: 1.5, wob: 0.45 }
+const M_KNOB = { cx: -33, cz: 6, rx: 3.9, rz: 3.0, top: 16.5, rise: 4.5, fw: 1.5, wob: 0.3 }
+const M_SHLDR = { cx: -28.7, cz: 3.2, rx: 3.2, rz: 4.0, top: 12.5, rise: 4.5, fw: 1.4, wob: 0.4 }
+const M_NFLNK = { cx: -36, cz: -5.5, rx: 6.0, rz: 3.2, top: 12.8, rise: 3.0, fw: 2.6, wob: 0.5 }
 const BACKDROP = [
-  { cx: -15.5, cz: 5, rx: 5.5, rz: 5.5, top: 13.0, rise: 2.4, fw: 1.5, wob: 0.5 },
-  { cx: -9, cz: 3.5, rx: 6.2, rz: 5.8, top: 15.2, rise: 2.3, fw: 1.5, wob: 0.5 },
+  { cx: -15.5, cz: 5, rx: 5.5, rz: 5.5, top: 13.0, rise: 3.5, fw: 1.5, wob: 0.5 },
+  { cx: -9, cz: 3.5, rx: 6.2, rz: 5.8, top: 15.2, rise: 5.5, fw: 1.5, wob: 0.5 },
 ]
 const KNOLLS = [
-  { cx: -45, cz: -25, rx: 5.5, rz: 4.5, top: 13.4, rise: 2.4, fw: 1.5, wob: 0.5 },
-  { cx: -45.5, cz: -24.5, rx: 3.2, rz: 2.6, top: 15.4, rise: 2.2, fw: 1.4, wob: 0.4 },
-  { cx: -28, cz: -20, rx: 5.0, rz: 4.2, top: 13.2, rise: 2.3, fw: 1.5, wob: 0.5 },
-  { cx: -27.6, cz: -20.3, rx: 2.9, rz: 2.5, top: 15.5, rise: 2.4, fw: 1.4, wob: 0.4 },
+  { cx: -45, cz: -25, rx: 5.5, rz: 4.5, top: 13.4, rise: 3.4, fw: 1.5, wob: 0.5 },
+  { cx: -45.5, cz: -24.5, rx: 3.2, rz: 2.6, top: 15.4, rise: 4.5, fw: 1.4, wob: 0.4 },
+  { cx: -28, cz: -20, rx: 5.0, rz: 4.2, top: 13.2, rise: 3.4, fw: 1.5, wob: 0.5 },
+  { cx: -27.6, cz: -20.3, rx: 2.9, rz: 2.5, top: 15.5, rise: 4.6, fw: 1.4, wob: 0.4 },
 ]
 
 // Rock stencil: 1 on the massif's limestone benches (texture follows the
@@ -631,14 +636,15 @@ function gradeRoadHeights(pts, hs, pinnedIn) {
       }
     }
   }
-  // clamp grade to 15 % by iterative relaxation; excess spreads across the
-  // free interior, never into pinned points
+  // clamp grade to 20 % by iterative relaxation; excess spreads across the
+  // free interior, never into pinned points (the switchback climbs 11 → 13.5
+  // in ~13 m, so 15 % could never converge between its pinned ends)
   const clampGrade = () => {
     for (let pass = 0; pass < 260; pass++) {
       let worst = 0
       for (let i = 0; i < n - 1; i++) {
         const ds = Math.max(0.25, pts[i + 1].s - pts[i].s)
-        const maxDh = 0.15 * ds
+        const maxDh = 0.2 * ds
         const dh = out[i + 1] - out[i]
         if (Math.abs(dh) <= maxDh) continue
         const over = Math.abs(dh) - maxDh
@@ -860,32 +866,32 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
 
   // ---- H. west coast: hard lip y 8–8.5, near-vertical banded face to sea -
   {
-    const d = x - coastX(z)
-    if (d < 7.5) {
-      const lipY = 8.25 + 0.2 * vnoise(z * 0.13 + 6.6, 3.3)
-      // beach cove (−78, −40) and the small pier cove (−64.5, −16.3) soften
-      // the wall into a walkable pocket
+    let d = x - coastX(z)
+    if (d < 6.0) {
+      const lipY = 8.35 + 0.12 * vnoise(z * 0.13 + 6.6, 3.3) // lip y 8.23–8.47
+      // beach cove (−78, −40) and the small pier cove (−64.8, −16.3): the
+      // cove pulls the effective coastline inland so the pocket floods to a
+      // shallow sandy bay instead of holding the cliff wall
       const cove = Math.max(
         Math.exp(-((x + 78) * (x + 78) + (z + 40.5) * (z + 40.5)) / 46),
         Math.exp(-((x + 64.8) * (x + 64.8) + (z + 16.3) * (z + 16.3)) / 22)
       )
-      if (d > -0.6) {
-        // shelf → lip: hold a level lip crest, blend to inland by ~6 m
-        const w = 1 - sstep(1.2, 6.0, d)
+      d -= 6.5 * cove
+      if (d > -1.1) {
+        // shelf → lip: hold a level lip crest, blend to inland within ~4 m
+        const w = 1 - sstep(1.0, 4.0, d)
         h = lerp(h, lipY, w)
-        if (cove > 0.03) h = lerp(h, 0.9, cove * 0.94)
       } else {
-        // the face: near-vertical drop quantised into 1.8–2.4 m strata
+        // the face: near-vertical drop quantised into 1.8–2.6 m strata
         // benches (geometry, not stripes), then the sea floor
         const faceW = 2.6
-        const t = clamp01((-0.6 - d) / faceW)
+        const t = clamp01((-1.1 - d) / faceW)
         const floor = -0.5 - 5.4 * sstep(1.5, 11, -d) + 0.25 * fbm(x * 0.05 + 2.8, z * 0.05, 2, 2.2, 0.5)
         let hh = lerp(lipY, floor, sstep(0, 1, Math.pow(t, 0.85)))
         if (hh > 0.8 && cove < 0.25) {
           const wobg = 0.8 * fbm(z * 0.11 + 3.3, x * 0.11, 2, 2.2, 0.5)
           hh = clamp(benchify(hh, lipY, 2.1 + 0.5 * vnoise(z * 0.09 + 8.2, 2.7), wobg, 0.8), floor, lipY)
         }
-        if (cove > 0.03) hh = lerp(hh, Math.max(floor, 0.35), cove)
         h = Math.min(h, hh)
       }
     }
@@ -912,8 +918,10 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
       const lv = sampleField(fs, fs.riverLevel, x, z)
       const gorge = sstep(11.5, 9.8, lv) // 1 on the gorge run, 0 on headwater
       if (s < hw) {
-        // bed: shallow rocky channel (deep enough to read as water)
-        const bed = lv - 0.62 + Math.pow(s / hw, 2) * 0.34
+        // bed: shallow rocky channel (deep enough to read as water; the
+        // gorge run stays shallower so its floor sits near the §4 levels)
+        const depth = lerp(0.62, 0.35, gorge)
+        const bed = lv - depth + Math.pow(s / hw, 2) * depth * 0.5
         if (bed < h) h = bed
       } else {
         const u = (s - hw) / bankW
@@ -921,17 +929,30 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
         const w = 1 - sstep(0.62, 1.0, u)
         if (h < bankY) h = lerp(h, bankY, w) // fill low ground: hold the water
         else {
-          // headwater: CUT high ground down to a hugging grass lip so the
-          // stream reads as open water from the 28° camera. Gorge run: keep
-          // a narrow floor margin + one mid-ledge, then let the stamped
-          // cliff walls stand — the falls face and slot walls come free.
-          const hug = lerp(h, bankY, w) // low hugging banks
+          // headwater: CUT gently-high banks down to a hugging grass lip so
+          // the stream reads as open water from the 28° camera — but never
+          // shave real cliffs (> ~2 m over the bank line: the summit knob,
+          // the massif NE notch walls). Gorge run: keep a narrow floor
+          // margin + one mid-ledge bench, then let the stamped cliff walls
+          // stand — the falls face and slot walls come free.
+          const over = h - bankY
+          const hug = lerp(h, bankY, w * sstep(2.4, 1.0, over)) // shave low banks only
           let walled = h
           if (u < 0.42) walled = Math.min(walled, lv + 0.35) // floor margin
           else if (u < 0.78) walled = Math.min(walled, lv + 2.3) // mid-ledge bench
           h = lerp(hug, walled, gorge)
         }
       }
+    }
+    // bedrock sill at the falls lip (−30.5, +3) y 12.5: the hard limestone
+    // edge the sheet pours over — keeps the lip at the verified height even
+    // though the channel field blends levels across the 4 m drop. Gated to
+    // the UPSTREAM half-plane (pool→lip direction) so the plunge pool below
+    // the face is never raised.
+    const dl2 = (x + 30.5) * (x + 30.5) + (z - 3) * (z - 3)
+    if (dl2 < 2.9 && (x + 30.5) * -0.447 + (z - 3) * 0.894 > -0.35) {
+      const sill = 12.45 - 0.55 * Math.sqrt(dl2)
+      if (h < sill) h = sill
     }
   }
 
@@ -987,7 +1008,7 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
 
   // ---- N. hard ceilings (FRAMING §8.5) -----------------------------------
   if (x > -50 && x < -20 && z > -10 && z < 15 && h > 17) h = 17 // massif crown is the local max
-  if (z < -8 && z > -45 && h > 16) h = 16 // north valley band
+  if (z < -8 && z > -47 && h > 16) h = 16 // north valley band (z −8…−45 + mesh feather)
 
   // ---- O. hero anchor: ground at (−38, +18) is EXACTLY 10.4 --------------
   {
@@ -1116,13 +1137,16 @@ function buildBiomeAndControl(size, fs, height) {
       if (is < iw + 2.0) wet = Math.max(wet, 1 - sstep(iw * 0.5, iw + 2.0, is))
       wet = Math.max(wet, sstep(1.1, 0.1, h) * sstep(10, 2, Math.abs(dCoast)))
 
-      const rockF = sstep(0.86, 0.60, ny)
+      // rock stencil: steep faces by NORMAL (never by elevation) + the
+      // massif's limestone benches by stamp geometry, grassy knob carved out
+      const stone = massifStoneAt(x, z)
+      const rockF = Math.max(sstep(0.86, 0.6, ny), stone * 0.95)
       const bedM = rs < rw * 1.08 ? 1 - sstep(rw * 0.8, rw * 1.08, rs) : 0
-      // sand: the pier cove pocket + submerged shore shelf only — the open
-      // coast is cliff-into-surf (frame01), never a sand strip
-      const dCove = Math.hypot(x + 79, z + 8)
+      // sand: the beach cove (−78, −40) + pier pocket (−64.8, −16.3) +
+      // submerged shore shelf only — the open coast is cliff-into-surf
+      const dCove = Math.min(Math.hypot(x + 78, z + 40.5), Math.hypot(x + 64.8, z + 16.3))
       const sandM = Math.max(
-        sstep(14, 8, dCove) * sstep(1.7, 0.35, h),
+        sstep(10, 5.5, dCove) * sstep(1.7, 0.35, h),
         sstep(0.55, -0.4, h) * sstep(9, 1.5, Math.abs(dCoast))
       )
 
@@ -1141,7 +1165,7 @@ function buildBiomeAndControl(size, fs, height) {
       else if (fieldM > 0.45) b = B_FIELD
       else if (sandM > 0.55 && ny > 0.72) b = B_BEACH
       else if (snowM > 0.5) b = B_SNOW
-      else if (ny < 0.74) b = B_ROCK
+      else if (ny < 0.74 || stone > 0.6) b = B_ROCK
       else if (forestM > 0.5 && h > 1) b = B_FOREST
       biomes[idx] = b
 
@@ -1830,20 +1854,24 @@ uniform vec3 uOceanFloor;`
   road *= mix(vec3(0.82, 0.78, 0.73), vec3(1.06), rCore);
   road *= mix(0.94, 1.06, mac.g);
 
-  // ---- rock: wall projections keep strata horizontal on RISERS only ----
-  // Strata frequency is tied to the terrace geometry: ~15 bands per 14 m
-  // tile ≈ 0.95 m per stratum → 6–8 bands on a 5.4–7.8 m riser, exactly the
-  // banding frame01 shows. A slow vertical phase wander (uMacro at ~90 m)
-  // breaks the "same stripe everywhere" tiling, and shelf TOPS switch to a
-  // flat weathered texture — bands projected top-down read as contour rings.
+  // ---- rock: strata are gated by SURFACE NORMAL, never by elevation ----
+  // The terraces are quantised in the heightfield, so risers are genuinely
+  // near-vertical (ny < ~0.5) and bench tops genuinely flat. The banded
+  // strata texture exists ONLY on those near-vertical faces (where its
+  // horizontal layering is real bedding, not an isoline); everything
+  // flatter — bench tops, shoulders, blend cells — gets the weathered flat
+  // limestone. A stripe can therefore never trace an elevation contour
+  // across a walkable slope. ~15 bands per 8 m tile ≈ 0.55 m per stratum
+  // → 3–4 bands per 1.5–2.5 m riser (frame01's miniature banding); a slow
+  // vertical phase wander (uMacro at ~90 m) breaks band-phase repetition.
   float axf = smoothstep(0.35, 0.65, abs(nrm.x) / (abs(nrm.x) + abs(nrm.z) + 1e-4));
   float sph = (mac.g - 0.5) * 4.0;
-  vec3 wallC = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y + sph) / 14.0).rgb,
-                   texture2D(uRock, vec2(vWPos.z, -vWPos.y + sph) / 14.0).rgb, axf);
-  vec3 wallF = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 6.8).rgb,
-                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 6.8).rgb, axf);
-  vec3 rock = mix(wallC, wallF, 0.12);
-  rock = mix(rock, texture2D(uRockTop, wxz / 9.5).rgb, smoothstep(0.55, 0.82, nrm.y));
+  vec3 wallC = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y + sph) / 8.0).rgb,
+                   texture2D(uRock, vec2(vWPos.z, -vWPos.y + sph) / 8.0).rgb, axf);
+  vec3 wallF = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 4.2).rgb,
+                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 4.2).rgb, axf);
+  vec3 rock = mix(wallC, wallF, 0.15);
+  rock = mix(rock, texture2D(uRockTop, wxz / 9.5).rgb, smoothstep(0.30, 0.55, nrm.y));
   rock *= mix(0.90, 1.10, mac.r);
 
   vec3 sand = texture2D(uSand, wxz / 3.1).rgb;
@@ -1916,11 +1944,15 @@ export function createTerrain(opts = {}) {
     const hs = new Array(res.length)
     for (let i = 0; i < res.length; i++) hs[i] = authorHeight(res[i].x, res[i].z, fs, false, false)
     // pin road points that sit inside flat pad cores: their pre-heights are
-    // already the pad level, and grading must not smear ramps across pads
+    // already the pad level, and grading must not smear ramps across pads.
+    // The hero anchor (−38, +18) is pinned too — its pre-height is exactly
+    // 10.4 (stage O), and grading must never move it.
     const pinned = res.map((p) => {
+      if (Math.hypot(p.x + 38, p.z - 18) < 1.1) return true // hero, exactly 10.4
+      if (Math.hypot(p.x + 31, p.z - 17) < 1.1) return true // saddle dip y 9.7
       for (const pad of PADS) {
         const dc = Math.hypot(p.x - pad.x, p.z - pad.z)
-        const rr = pad.kind === 'castle' ? 9.0 : pad.r * 0.6
+        const rr = pad.kind === 'castle' ? 5.0 : pad.r * 0.6
         if (dc < rr) return true
       }
       return false
@@ -2051,7 +2083,7 @@ export function createTerrain(opts = {}) {
 
   const poi = POI_DEFS.map((p) => {
     let y
-    if (p.kind === 'bridge') y = p.name.indexOf('Trestle') >= 0 ? 18.0 : 26.0
+    if (p.kind === 'bridge') y = p.name.indexOf('Inlet') >= 0 ? 12.0 : 13.5 // deck heights (§4)
     else y = height(p.x, p.z)
     return { name: p.name, x: p.x, z: p.z, y, kind: p.kind }
   })
@@ -2076,14 +2108,14 @@ export function createTerrain(opts = {}) {
       z: WFALL_LIP.z,
       lipY: WFALL_LIP.y,
       baseY: WFALL_BASE.y,
-      drop: WFALL_LIP.y - WFALL_BASE.y,
-      width: 4.4,
+      drop: WFALL_LIP.y - WFALL_BASE.y, // 4 m single drop (§4)
+      width: 2.5,
       dir: { x: fallDx / fallLen, z: fallDz / fallLen },
     },
     roads: roadsMeta,
     extras: {
-      pier: { x: -76, z: -8, y: 0.55, angle: Math.atan2(0.38, -0.92), length: 5 },
-      fork: { x: -44, z: 2, y: height(-44, 2) },
+      pier: { x: -64, z: -16, y: 0.55, angle: Math.atan2(0.38, -0.92), length: 5 },
+      fork: { x: -49.5, z: 8.5, y: height(-49.5, 8.5) },
       heroSpawn: { x: -38, z: 18, y: height(-38, 18) },
     },
   }
