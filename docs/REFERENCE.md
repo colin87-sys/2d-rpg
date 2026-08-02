@@ -90,3 +90,13 @@ the same UI system under a completely different palette.**
 6. **Density and craft** — no bare terrain, no repeated identical props in a line, no visible
    tiling, no z-fighting, no hard billboard intersections with the ground.
 7. **Shipped-game UI** — the minimap and any HUD must look designed, not debug.
+
+---
+
+## See also: `REFERENCE_MEASURED.md`
+
+That file carries the same five frames read **quantitatively** — colours sampled off the actual
+pixels as hex, depth-of-field band positions as fractions of frame height, and a scale chart
+counted against the hero sprite. Nobody on the implementation team can see the reference images,
+so those numbers are the closest thing to seeing them. **Read it, and prefer its numbers over
+your own intuition.**
