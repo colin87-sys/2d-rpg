@@ -134,13 +134,13 @@ function sstep(e0, e1, x) {
 // spacing 1.2–2.2 m, no visible ground) — round 1's 0.55 kept every crown
 // isolated and read as park scatter.
 const SPECIES = {
-  pine_a:   { kind: 'tree',  baseH: 2.80, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
-  pine_b:   { kind: 'tree',  baseH: 2.65, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
-  pine_c:   { kind: 'tree',  baseH: 2.95, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
-  pine_snow:{ kind: 'tree',  baseH: 2.75, slopeMax: 0.60, clearR: 0.38, sway: 0.015, blobA: 0.46, hueAmp: 0.05 },
-  oak_a:    { kind: 'tree',  baseH: 1.95, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.15 },
-  oak_b:    { kind: 'tree',  baseH: 1.85, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.15 },
-  oak_c:    { kind: 'tree',  baseH: 2.05, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.12 },
+  pine_a:   { kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 2.80, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
+  pine_b:   { kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 2.65, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
+  pine_c:   { kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 2.95, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
+  pine_snow:{ kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 2.75, slopeMax: 0.60, clearR: 0.38, sway: 0.015, blobA: 0.46, hueAmp: 0.05 },
+  oak_a:    { kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 1.95, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.15 },
+  oak_b:    { kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 1.85, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.15 },
+  oak_c:    { kind: 'tree', vLo: 0.76, vHi: 0.96,  baseH: 2.05, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.12 },
   blossom_a:{ kind: 'tree',  baseH: 2.00, slopeMax: 0.45, clearR: 0.36, sway: 0.018, blobA: 0.50 },
   blossom_b:{ kind: 'tree',  baseH: 1.90, slopeMax: 0.45, clearR: 0.36, sway: 0.018, blobA: 0.50 },
   blossom_c:{ kind: 'tree',  baseH: 2.10, slopeMax: 0.45, clearR: 0.36, sway: 0.018, blobA: 0.50 },
@@ -156,8 +156,8 @@ const SPECIES = {
   // Tufts/flowers sized to the top of the bible band + lifted value range so
   // pasture reads DRESSED — round 1's 0.30 m neutral-tint tufts vanished into
   // the ground texture and left 40 m² patches effectively bald (hard fail).
-  grass_tuft_a: { kind: 'ground', baseH: 0.37, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14, vLo: 1.00, vHi: 1.15, hueAmp: 0.07 },
-  grass_tuft_b: { kind: 'ground', baseH: 0.34, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14, vLo: 1.00, vHi: 1.15, hueAmp: 0.07 },
+  grass_tuft_a: { kind: 'ground', baseH: 0.40, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14, vLo: 1.00, vHi: 1.15, hueAmp: 0.07 },
+  grass_tuft_b: { kind: 'ground', baseH: 0.37, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14, vLo: 1.00, vHi: 1.15, hueAmp: 0.07 },
   fern_a:   { kind: 'ground', baseH: 0.34, slopeMax: 0.55, clearR: 0.35, sway: 0.020, blobA: 0.16, vLo: 0.96, vHi: 1.08 },
   flower_a: { kind: 'ground', baseH: 0.30, slopeMax: 0.42, clearR: 0.28, sway: 0.030, blobA: 0.12, vLo: 1.02, vHi: 1.16 },
   flower_b: { kind: 'ground', baseH: 0.30, slopeMax: 0.42, clearR: 0.28, sway: 0.030, blobA: 0.12, vLo: 1.02, vHi: 1.16 },
@@ -183,10 +183,10 @@ const SPECIES = {
 // while the cap, not clearR, was the governor. Raised until the caps go slack
 // at the tightened grid (§4.1 step 1.22 m vs 1.57 m crowns → 20–40 % overlap).
 const BUDGET = {
-  conifer: 11500, oak: 11500, bush: 2300, rockAll: 950, tuft: 12000,
+  conifer: 11500, oak: 11500, bush: 2300, rockAll: 950, tuft: 18000,
   // wheat is thinned by the paddock fill spacing (see §4.7), not by this cap —
   // the cap must stay slack or it truncates the last paddock scanned.
-  wheat: 6000, flower: 850, fern: 500, blossom: 400, bamboo: 120,
+  wheat: 6000, flower: 1400, fern: 500, blossom: 400, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
 
@@ -433,6 +433,14 @@ export function createScatter({ terrain, atlas, renderer }) {
       const ha = sp.hueAmp !== undefined ? sp.hueAmp : 0.055
       tr = v * (1 + ha * hj); tg = v * (1 + 0.25 * ha * hj); tb = v * (1 - 0.9 * ha * hj)
     }
+    // INTEGRATION (round 2): measured against frame01's paddock — the packed
+    // mass rendered at hue 78° / sat 0.53 / val 0.57 where the plate reads
+    // 49° / 0.60 / 0.67. The stalk art is authored right (WHEAT_* is hue ~42);
+    // what greens and dulls it is the olive hemisphere ground bounce plus the
+    // ground showing between stalks. A per-species warm bias on the mass —
+    // NOT a global grade rotation, which would drag the (already correct)
+    // grass and cliffs with it — lands the field on the plate.
+    if (sp.kind === 'crop') { tr *= 1.16; tg *= 1.10; tb *= 0.78 }
     const y = T.height(x, z) - (0.024 * h + 0.012) // base sinks 2–3 texels (§6)
     return {
       key, x, y, z, w, h,
@@ -837,7 +845,10 @@ export function createScatter({ terrain, atlas, renderer }) {
   // dense along the road feather, absent under closed canopy and on fields.
   {
     const rnd = rngFor('tufts')
-    const step = 1.85
+    // INTEGRATION (round 2): at 1.85 m the pasture still showed 40 m² patches
+    // of untextured green at the shipped framing (bible §8 hard fail) — the
+    // grass reads as a flat plane where frame01's is dressed everywhere.
+    const step = 1.48
     for (let gz = -LIM; gz <= LIM; gz += step) {
       for (let gx = -LIM; gx <= LIM; gx += step) {
         if ((counts.tuft || 0) >= BUDGET.tuft) break
@@ -1302,6 +1313,13 @@ export function createScatter({ terrain, atlas, renderer }) {
       `,
       transparent: true,
       depthWrite: false,
+      // INTEGRATION (round 2): makeBasis(t1·rx, n, (n×t1)·rz) is LEFT-handed
+      // (det = −rx·rz), which mirrors the quad and flipped every blob to
+      // back-facing — so not one contact shadow in the scene was ever drawn
+      // (bible instant-fail #4, and a big part of why the frame read brighter
+      // and flatter than frame01). DoubleSide is the safe fix: the decal is a
+      // flat ground quad, there is no back to hide.
+      side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -2,

@@ -186,10 +186,16 @@ const PAL = {
   GRASS_MID: 0x4a7429,
   GRASS_SHADOW: 0x2f5426,
   GRASS_DEEP: 0x1d3a1e,
-  CLIFF_LIT: 0xb7c2a8,
-  CLIFF_MID: 0x8a9880,
-  CLIFF_SHADOW: 0x5d7161,
-  CLIFF_CREVICE: 0x37473f,
+  // INTEGRATION (round 2): measured off frame01 — the plate's lit rock face is
+  // #b7c7ac at value 0.78 and its mid mass sits at 0.66, while the shipped
+  // terraces rendered at 0.35–0.63: the strata benches were there but read as
+  // dark contour stripes instead of a pale limestone massif. The ramp is
+  // lifted ~12 % (hue and the LIT anchor kept — LIT *is* the bible's sampled
+  // #b7c2a8) so the risers carry the silhouette rather than the shadow.
+  CLIFF_LIT: 0xc9d1bd,
+  CLIFF_MID: 0xa0ac93,
+  CLIFF_SHADOW: 0x6f8272,
+  CLIFF_CREVICE: 0x435248,
   ROAD_LIT: 0xc39a5c,
   ROAD_MID: 0xa57a45,
   ROAD_SHADOW: 0x6f5638,

@@ -177,7 +177,13 @@ export function createPlayer({ terrain, sheet, renderer }) {
   // ---- tunables (exposed non-contract on the returned object) -------------
   const params = {
     bodyMeters: 1.6,      // bible §5 — the hero IS the scale unit
-    mountScale: 1.0,      // mount shares the hero's 35 texels/m exactly
+    // INTEGRATION (round 2): with the rig anchored, the composited unit
+    // measured 1.98 m (0.081 fh) against frame01's 0.094 fh / the bible's
+    // 2.40 m mounted unit — the 1.60 m body is exact, the BIRD was short.
+    // 1.15 lifts the saddle and the mount together (the rider's offsets are
+    // keyed off mount.texel) and keeps texel density at 30.4/m, inside §6's
+    // 30–40 band.
+    mountScale: 1.15,
     seatLiftPx: 5,        // rider sits proud of the saddle row (mount texels):
                           // belt + coat hem read ABOVE the bird's back line
                           // (frame01), and the unit tops out at 2.16 m —
@@ -194,8 +200,12 @@ export function createPlayer({ terrain, sheet, renderer }) {
     stepMax: 1.15,        // max instantaneous height gain per metre stepped
     // Contact blobs (bible §8): hero 1.1 × 0.5 m α .55; the ridden unit gets
     // one SHARED blob sized for the mount (frame01's measured ~29×10 px).
-    blob: { rx: 0.55, rz: 0.25, alpha: 0.55 },
-    blobMounted: { rx: 0.56, rz: 0.34, alpha: 0.55 },
+    // INTEGRATION (round 2): with the decal finally drawing (see the DoubleSide
+    // note below) it measured thinner than frame01's, whose blob is a hard dark
+    // ellipse about 1.2× the mount's width. Widened to match the plate; the
+    // standing blob keeps the bible's 1.1 × 0.5 m.
+    blob: { rx: 0.55, rz: 0.27, alpha: 0.58 },
+    blobMounted: { rx: 0.68, rz: 0.40, alpha: 0.62 },
     dustPeakAlpha: 0.4,
     splashPeakAlpha: 0.52,
   }
@@ -359,6 +369,11 @@ export function createPlayer({ terrain, sheet, renderer }) {
     `,
     transparent: true,
     depthWrite: false,
+    // INTEGRATION (round 2): the blob basis (t1·rx, n, (n×t1)·rz) is
+    // left-handed, so the quad mirrors and culls as a back face — the repair's
+    // contact shadow was never actually drawn under the unit. Same fix as
+    // scatter.js's decal pass.
+    side: THREE.DoubleSide,
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -2,
@@ -790,6 +805,9 @@ export function createPlayer({ terrain, sheet, renderer }) {
     _m4.makeBasis(_bx, _by, _bz)
     _m4.setPosition(_bp)
     blobMesh.matrix.copy(_m4)
+    // matrixAutoUpdate is off: without this the decal's world matrix is only
+    // ever built on the first frame and the blob stays behind when he moves.
+    blobMesh.matrixWorldNeedsUpdate = true
 
     // ---- particles --------------------------------------------------------
     updatePuffs(dt)
