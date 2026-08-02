@@ -26,7 +26,9 @@
  *
  * PIPELINE (ART_BIBLE.md §7, in its exact order):
  *   scene → HDR target
- *     → bright pass (threshold 0.72, soft knee, Karis-tamed)
+ *     → bright pass (threshold 0.72 measured in the tonemapper's input space,
+ *       i.e. luma × exposure/0.6 — R2 fix, R1 measured pre-bake and nothing
+ *       ever bloomed; soft knee, Karis-tamed)
  *     → 5-level downsample pyramid (13-tap Jimenez) + tent-filtered upsample
  *       accumulation (scatter 0.85) = 6 mip levels of wide soft glow
  *   → ACES filmic (three-equivalent Hill fit, exposure 1.05) + colour grade
@@ -116,19 +118,19 @@ function makeDefaultParams() {
       warmAmount: 0.8,
       warmLo: 0.25,
       warmHi: 0.75,
-      saturation: 1.06,
+      saturation: 1.08,                  // bible §7 verbatim (R1 shipped 1.06)
       highlightDesat: 0.10,              // desat toward cream above start luma
       highlightDesatStart: 0.80,
       creamTint: '#fff3dc',
-      // Per-channel lift / gamma / gain — left neutral by post.js for the
-      // integrator to land the frame on the plate. Measured against frame01:
-      // a small contrast stretch (blacks −1 %, gain +7 %) takes the histogram
-      // from 10th-pct 50 / 90th-pct 153 to 41 / 161 (frame01: 41 / 176) and
-      // stddev 45 → 48 (frame01: 49). Blue gains least so the stretch does not
-      // pull the sage fog cold.
-      lift: [-0.010, -0.010, -0.008],
+      // Per-channel lift / gamma / gain — NEUTRAL (bible §7 verbatim), for the
+      // integrator to land the frame on the plate. R1 shipped a small stretch
+      // (lift −1 %, gain +7 %) whose histogram targets were measured against
+      // the fog-veiled frame — it was compensating for the veil, and with the
+      // height fog installed it just re-brightens the wash. Retune, if at all,
+      // only against the corrected atmosphere.
+      lift: [0.0, 0.0, 0.0],
       gamma: [1.0, 1.0, 1.0],
-      gain: [1.07, 1.06, 1.045],
+      gain: [1.0, 1.0, 1.0],
     },
 
     sharpen: {
@@ -191,17 +193,29 @@ const BRIGHT_FRAG = PRELUDE + /* glsl */ `
   uniform float uExposure;
 
   void main() {
+    // "Post-exposure luma" (bible §7) = the space the tonemapper actually
+    // consumes, which for three-equivalent ACESFilmic includes the 1/0.6
+    // exposure bake (the grade pass does c *= uExposure / 0.6 before the fit).
+    // ROUND-2 FIX: R1 thresholded luma * uExposure WITHOUT the bake. In a
+    // pi-normalised lighting rig nothing in the scene reaches 0.72 there
+    // (surf foam peaks near 0.64), so not one pixel ever passed the bright
+    // gate — the critic's "no bloom sits on wheat tips, foam or castle stone".
+    // Measured in the baked space: foam ~1.1, falls sheet >1.0, wheat tips
+    // ~0.95, sunlit castle stone ~0.95 clear the 0.72 gate; lit grass ~0.45
+    // and the road ~0.45 stay safely below it — exactly the bible's allowed
+    // list, nothing else.
+    float ex = uExposure * (1.0 / 0.6);
     vec3 s0 = texture2D(tSrc, vUv + uTexel * vec2(-0.75, -0.75)).rgb;
     vec3 s1 = texture2D(tSrc, vUv + uTexel * vec2( 0.75, -0.75)).rgb;
     vec3 s2 = texture2D(tSrc, vUv + uTexel * vec2(-0.75,  0.75)).rgb;
     vec3 s3 = texture2D(tSrc, vUv + uTexel * vec2( 0.75,  0.75)).rgb;
-    float w0 = 1.0 / (1.0 + luma(s0) * uExposure);
-    float w1 = 1.0 / (1.0 + luma(s1) * uExposure);
-    float w2 = 1.0 / (1.0 + luma(s2) * uExposure);
-    float w3 = 1.0 / (1.0 + luma(s3) * uExposure);
+    float w0 = 1.0 / (1.0 + luma(s0) * ex);
+    float w1 = 1.0 / (1.0 + luma(s1) * ex);
+    float w2 = 1.0 / (1.0 + luma(s2) * ex);
+    float w3 = 1.0 / (1.0 + luma(s3) * ex);
     vec3 c = (s0 * w0 + s1 * w1 + s2 * w2 + s3 * w3) / (w0 + w1 + w2 + w3);
 
-    float l = luma(c) * uExposure;
+    float l = luma(c) * ex;
     float soft = clamp(l - uThreshold + uKnee, 0.0, 2.0 * uKnee);
     soft = soft * soft / (4.0 * uKnee + 1e-4);
     float contrib = max(soft, l - uThreshold) / max(l, 1e-4);
