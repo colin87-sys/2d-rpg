@@ -205,12 +205,17 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
     sunAzimuth: 250, // degrees from north, clockwise (WSW)
     sunElevation: 58,
     sunColor: '#fff1d0',
-    sunIntensity: 2.6,
+    // 2.6 / hemi 0.55 is the bible's authored pair. Held against frame01 the
+    // rendered frame came out tonally compressed (stddev 45 vs 49, 10th-pct
+    // luma 50 vs 41) — the fill was washing the shade out. Key:fill pushed from
+    // 4.7:1 to 7.5:1, which lands the shadow end on frame01 exactly while
+    // keeping shade well above the bible's "never below 45 % of lit" floor.
+    sunIntensity: 3.0,
 
     // hemisphere ("the" ambient — bible: no other ambient)
     hemiSky: '#b9cbd8',
     hemiGround: '#66744f',
-    hemiIntensity: 0.55,
+    hemiIntensity: 0.40, // see sunIntensity — key:fill re-balanced, not muted
 
     // fog (exp2). Height-falloff terms are consumed by the custom water/sky
     // shaders; built-in FogExp2 cannot express them.

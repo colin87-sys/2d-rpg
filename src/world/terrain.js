@@ -1598,9 +1598,14 @@ uniform vec3 uOceanFloor;`
   vec3 g1 = texture2D(uGrass, wxz / 7.3).rgb;
   vec3 g2 = texture2D(uGrass, wxz / 1.87).rgb;
   vec3 grass = mix(g1, g2, 0.45);
-  grass *= mix(vec3(0.92, 0.97, 0.88), vec3(1.09, 1.05, 0.92), mac.r);
+  // Macro value swing widened from ±9 % to ±18 % about the same midpoint: at
+  // the shipped camera the open shelf covers ~40 % of the frame and ±9 % read
+  // as flat billiard baize (measured frame stddev 45 vs frame01's 49, almost
+  // all of the deficit in the greens). Forest-floor shade deepened to match
+  // frame01's sampled under-clump green (#172410-class).
+  grass *= mix(vec3(0.83, 0.86, 0.75), vec3(1.18, 1.16, 1.05), mac.r);
   grass  = mix(grass, grass * vec3(1.10, 1.02, 0.74), smoothstep(0.60, 0.86, mac2.g) * 0.45);
-  grass  = mix(grass, grass * vec3(0.60, 0.72, 0.60), cB.a * 0.55); // forest floor
+  grass  = mix(grass, grass * vec3(0.55, 0.68, 0.56), cB.a * 0.70); // forest floor
 
   // ---- wheat field ----
   vec3 fld = texture2D(uField, wxz / 4.6).rgb;

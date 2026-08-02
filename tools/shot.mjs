@@ -60,7 +60,9 @@ const run = async () => {
     logs.push(`warn: window.__POC.ready never became true within ${waitMs}ms`)
   }
   await page.waitForTimeout(Number(flag('settle', 3000)))
-  await page.screenshot({ path: out })
+  // SwiftShader needs well over Playwright's 30 s default to land a 1080p frame
+  // through the full post stack; without this the capture times out at --w 1920.
+  await page.screenshot({ path: out, timeout: 180000 })
   await browser.close()
 
   console.log(`\n=== console (${logs.length}) ===`)

@@ -95,7 +95,7 @@ function makeDefaultParams() {
       // 2.2× further from the focal plane and 7 px left it visibly in focus
       // (measured band gradient energy 16 at the top vs 33 in the sharp band —
       // frame01's ratio is 3×, ours was 2×). Scaled by the depth ratio.
-      maxTopPx: 12.0,    // max blur radius at the top edge, px @1080p
+      maxTopPx: 9.5,     // max blur radius at the top edge, px @1080p
       maxBotPx: 7.0,     // max blur radius at the bottom edge, px @1080p
       taps: 26,          // Vogel-disc gather taps (4..48)
       lumaThreshold: 0.60, // bokeh weighting: highlights above this bloom out
@@ -116,14 +116,19 @@ function makeDefaultParams() {
       warmAmount: 0.8,
       warmLo: 0.25,
       warmHi: 0.75,
-      saturation: 1.08,
+      saturation: 1.06,
       highlightDesat: 0.10,              // desat toward cream above start luma
       highlightDesatStart: 0.80,
       creamTint: '#fff3dc',
-      // Per-channel lift / gamma / gain, neutral by default (critic handles):
-      lift: [0.0, 0.0, 0.0],
+      // Per-channel lift / gamma / gain — left neutral by post.js for the
+      // integrator to land the frame on the plate. Measured against frame01:
+      // a small contrast stretch (blacks −1 %, gain +7 %) takes the histogram
+      // from 10th-pct 50 / 90th-pct 153 to 41 / 161 (frame01: 41 / 176) and
+      // stddev 45 → 48 (frame01: 49). Blue gains least so the stretch does not
+      // pull the sage fog cold.
+      lift: [-0.010, -0.010, -0.008],
       gamma: [1.0, 1.0, 1.0],
-      gain: [1.0, 1.0, 1.0],
+      gain: [1.07, 1.06, 1.045],
     },
 
     sharpen: {

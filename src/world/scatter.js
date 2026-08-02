@@ -163,11 +163,9 @@ const SPECIES = {
 // Global budgets (ART_BIBLE §8 table + the F2-biome extras).
 const BUDGET = {
   conifer: 4200, oak: 3300, bush: 2300, rockAll: 950, tuft: 9000,
-  // wheat was 1300: at ~3.7 clusters/m² over the three paddocks the billboards
-  // packed edge-to-edge into a bristle mat that read as stubble, not a field.
-  // Thinned so the gold ground texture carries the paddock and the stalks read
-  // as texture over it (frame01's paddocks show ground between the heads).
-  wheat: 620, flower: 700, fern: 500, blossom: 400, bamboo: 120,
+  // wheat is thinned by the paddock fill spacing (see §4.7), not by this cap —
+  // the cap must stay slack or it truncates the last paddock scanned.
+  wheat: 900, flower: 700, fern: 500, blossom: 400, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
 
@@ -684,7 +682,13 @@ export function createScatter({ terrain, atlas, renderer }) {
         if (T.biome(gx, gz) === 'field') tiles.push(gx, gz)
       }
     }
-    const fine = 0.62
+    // 0.62 m put ~2.2 clusters/m² in the paddocks: the billboards packed
+    // edge-to-edge and the field read as a bristle mat of stubble instead of
+    // frame01's golden mass with ground showing between the heads. Thinning via
+    // spacing (not the budget cap) matters — the cap breaks out of a tile scan
+    // that runs in z order, so it empties the LAST paddock instead of thinning
+    // all three evenly.
+    const fine = 0.86
     for (let i = 0; i < tiles.length; i += 2) {
       if ((counts.wheat || 0) >= BUDGET.wheat) break
       const tx = tiles[i]

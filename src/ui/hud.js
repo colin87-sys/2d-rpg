@@ -1025,7 +1025,8 @@ export function createHUD({ terrain, player }) {
     candidate: DEFAULT_REGION, // hysteresis: must win 2 consecutive polls
     candidateHits: 2,
     pollT: 999, // force an immediate first poll
-    bootDelay: 1.2, // let the first frames land clean, like frame01
+    bootDelay: 0.4, // let the first frames land clean, like frame01 (was 1.2 —
+                    // too long to clear before a capture settles on slow GL)
   }
 
   function regionAt(x, z) {
