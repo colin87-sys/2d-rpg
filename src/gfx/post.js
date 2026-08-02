@@ -26,19 +26,30 @@
  *
  * PIPELINE (ART_BIBLE.md §7, in its exact order):
  *   scene → HDR target
- *     → bright pass (threshold 0.72 measured in the tonemapper's input space,
- *       i.e. luma × exposure/0.6 — R2 fix, R1 measured pre-bake and nothing
- *       ever bloomed; soft knee, Karis-tamed)
- *     → 5-level downsample pyramid (13-tap Jimenez) + tent-filtered upsample
- *       accumulation (scatter 0.85) = 6 mip levels of wide soft glow
+ *     → bright pass (threshold 0.72 measured against POST-TONEMAP luma — the
+ *       ACES output the viewer actually sees. R3 fix: R2 gated on pre-fit
+ *       luma × exposure/0.6, where the sage fog plateau (~0.96) sails over
+ *       0.72 — the whole hazed upper frame bloomed into a milky veil while
+ *       real highlights barely cleared the fog. In display space fog sits at
+ *       ~0.60 and only foam/falls/wheat tips/castle stone reach 0.78+, which
+ *       is exactly the bible's allowed list; soft knee, Karis-tamed)
+ *     → 5-level downsample pyramid (13-tap Jimenez) + tent-filtered ADDITIVE
+ *       upsample accumulation (radius 0.85 = per-level decay, UnrealBloom
+ *       semantics — R3 fix: R2 used mix(base, wider, 0.85), which *replaces*
+ *       85 % of each level instead of accumulating, measured bloom delta on
+ *       the final frame was under 1/255: bloom was silently absent)
  *   → ACES filmic (three-equivalent Hill fit, exposure 1.05) + colour grade
  *     (bible GLSL verbatim: cool-green lifted blacks, warm cream mids,
  *      saturation 1.08, highlight desat toward #fff3dc, per-channel L/G/G)
  *   → tilt-shift DOF: analytic screen-band CoC, half-res Vogel-disc bokeh
  *     gather with luma-boosted highlights + hex fill pass, full-res composite
  *     that keeps the band genuinely untouched
- *   → unsharp mask, masked to the focus band only
- *   → chromatic aberration (radial, R out / B in, zero inside r 0.55)
+ *   → unsharp mask, masked to the focus band only, LUMA-ONLY (hue-preserving,
+ *     with saturation-aware gain rolloff — per-channel unsharp rang red/green
+ *     on the 1-px wheat texels)
+ *   → chromatic aberration (radial, R out / B in, zero inside r 0.55,
+ *     quadratic ease + chroma-clamped so sub-pixel shifts can never flip a
+ *     saturated 1-px texel to hot magenta — R3 fix, see FINAL_FRAG)
  *   → vignette → animated luma grain → dither → single linear→sRGB encode.
  *
  * INTEGRATOR NOTES:
@@ -141,6 +152,9 @@ function makeDefaultParams() {
     ca: {
       amountPx: 1.6,     // corner shift in px @1080p (bible §7)
       inner: 0.55,       // zero inside this normalised radius (corner = 1.0)
+      chromaClamp: 0.12, // max fringe deviation (linear) per px of shift —
+                         // stops sub-pixel CA flipping 1-px wheat texels to
+                         // magenta while corners keep a real visible fringe
     },
 
     vignette: {
@@ -173,6 +187,34 @@ const PRELUDE = /* glsl */ `
   }
 `
 
+// ACES filmic (three-equivalent Hill fit). Shared by the grade pass (the
+// actual tonemap) and the bloom bright pass (which gates on the tonemapped
+// luma so "post-exposure luma 0.72" means the display value the viewer sees).
+const ACES_GLSL = /* glsl */ `
+  vec3 RRTAndODTFit(vec3 v) {
+    vec3 a = v * (v + 0.0245786) - 0.000090537;
+    vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+    return a / b;
+  }
+
+  vec3 acesFilmic(vec3 color) {
+    const mat3 ACESInputMat = mat3(
+      vec3(0.59719, 0.07600, 0.02840),
+      vec3(0.35458, 0.90834, 0.13383),
+      vec3(0.04823, 0.01566, 0.83777)
+    );
+    const mat3 ACESOutputMat = mat3(
+      vec3( 1.60475, -0.10208, -0.00327),
+      vec3(-0.53108,  1.10813, -0.07276),
+      vec3(-0.07367, -0.00605,  1.07602)
+    );
+    color = ACESInputMat * color;
+    color = RRTAndODTFit(color);
+    color = ACESOutputMat * color;
+    return clamp(color, 0.0, 1.0);
+  }
+`
+
 const FS_VERT = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -184,7 +226,7 @@ const FS_VERT = /* glsl */ `
 // -- bloom: bright pass ------------------------------------------------------
 // 4 bilinear taps with Karis luma weights (tames single-pixel fireflies from
 // foam/glint speckle) then the quadratic soft-knee threshold. Runs at half res.
-const BRIGHT_FRAG = PRELUDE + /* glsl */ `
+const BRIGHT_FRAG = PRELUDE + ACES_GLSL + /* glsl */ `
   varying vec2 vUv;
   uniform sampler2D tSrc;
   uniform vec2 uTexel;       // source (full-res) texel size
@@ -193,17 +235,15 @@ const BRIGHT_FRAG = PRELUDE + /* glsl */ `
   uniform float uExposure;
 
   void main() {
-    // "Post-exposure luma" (bible §7) = the space the tonemapper actually
-    // consumes, which for three-equivalent ACESFilmic includes the 1/0.6
-    // exposure bake (the grade pass does c *= uExposure / 0.6 before the fit).
-    // ROUND-2 FIX: R1 thresholded luma * uExposure WITHOUT the bake. In a
-    // pi-normalised lighting rig nothing in the scene reaches 0.72 there
-    // (surf foam peaks near 0.64), so not one pixel ever passed the bright
-    // gate — the critic's "no bloom sits on wheat tips, foam or castle stone".
-    // Measured in the baked space: foam ~1.1, falls sheet >1.0, wheat tips
-    // ~0.95, sunlit castle stone ~0.95 clear the 0.72 gate; lit grass ~0.45
-    // and the road ~0.45 stay safely below it — exactly the bible's allowed
-    // list, nothing else.
+    // "Post-exposure luma" (bible §7) = the DISPLAY luma after the full ACES
+    // tonemap at exposure 1.05 — the value the viewer sees, where 0.72 is a
+    // genuine highlight. ROUND-3 FIX: R2 gated on pre-fit luma × exposure/0.6.
+    // In that space the sage-fog plateau that washes the whole upper frame
+    // sits at ~0.96 > 0.72, so the FOG bloomed (a milky veil, cf. the debug
+    // bloom buffer's big soft blobs over the massif) while true highlights
+    // barely rose above it. Measured through the fit: fog ~0.60 stays under
+    // the gate; foam ~0.79, falls sheet ~0.80+, sunlit wheat tips ~0.78,
+    // castle stone ~0.78 clear it — exactly the bible's allowed list.
     float ex = uExposure * (1.0 / 0.6);
     vec3 s0 = texture2D(tSrc, vUv + uTexel * vec2(-0.75, -0.75)).rgb;
     vec3 s1 = texture2D(tSrc, vUv + uTexel * vec2( 0.75, -0.75)).rgb;
@@ -215,7 +255,7 @@ const BRIGHT_FRAG = PRELUDE + /* glsl */ `
     float w3 = 1.0 / (1.0 + luma(s3) * ex);
     vec3 c = (s0 * w0 + s1 * w1 + s2 * w2 + s3 * w3) / (w0 + w1 + w2 + w3);
 
-    float l = luma(c) * ex;
+    float l = luma(acesFilmic(max(c, 0.0) * ex));
     float soft = clamp(l - uThreshold + uKnee, 0.0, 2.0 * uKnee);
     soft = soft * soft / (4.0 * uKnee + 1e-4);
     float contrib = max(soft, l - uThreshold) / max(l, 1e-4);
@@ -253,13 +293,17 @@ const DOWN_FRAG = PRELUDE + /* glsl */ `
   }
 `
 
-// -- bloom: 9-tap tent upsample + scatter accumulate -------------------------
-// out = mix(sameLevel, tent(widerLevel), scatter). scatter 0.85 hands most of
-// the energy to the wider mip → the broad soft halo frame01 shows on the falls.
+// -- bloom: 9-tap tent upsample + ADDITIVE accumulate ------------------------
+// out = sameLevel + tent(widerLevel) * radius. Each wider mip decays by
+// `radius` (0.85) per hop — UnrealBloom semantics, which is the family the
+// bible's threshold/strength/radius triplet was written for. ROUND-3 FIX:
+// R2 shipped out = mix(base, tent(wider), 0.85), which *replaces* 85 % of
+// every level's energy instead of stacking it; the composited bloom measured
+// under 1/255 on the final frame — visually absent.
 const UP_FRAG = PRELUDE + /* glsl */ `
   varying vec2 vUv;
   uniform sampler2D tSrc;   // smaller (blurrier) level being upsampled
-  uniform sampler2D tBase;  // same-resolution down level to blend against
+  uniform sampler2D tBase;  // same-resolution down level to accumulate onto
   uniform vec2 uTexel;      // texel size of tSrc
   uniform float uScatter;
   uniform float uSpread;
@@ -278,7 +322,7 @@ const UP_FRAG = PRELUDE + /* glsl */ `
       + texture2D(tSrc, vUv + t * vec2( 1.0,  1.0)).rgb * 1.0;
     s *= (1.0 / 16.0);
     vec3 base = texture2D(tBase, vUv).rgb;
-    gl_FragColor = vec4(mix(base, s, uScatter), 1.0);
+    gl_FragColor = vec4(base + s * uScatter, 1.0);
   }
 `
 
@@ -286,7 +330,7 @@ const UP_FRAG = PRELUDE + /* glsl */ `
 // HDR in (scene + bloom), display-linear LDR out. ACES here is the same Hill
 // fit three.js uses for ACESFilmicToneMapping (incl. the /0.6 exposure bake),
 // so the bible's "ACESFilmic, exposure 1.05" means exactly this.
-const GRADE_FRAG = PRELUDE + /* glsl */ `
+const GRADE_FRAG = PRELUDE + ACES_GLSL + /* glsl */ `
   varying vec2 vUv;
   uniform sampler2D tScene;
   uniform sampler2D tBloom;
@@ -305,29 +349,6 @@ const GRADE_FRAG = PRELUDE + /* glsl */ `
   uniform vec3  uLift;
   uniform vec3  uGamma;
   uniform vec3  uGain;
-
-  vec3 RRTAndODTFit(vec3 v) {
-    vec3 a = v * (v + 0.0245786) - 0.000090537;
-    vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
-    return a / b;
-  }
-
-  vec3 acesFilmic(vec3 color) {
-    const mat3 ACESInputMat = mat3(
-      vec3(0.59719, 0.07600, 0.02840),
-      vec3(0.35458, 0.90834, 0.13383),
-      vec3(0.04823, 0.01566, 0.83777)
-    );
-    const mat3 ACESOutputMat = mat3(
-      vec3( 1.60475, -0.10208, -0.00327),
-      vec3(-0.53108,  1.10813, -0.07276),
-      vec3(-0.07367, -0.00605,  1.07602)
-    );
-    color = ACESInputMat * color;
-    color = RRTAndODTFit(color);
-    color = ACESOutputMat * color;
-    return clamp(color, 0.0, 1.0);
-  }
 
   void main() {
     vec3 c = texture2D(tScene, vUv).rgb;
@@ -503,7 +524,12 @@ const COMPOSITE_FRAG = PRELUDE + COC_GLSL + /* glsl */ `
       c = mix(sharp, blur, smoothstep(uBlendLo, uBlendHi, coc));
     }
 
-    // unsharp mask, focus band only — keeps hero/wheat/fence pixels biting
+    // unsharp mask, focus band only — keeps hero/wheat/fence pixels biting.
+    // LUMA-ONLY (multiplicative): per-channel unsharp on the 1-px wheat
+    // texels rang R and G independently and hue-shifted stalk edges toward
+    // red; boosting luma while preserving chroma ratios cannot. The gain is
+    // additionally rolled off on saturated pixels (wheat gold, deep greens)
+    // so high-frequency saturated texture never rings at full strength.
     float bandMask = 1.0 - smoothstep(0.0, 0.8, coc);
     if (uSharpAmt > 0.0 && bandMask > 0.001) {
       vec2 o = uTexelFull * uSharpRad;
@@ -512,7 +538,12 @@ const COMPOSITE_FRAG = PRELUDE + COC_GLSL + /* glsl */ `
         + texture2D(tSharp, vUv - vec2(o.x, 0.0)).rgb
         + texture2D(tSharp, vUv + vec2(0.0, o.y)).rgb
         + texture2D(tSharp, vUv - vec2(0.0, o.y)).rgb);
-      c += clamp(sharp - nb, -0.5, 0.5) * (uSharpAmt * bandMask);
+      float dl = clamp(luma(sharp - nb), -0.5, 0.5);
+      float mx = max(sharp.r, max(sharp.g, sharp.b));
+      float sat = (mx - min(sharp.r, min(sharp.g, sharp.b))) / max(mx, 1e-4);
+      float gain = uSharpAmt * bandMask * (1.0 - 0.35 * sat);
+      float ratio = 1.0 + clamp(dl * gain / max(luma(sharp), 0.05), -0.6, 0.6);
+      c *= ratio;
     }
     gl_FragColor = vec4(max(c, 0.0), 1.0);
   }
@@ -526,6 +557,7 @@ const FINAL_FRAG = PRELUDE + /* glsl */ `
   uniform float uAspect;
   uniform float uCaPx;
   uniform float uCaInner;
+  uniform float uCaClamp;     // max per-channel fringe deviation per px of shift
   uniform float uVigStart;
   uniform float uVigEnd;
   uniform float uVigStrength;
@@ -545,17 +577,31 @@ const FINAL_FRAG = PRELUDE + /* glsl */ `
     vec2 nc = vUv * 2.0 - 1.0;               // -1..1, corner length sqrt(2)
     float r = length(nc) * 0.70710678;       // 0 centre → 1.0 at corners
 
-    // chromatic aberration: red fringes outward, blue inward, edges only
-    vec3 c;
-    float ca = uCaPx * smoothstep(uCaInner, 1.0, r);
-    if (ca > 0.001) {
+    // chromatic aberration: red fringes outward, blue inward, edges only.
+    // ROUND-3 FIX (critic defect 12): the linear smoothstep ramp put 0.3–0.6px
+    // of shift on the wheat paddocks at r 0.6–0.8, and on a NearestFilter
+    // 1-px-period gold/outline texture even a sub-pixel R/B decorrelation
+    // flips texels to hot magenta/red (measured 800+ hot pixels; 0 with CA
+    // off). Two guards, keeping the bible's letter (1.6 px at corners, zero
+    // inside r < 0.55):
+    //   1. quadratic ease — the ramp leaves 0.55 with zero slope, so the
+    //      mid-frame band r 0.55–0.8 gets almost nothing and the full 1.6 px
+    //      lives only out at the true corners;
+    //   2. chroma clamp — the fringe may deviate from the unshifted colour by
+    //      at most uCaClamp per px of shift, so a small shift can only tint,
+    //      never invert, a saturated texel. Big corner shifts keep visible
+    //      fringes on high-contrast edges (the intended look).
+    vec3 c0 = texture2D(tSrc, vUv).rgb;
+    vec3 c = c0;
+    float s = smoothstep(uCaInner, 1.0, r);
+    float ca = uCaPx * s * s;
+    if (ca > 0.01) {
       vec2 dirPx = normalize(vec2(nc.x * uAspect, nc.y) + 1e-6) * ca;
       vec2 duv = dirPx / uResolution;
       c.r = texture2D(tSrc, vUv - duv).r;
-      c.g = texture2D(tSrc, vUv).g;
       c.b = texture2D(tSrc, vUv + duv).b;
-    } else {
-      c = texture2D(tSrc, vUv).rgb;
+      float lim = uCaClamp * min(ca, 1.5);
+      c = c0 + clamp(c - c0, vec3(-lim), vec3(lim));
     }
 
     // vignette
@@ -810,6 +856,7 @@ export function createPostFX({ renderer, scene, camera }) {
     uAspect: { value: 16 / 9 },
     uCaPx: { value: 1.6 },
     uCaInner: { value: 0.55 },
+    uCaClamp: { value: 0.12 },
     uVigStart: { value: 0.62 },
     uVigEnd: { value: 1.18 },
     uVigStrength: { value: 0.24 },
@@ -929,6 +976,7 @@ export function createPostFX({ renderer, scene, camera }) {
     f.uAspect.value = fullW / Math.max(1, fullH)
     f.uCaPx.value = Math.max(0, p.ca.amountPx) * pxScale
     f.uCaInner.value = p.ca.inner
+    f.uCaClamp.value = Math.max(0, p.ca.chromaClamp)
     f.uVigStart.value = p.vignette.start
     f.uVigEnd.value = Math.max(p.vignette.end, p.vignette.start + 1e-3)
     f.uVigStrength.value = p.vignette.strength
