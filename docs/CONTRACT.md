@@ -5,7 +5,7 @@ edit files you do not own.** `src/main.js` and `src/core/engine.js` are owned by
 integrator. If you need something added to the contract, note it in your return summary
 instead of editing another module.
 
-Stack: Three.js `^0.169` (ESM, `import * as THREE from 'three'`), Vite, no external assets.
+Stack: Three.js `^0.169` (native ESM + import map, no bundler), no external assets.
 **Every texture and every sprite must be generated procedurally in code** (Canvas2D / data
 textures). No network fetches, no binary asset files.
 
