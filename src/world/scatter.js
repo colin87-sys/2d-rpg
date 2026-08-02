@@ -128,13 +128,13 @@ function sstep(e0, e1, x) {
 //       wheat ×2, tufts ×1.5); rocks/wood 0.
 // blobA: contact-shadow decal alpha class (0 = none).
 const SPECIES = {
-  pine_a:   { kind: 'tree',  baseH: 2.80, slopeMax: 0.55, clearR: 0.62, sway: 0.017, blobA: 0.50 },
-  pine_b:   { kind: 'tree',  baseH: 2.65, slopeMax: 0.55, clearR: 0.62, sway: 0.017, blobA: 0.50 },
-  pine_c:   { kind: 'tree',  baseH: 2.95, slopeMax: 0.55, clearR: 0.62, sway: 0.017, blobA: 0.50 },
-  pine_snow:{ kind: 'tree',  baseH: 2.75, slopeMax: 0.60, clearR: 0.62, sway: 0.015, blobA: 0.46 },
-  oak_a:    { kind: 'tree',  baseH: 1.95, slopeMax: 0.42, clearR: 0.60, sway: 0.016, blobA: 0.50 },
-  oak_b:    { kind: 'tree',  baseH: 1.85, slopeMax: 0.42, clearR: 0.60, sway: 0.016, blobA: 0.50 },
-  oak_c:    { kind: 'tree',  baseH: 2.05, slopeMax: 0.42, clearR: 0.60, sway: 0.016, blobA: 0.50 },
+  pine_a:   { kind: 'tree',  baseH: 2.80, slopeMax: 0.55, clearR: 0.55, sway: 0.017, blobA: 0.50 },
+  pine_b:   { kind: 'tree',  baseH: 2.65, slopeMax: 0.55, clearR: 0.55, sway: 0.017, blobA: 0.50 },
+  pine_c:   { kind: 'tree',  baseH: 2.95, slopeMax: 0.55, clearR: 0.55, sway: 0.017, blobA: 0.50 },
+  pine_snow:{ kind: 'tree',  baseH: 2.75, slopeMax: 0.60, clearR: 0.55, sway: 0.015, blobA: 0.46 },
+  oak_a:    { kind: 'tree',  baseH: 1.95, slopeMax: 0.42, clearR: 0.52, sway: 0.016, blobA: 0.50 },
+  oak_b:    { kind: 'tree',  baseH: 1.85, slopeMax: 0.42, clearR: 0.52, sway: 0.016, blobA: 0.50 },
+  oak_c:    { kind: 'tree',  baseH: 2.05, slopeMax: 0.42, clearR: 0.52, sway: 0.016, blobA: 0.50 },
   blossom_a:{ kind: 'tree',  baseH: 2.00, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
   blossom_b:{ kind: 'tree',  baseH: 1.90, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
   blossom_c:{ kind: 'tree',  baseH: 2.10, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
@@ -162,7 +162,7 @@ const SPECIES = {
 
 // Global budgets (ART_BIBLE §8 table + the F2-biome extras).
 const BUDGET = {
-  conifer: 2600, oak: 1900, bush: 2300, rockAll: 950, tuft: 9000,
+  conifer: 4200, oak: 3300, bush: 2300, rockAll: 950, tuft: 9000,
   wheat: 1300, flower: 700, fern: 500, blossom: 400, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
@@ -236,23 +236,50 @@ export function createScatter({ terrain, atlas, renderer }) {
     return true
   }
 
+  // ---- Authored foreground copse belt: frame01's bottom blur band is dense
+  // ---- dark forest dissolving off-frame. These discs sit south of the open
+  // ---- pasture, inside the camera's lower defocus zone (z ≳ +75 at the
+  // ---- boot camera), so the frame's lower edge reads as soft crowns.
+  const SOUTH_COPSES = [
+    { x: -62, z: 78, r: 18 }, { x: -70, z: 105, r: 20 }, { x: -52, z: 124, r: 16 },
+    { x: -44, z: 108, r: 15 }, { x: -16, z: 100, r: 12 }, { x: 0, z: 120, r: 15 },
+    { x: -90, z: 130, r: 22 }, { x: 24, z: 112, r: 13 },
+  ]
+
   // ---- Forest mask: organic clump field over the whole map. terrain.biome
   // ---- 'forest' marks the authored stands (mask 1); a low-frequency noise
   // ---- adds satellite copses on open grass; a mid-frequency "clearing"
   // ---- noise eats holes and chews the edges ragged (bible §8 ecotone).
   function forestMask(x, z) {
     const b = T.biome(x, z)
+    let authored = false
     let m = 0
-    if (b === 'forest') m = 1
-    else if (b === 'grass') {
-      const n = fbm2(x * 0.0115 + 3.1, z * 0.0115 - 7.4, 3) // large clump field
-      m = sstep(0.30, 0.62, n)
+    if (b === 'forest') {
+      authored = true
+      m = 1
+    } else if (b === 'grass') {
+      // satellite copse field on open grass; the south foreground band
+      // (frame01's bottom blur strip) gets a density bias so the frame's
+      // lower edge dissolves into crowns, not bare pasture.
+      let n = fbm2(x * 0.0115 + 3.1, z * 0.0115 - 7.4, 3)
+      n += 0.2 * sstep(58, 100, z)
+      m = sstep(0.30, 0.60, n)
+      for (let i = 0; i < SOUTH_COPSES.length; i++) {
+        const d = SOUTH_COPSES[i]
+        const dd = Math.hypot(x - d.x, z - d.z) / d.r
+        if (dd < 1) {
+          const belt = (1 - sstep(0.5, 1.0, dd)) * (0.62 + 0.38 * (fbm2(x * 0.09, z * 0.09, 2) * 0.5 + 0.5))
+          if (belt > m) m = belt
+        }
+      }
     } else return 0
-    // clearing carve + ragged edges: mid-scale noise modulates the mask so
-    // stand interiors open into glades and rims break into fingers.
-    const c = fbm2(x * 0.052 - 11.2, z * 0.052 + 5.9, 2)
-    m *= 1 - 0.85 * sstep(0.34, 0.66, c)          // interior clearings
-    m = m * sstep(0.10, 0.55, m + 0.30 * c)       // noise-eaten rim
+    // glade carve + ragged edges: ~9 m noise pokes clearings into stands and
+    // chews the rims into fingers. Authored stands stay SOLID at heart —
+    // frame01's clumps have no visible ground inside (bible §8) — while
+    // noise copses fray harder.
+    const c = fbm2(x * 0.11 - 11.2, z * 0.11 + 5.9, 2)
+    m *= 1 - (authored ? 0.45 : 0.8) * sstep(0.42, 0.72, c)
+    m = m * sstep(0.06, authored ? 0.3 : 0.5, m + 0.26 * c)
     return clamp01(m)
   }
 
@@ -382,12 +409,25 @@ export function createScatter({ terrain, atlas, renderer }) {
   // fray into outrider clusters and pasture keeps only anchored lone trees.
   {
     const rnd = rngFor('trees')
-    const step = 1.55
+    const step = 1.45
     let nConifer = 0
     let nOak = 0
-    let nBlossomBudget = 0
+    // Candidates visited in hash-shuffled order: if a species budget binds,
+    // the thinning lands uniformly across the whole map instead of
+    // truncating whichever corner the scan reaches last.
+    const cand = []
     for (let gz = -LIM; gz <= LIM; gz += step) {
-      for (let gx = -LIM; gx <= LIM; gx += step) {
+      for (let gx = -LIM; gx <= LIM; gx += step) cand.push(gx, gz)
+    }
+    const order = new Uint32Array(cand.length / 2)
+    for (let i = 0; i < order.length; i++) order[i] = i
+    const sortKey = new Float64Array(order.length)
+    for (let i = 0; i < order.length; i++) sortKey[i] = hash2(cand[i * 2], cand[i * 2 + 1], 777)
+    order.sort((a, b) => sortKey[a] - sortKey[b])
+    for (let oi = 0; oi < order.length; oi++) {
+      {
+        const gx = cand[order[oi] * 2]
+        const gz = cand[order[oi] * 2 + 1]
         const jx = gx + (hash2(gx, gz, 1) - 0.5) * step * 1.15
         const jz = gz + (hash2(gx, gz, 2) - 0.5) * step * 1.15
         const b = T.biome(jx, jz)
@@ -401,7 +441,9 @@ export function createScatter({ terrain, atlas, renderer }) {
         let m = 0
         if (b === 'forest' || b === 'grass') {
           m = forestMask(jx, jz)
-          p = m * m * 0.86 // interior ≈ full density, rim thins quadratically
+          // interior ≈ saturated (collision spacing alone shapes it — frame01
+          // clump hearts show NO ground); rims thin quadratically
+          p = m > 0.62 ? 0.96 : m * m * 0.9
           if (m < 0.14) {
             // open pasture: rare lone trees, anchored near features so they
             // read placed (fence lines / rocks / forks), never confetti.
@@ -467,7 +509,6 @@ export function createScatter({ terrain, atlas, renderer }) {
         }
       }
     }
-    nBlossomBudget = 0 // (blossoms placed by their own valley pass below)
   }
 
   // ---- 4.2 ROADSIDE CROWDING: trees/bushes hug ~35 % of every shoulder ----
@@ -791,12 +832,14 @@ export function createScatter({ terrain, atlas, renderer }) {
             const wh = T.waterHeight(jx, jz)
             if (wh <= 0.3) continue
             const depth = wh - T.height(jx, jz)
-            if (depth < 0.12 || depth > 1.8) continue
-            // still water only: the surface level must be locally flat
-            // (kills rapids and the waterfall chute)
-            if (Math.abs(T.waterHeight(jx + 2, jz) - wh) > 0.06) continue
-            if (Math.abs(T.waterHeight(jx, jz + 2) - wh) > 0.06) continue
-            if (hash2(jx, jz, 194) > 0.06) continue
+            if (depth < 0.22 || depth > 2.2) continue
+            // POOLS only: deep + a locally dead-flat surface. The flowing
+            // reaches drop ~1 m / 80 m — this gate keeps pads out of them
+            // and clusters them in the plunge pool / slack water.
+            if (Math.abs(T.waterHeight(jx + 2, jz) - wh) > 0.022) continue
+            if (Math.abs(T.waterHeight(jx, jz + 2) - wh) > 0.022) continue
+            if (depth < 0.45 && hash2(jx, jz, 197) > 0.25) continue
+            if (hash2(jx, jz, 194) > 0.10) continue
             const n = 2 + ((hash2(jx, jz, 195) * 4) | 0)
             for (let k = 0; k < n; k++) {
               if ((counts.lilypad || 0) >= BUDGET.lilypad) break
@@ -1150,10 +1193,15 @@ export function createScatter({ terrain, atlas, renderer }) {
   const group = new THREE.Group()
   group.name = 'scatter'
 
+  // receiveShadow stays OFF for billboards: the colour pass faces the camera
+  // while the shadow pass faces the sun, so a shadow-map self-test would
+  // paint a false hard terminator across every crown. The sprites carry
+  // authored form shading (frame01 crowns are not cross-shadowed), and the
+  // trees still CAST real shadows via the custom depth material below.
   const vegMesh = fillMesh(uprights, uprightQuad(), true)
   vegMesh.name = 'scatter_billboards'
   vegMesh.castShadow = true
-  vegMesh.receiveShadow = true
+  vegMesh.receiveShadow = false
   vegMesh.customDepthMaterial = makeDepthMaterial()
   vegMesh.renderOrder = 2
   group.add(vegMesh)
@@ -1163,7 +1211,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     flatMesh = fillMesh(flats, flatQuad(), false)
     flatMesh.name = 'scatter_lilypads'
     flatMesh.castShadow = false
-    flatMesh.receiveShadow = true
+    flatMesh.receiveShadow = false
     flatMesh.renderOrder = 3 // after the water surface so pads sit on it
     group.add(flatMesh)
   }
@@ -1205,6 +1253,7 @@ export function createScatter({ terrain, atlas, renderer }) {
   function update(t, camera) {
     uTime.value = t
     if (!camera) return
+    camera.updateMatrixWorld()
     _inv.copy(camera.matrixWorld).invert()
     _viewProj.multiplyMatrices(camera.projectionMatrix, _inv)
     _frustum.setFromProjectionMatrix(_viewProj)
