@@ -5,7 +5,14 @@
  * white falls column, river snaking east past the castle) and frame02.png
  * (saturated cyan river, white rapids, bank foam, sun-glitter sheet on the
  * open sea). Palette is ART_BIBLE.md §3 verbatim; fog is §4; geometry follows
- * the binding world layout of §1.
+ * docs/FRAMING.md §4/§8 (the round-3 tabletop re-solve — it SUPERSEDES the
+ * ART_BIBLE §1 layout): coast lip (−53,+23)→(−57,+10.5)→(−63.5,−6.5)→
+ * (−72,−28)→(−79,−45); ONE 4 m falls, lip (−30.5,+3) y 12.5 → pool (−30,+2)
+ * y 8.5, ~2.5 m wide; headwater y 13.5→12.5 from (−48,−3) via the north
+ * bridge (−41,−1); gorge run y 8.5→7 east to (−15,+8); inlet at y 0 under the
+ * west trestle (−59,+9.5). Everything lives within ~90 m of camera, so all
+ * scale-dependent tuning (bow, mist rise, pool radius, swell) reads at
+ * miniature scale.
  *
  * CONTRACT (frozen):
  *   createWater({ terrain, renderer, sky }) -> { object3D, update(t, camera) }
@@ -171,9 +178,11 @@ const GLSL_FOG = /* glsl */ `
 // ---------------------------------------------------------------------------
 
 function makeGroundSampler(terrain) {
-  // Probe the real terrain; fall back to an analytic version of the ART_BIBLE
-  // §1 coast (mean x −82 meandering ±10, veering to −130 north of z −60) so
-  // the ocean still demonstrates correctly if terrain.height is unavailable.
+  // Probe the real terrain; fall back to an analytic version of the FRAMING §4
+  // coast lip polyline — (−53,+23)→(−57,+10.5)→(−63.5,−6.5)→(−72,−28)→
+  // (−79,−45), near-vertical cliff to sea 0, plus the 10 m inlet gorge cutting
+  // NE from (−62,+13) to (−55,+6) — so the ocean still demonstrates correctly
+  // if terrain.height is unavailable.
   let ok = typeof terrain?.height === 'function'
   if (ok) {
     try {
@@ -190,14 +199,36 @@ function makeGroundSampler(terrain) {
       return Number.isFinite(v) ? v : 0
     }
   }
+  // piecewise-linear lip x as a function of z (polyline is monotone in z)
+  const LIP = [
+    [23, -53],
+    [10.5, -57],
+    [-6.5, -63.5],
+    [-28, -72],
+    [-45, -79],
+  ]
   const coastX = (z) => {
-    if (z > -60) return -82 + 8 * Math.sin(z * 0.031 + 1.7) + 4 * Math.sin(z * 0.011)
-    const t = clamp((-60 - z) / 80, 0, 1)
-    return lerp(-92, -130, t) + 6 * Math.sin(z * 0.05)
+    if (z >= LIP[0][0]) return LIP[0][1] + (z - LIP[0][0]) * 0.32
+    for (let i = 0; i < LIP.length - 1; i++) {
+      const [z0, x0] = LIP[i]
+      const [z1, x1] = LIP[i + 1]
+      if (z <= z0 && z >= z1) return lerp(x0, x1, (z0 - z) / (z0 - z1))
+    }
+    return LIP[4][1] + (LIP[4][0] - z) * 0.41
+  }
+  // distance to the inlet spine segment (−62,+13) → (−55,+6)
+  const inletD = (x, z) => {
+    const ax = -62, az = 13, bx = -55, bz = 6
+    const abx = bx - ax, abz = bz - az
+    const t = clamp(((x - ax) * abx + (z - az) * abz) / (abx * abx + abz * abz), 0, 1)
+    return Math.hypot(x - (ax + abx * t), z - (az + abz * t))
   }
   return (x, z) => {
     const d = x - coastX(z) // + = land side (east)
-    return d >= 0 ? 2 + Math.min(9, d * 0.7) : Math.max(-28, d * 0.5)
+    let h = d >= 0 ? Math.min(8.3, 0.4 + d * 4.0) : Math.max(-28, d * 0.9)
+    const di = inletD(x, z)
+    if (di < 3.0) h = Math.min(h, -2.2 + di * 0.6) // carved inlet, below sea
+    return h
   }
 }
 
@@ -375,12 +406,14 @@ const OCEAN_FRAG = /* glsl */ `
     // ~6.5 m, so depth alone could never reach uDeep — shore distance carries
     // the ramp instead, and the bands march parallel to the coastline exactly
     // as in frame01 (deep at the frame edge, turquoise glow at the rock).
-    float shallowMix = max(smoothstep(0.5, 2.2, depth), smoothstep(4.0, 12.0, sd));
+    // round-3 coast: the lip sits at x −53…−63 in the visible latitudes and
+    // FRAMING wants the deep band by x −72 — the whole ramp fits in ~19 m
+    float shallowMix = max(smoothstep(0.5, 2.2, depth), smoothstep(2.5, 8.0, sd));
     vec3 c = mix(uShallow, uMid, shallowMix);
-    float deepMix = max(smoothstep(2.2, 5.4, depth), smoothstep(12.0, 34.0, sd));
+    float deepMix = max(smoothstep(2.2, 5.4, depth), smoothstep(8.0, 19.0, sd));
     c = mix(c, uDeep, deepMix);
-    // the signature: bright turquoise band hugging the coast, ~2–9 m wide
-    c = mix(c, uTurq, smoothstep(9.0, 1.3, sd) * 0.80);
+    // the signature: bright turquoise band hugging the coast, ~1–6 m wide
+    c = mix(c, uTurq, smoothstep(6.0, 1.2, sd) * 0.75);
 
     // ---- painterly streak bands (elongated N–S, shore-parallel) -----------
     vec2 sp = vec2(vWorld.x * 0.155, vWorld.z * 0.048);
@@ -392,7 +425,7 @@ const OCEAN_FRAG = /* glsl */ `
     // ---- sparse mid-sea whitecaps off swell crests ------------------------
     float capN = fbm2(vWorld.xz * 0.9 + vec2(uTime * 0.2, -uTime * 0.13));
     float caps = smoothstep(0.62, 0.92, vCrest * 0.5 + 0.5 + (capN - 0.5) * 0.8)
-               * smoothstep(2.5, 7.0, depth) * 0.35;
+               * smoothstep(2.5, 7.0, depth) * 0.22; // fw 0–0.07 strip: sparse
 
     // ---- surf: THIN bright line hugging the rock + rolling arcs -----------
     // Frame01's surf is a crisp 1–2 px white line at the cliff contact, not a
@@ -533,19 +566,40 @@ function resolveRiverSpecs(terrain) {
   }
 
   if (!specs.length) {
-    // ART_BIBLE §1: pool (−31,−33) lvl 11 → exits SE at (+60,+10) lvl 6, 3–6 m
+    // FRAMING §4: headwater y 13.5→12.5 from (−48,−3) under the north bridge
+    // (−41,−1) to the falls lip (−30.5,+3); gorge run y 8.5→7 from the pool
+    // (−30,+2) → (−28,+4.5) → cascade near (−27.5,+5) → (−22,+6.5) → exits E
+    // at (−15,+8) behind the castle plateau. One continuous polyline: the
+    // 4 m lip→pool drop is what splitReachesAtFalls hands to the sheet.
+    // Where the terrain has already carved the channels, snap each level to
+    // its waterHeight — but only within ±1.2 m of the §4 constant (a stale or
+    // differently-shaped terrain must never drag the river off-spec).
+    const lv = (x, z, def) => {
+      if (typeof terrain?.waterHeight === 'function') {
+        try {
+          const wh = terrain.waterHeight(x, z)
+          if (Number.isFinite(wh) && Math.abs(wh - def) < 1.2) return wh
+        } catch (_) {}
+      }
+      return def
+    }
     specs.push({
       pts: [
-        { x: -31, z: -33, level: 11.0, width: 7.6 }, // plunge pool
-        { x: -22, z: -29, level: 10.2, width: 4.6 },
-        { x: -8, z: -26, level: 9.3, width: 3.6 },
-        { x: 4, z: -24, level: 8.7, width: 3.9 },
-        { x: 14, z: -20, level: 8.2, width: 4.3 },
-        { x: 26, z: -14, level: 7.6, width: 4.6 },
-        { x: 40, z: -5, level: 6.9, width: 5.0 },
-        { x: 52, z: 3, level: 6.4, width: 5.3 },
-        { x: 60, z: 10, level: 6.0, width: 5.6 },
-        { x: 74, z: 24, level: 5.2, width: 5.2 }, // run-out, sinks into fog
+        { x: -48, z: -3, level: lv(-48, -3, 13.5), width: 3.2 }, // headwater
+        { x: -44, z: -2, level: lv(-44, -2, 13.1), width: 3.4 },
+        { x: -41, z: -1, level: lv(-41, -1, 12.9), width: 3.6 }, // north bridge
+        { x: -36, z: 1, level: lv(-36, 1, 12.7), width: 3.4 },
+        { x: -32.5, z: 2.5, level: lv(-32.5, 2.5, 12.55), width: 2.8 },
+        { x: -30.5, z: 3, level: lv(-30.5, 3, 12.5), width: 2.5 }, // falls lip
+        { x: -30, z: 2, level: lv(-30, 2, 8.5), width: 4.5 }, // plunge pool
+        { x: -28, z: 4.5, level: lv(-28, 4.5, 8.0), width: 4.0 }, // visible bend
+        { x: -27.6, z: 4.9, level: lv(-27.6, 4.9, 7.95), width: 3.8 },
+        { x: -27.2, z: 5.3, level: lv(-27.2, 5.3, 7.5), width: 3.8 }, // cascade
+        { x: -25, z: 6, level: lv(-25, 6, 7.35), width: 4.2 },
+        { x: -22, z: 6.5, level: lv(-22, 6.5, 7.25), width: 4.4 },
+        { x: -18, z: 7.4, level: lv(-18, 7.4, 7.1), width: 4.7 },
+        { x: -15, z: 8, level: lv(-15, 8, 7.0), width: 5.0 }, // exits E
+        { x: -11, z: 8.8, level: lv(-11, 8.8, 6.9), width: 5.0 }, // behind plateau
       ],
       widths: null,
     })
@@ -574,7 +628,10 @@ function splitReachesAtFalls(spec) {
     if (!Number.isFinite(p.level) || !Number.isFinite(q.level)) continue
     const run = Math.hypot(q.x - p.x, q.z - p.z)
     const drop = p.level - q.level
-    if (drop > 2.2 && drop / Math.max(run, 0.001) > 0.55) {
+    // 1.6 m threshold (was 2.2): the round-3 falls is only a 4 m drop and a
+    // resampled spline can spread it across two ~2 m segments — each must
+    // still split, or a cyan ribbon drapes down the cliff behind the sheet.
+    if (drop > 1.6 && drop / Math.max(run, 0.001) > 0.55) {
       if (cur.length >= 2) reaches.push({ ...spec, pts: cur, headFalls, tailFalls: true })
       cur = []
       headFalls = true
@@ -630,11 +687,12 @@ function resolveFallsSpecs(terrain, riverSpecs) {
         poolSrc = { x: snapped.x, y: w.baseY, z: snapped.z }
       } else {
         // project along the published dir (or a plausible one) by the run a
-        // 9-ish-m plunge actually takes (~0.58 × drop, from the f1 geometry)
-        const drop = Number.isFinite(w.drop) ? w.drop : (w.lipY ?? 20) - w.baseY
-        const run = Number.isFinite(w.run) ? w.run : Math.max(2.5, drop * 0.58)
-        const dx = Number.isFinite(w.dir?.x) ? w.dir.x : -0.55
-        const dz = Number.isFinite(w.dir?.z) ? w.dir.z : 0.83
+        // plunge actually takes (~0.3 × drop at miniature scale, min 1 m)
+        const drop = Number.isFinite(w.drop) ? w.drop : (w.lipY ?? 12.5) - w.baseY
+        const run = Number.isFinite(w.run) ? w.run : Math.max(1.0, drop * 0.3)
+        // §4 falls pours lip (−30.5,+3) → pool (−30,+2): dir ≈ (+0.45, −0.89)
+        const dx = Number.isFinite(w.dir?.x) ? w.dir.x : 0.45
+        const dz = Number.isFinite(w.dir?.z) ? w.dir.z : -0.89
         const dl = Math.hypot(dx, dz) || 1
         poolSrc = { x: lx + (dx / dl) * run, y: w.baseY, z: lz + (dz / dl) * run }
       }
@@ -645,9 +703,9 @@ function resolveFallsSpecs(terrain, riverSpecs) {
     if (!Number.isFinite(lip.y) || lip.y === 0) {
       try {
         const th = terrain?.height?.(lip.x, lip.z)
-        lip.y = Number.isFinite(th) ? th : 20
+        lip.y = Number.isFinite(th) ? th : 12.5
       } catch (_) {
-        lip.y = 20
+        lip.y = 12.5
       }
     }
     if (!Number.isFinite(pool.y) || pool.y === 0) {
@@ -655,45 +713,53 @@ function resolveFallsSpecs(terrain, riverSpecs) {
       try {
         wh = terrain?.waterHeight?.(pool.x, pool.z)
       } catch (_) {}
-      pool.y = Number.isFinite(wh) && wh > 0.5 ? wh : Math.max(lip.y - (w.drop ?? w.height ?? 9), 0.5)
+      pool.y = Number.isFinite(wh) && wh > 0.5 ? wh : Math.max(lip.y - (w.drop ?? w.height ?? 4), 0.5)
     }
     // A pool that sits at or above the lip inverts the sheet (it gets extruded
     // upward off the cliff top). Clamp to a real drop.
-    if (!(pool.y < lip.y - 0.5)) pool.y = lip.y - (w.drop ?? w.height ?? 9)
-    out.push({ lip, pool, width: Number.isFinite(w.width) ? w.width : 4.4 })
+    if (!(pool.y < lip.y - 0.5)) pool.y = lip.y - (w.drop ?? w.height ?? 4)
+    out.push({ lip, pool, width: Number.isFinite(w.width) ? w.width : 2.5 })
   }
 
   if (Array.isArray(raw)) for (const w of raw) push(w)
   else push(raw)
 
   if (!out.length) {
-    // ART_BIBLE §1: lip (−26, −40) at +20 → pool (−31, −33) at +11, 9 m drop.
-    // riverSpecs[0].pts[0] is the HEADWATER (above the lip, ~+29 here), so
-    // keying the pool off it inverted the sheet. Ask the terrain instead.
-    let poolLvl = 11
+    // FRAMING §4: ONE sheet, lip (−30.5, +3.0) y 12.5 → pool (−30, +2) y 8.5
+    // — a 4 m single drop, ~2.5 m wide. Snap levels off the carved terrain
+    // when it agrees (sanity-bounded so a stale terrain can't move the falls).
+    let lipLvl = 12.5
+    let poolLvl = 8.5
     try {
-      const wh = terrain?.waterHeight?.(-31, -33)
-      if (Number.isFinite(wh) && wh > 0.5 && wh < 19) poolLvl = wh
+      const wl = terrain?.waterHeight?.(-30.5, 3)
+      if (Number.isFinite(wl) && wl > 11 && wl < 14) lipLvl = wl
+    } catch (_) {}
+    try {
+      const wh = terrain?.waterHeight?.(-30, 2)
+      if (Number.isFinite(wh) && wh > 7 && wh < 10) poolLvl = wh
     } catch (_) {}
     out.push({
-      lip: new THREE.Vector3(-26, 20, -40),
-      pool: new THREE.Vector3(-31, poolLvl, -33),
-      width: 4.4,
+      lip: new THREE.Vector3(-30.5, lipLvl, 3),
+      pool: new THREE.Vector3(-30, poolLvl, 2),
+      width: 2.5,
     })
   }
 
-  // The sheet geometry bows ~1.55 m out from the lip before it plunges, so the
-  // TRUE splash-down point sits just off the cliff base — not at the pool
-  // centre. Churn rings, mist and the river's head extension all key off this.
+  // The sheet geometry bows out from the lip before it plunges, so the TRUE
+  // splash-down point sits just off the cliff base — not at the pool centre.
+  // Offset scales with the lip→pool run (a 4 m miniature falls lands ~1 m
+  // out; the old fixed 1.55 m overshot the whole pool). Churn rings, mist and
+  // the river's head extension all key off this.
   for (const f of out) {
     const dx = f.pool.x - f.lip.x
     const dz = f.pool.z - f.lip.z
     const dl = Math.hypot(dx, dz) || 1
     f.out = new THREE.Vector2(dx / dl, dz / dl)
+    const off = clamp(dl * 0.9, 0.7, 1.55)
     f.impact = new THREE.Vector3(
-      f.lip.x + f.out.x * 1.55,
+      f.lip.x + f.out.x * off,
       f.pool.y,
-      f.lip.z + f.out.y * 1.55
+      f.lip.z + f.out.y * off
     )
   }
   return out
@@ -750,9 +816,11 @@ const RIVER_FRAG = /* glsl */ `
     c = mix(c, uRiverDeep, smoothstep(0.44, 0.18, streak) * 0.35);
 
     // cobalt plunge pool near the falls impact — f1 shows the vivid deep-blue
-    // holding over the whole visible pool before handing off to the cyan run
+    // holding over the visible pool before handing off to the cyan run (the
+    // round-3 pool is only ~4 m across; the old 5–14 m ramp painted half the
+    // gorge cobalt)
     float rd = distance(vWorld.xz, uImpact.xy);
-    c = mix(uPool, c, smoothstep(5.0, 14.0, rd));
+    c = mix(uPool, c, smoothstep(2.2, 6.5, rd));
 
     // white rapids where the channel is steep: broken streaks along the flow
     float thr = 0.78 - 0.34 * vFlow;
@@ -986,7 +1054,7 @@ function buildRiver(shared, terrain, spec, impact, params, seaLevel, guards) {
       uFlowBase: { value: params.flowBase },
       uFlowRapid: { value: params.flowRapid },
       uImpact: {
-        value: new THREE.Vector4(impact?.x ?? 9999, impact?.z ?? 9999, 4.6, impact ? 1 : 0),
+        value: new THREE.Vector4(impact?.x ?? 9999, impact?.z ?? 9999, 3.0, impact ? 1 : 0),
       },
       // the river is EXCLUDED from full fog — it keeps its chroma at depth so
       // it stays the frame's most saturated element (grade-pass hook, header)
@@ -1115,6 +1183,9 @@ function buildFallsSheet(shared, falls, opts) {
   const botY = pool.y - 0.7
   const H = topY - botY
   const W = width * widthMul
+  // bow amplitude scales with the drop: the shape below was authored for a
+  // ~9 m plunge; the round-3 falls is 4 m and lands barely 1 m out
+  const bowK = clamp(H / 9, 0.45, 1)
 
   const U = 16
   const V = 40
@@ -1126,7 +1197,8 @@ function buildFallsSheet(shared, falls, opts) {
     const v = j / (V - 1)
     // forward bow: fast curl over the lip, slight lean, base flare kicks out
     const bow =
-      0.55 * smooth(0, 0.22, v) + 0.3 * v + 0.85 * smooth(0.8, 1.0, v) + recess
+      (0.55 * smooth(0, 0.22, v) + 0.3 * v + 0.85 * smooth(0.8, 1.0, v)) * bowK +
+      recess
     // vertical easing: the water arcs — slow drop at the lip, fast below
     const y = topY - H * (0.8 * v * v + 0.2 * v)
     const w = W * (1.0 + 0.1 * v + 0.35 * smooth(0.82, 1.0, v))
@@ -1296,12 +1368,14 @@ function buildMist(shared, falls, kind, rng) {
       uCenter: { value: center },
       uDirOut: { value: falls.out.clone() },
       uPxScale: { value: 800 },
-      uRadius: { value: isSpray ? 2.2 : 3.4 },
+      uRadius: { value: isSpray ? 1.8 : 3.0 }, // FRAMING: within 8 m of base
       uLifeMin: { value: isSpray ? 0.7 : 2.6 },
       uLifeMax: { value: isSpray ? 1.3 : 4.6 },
-      uRise: { value: isSpray ? 2.2 : 1.5 },
-      uSizeMin: { value: isSpray ? 0.28 : 0.9 },
-      uSizeMax: { value: isSpray ? 0.55 : 2.4 },
+      // rise capped so pads stay below y 10 off the y 8.5 pool (FRAMING §8);
+      // max rise = uRise × 1.4 → ≤ ~1.3 m above the emit height
+      uRise: { value: isSpray ? 0.85 : 0.9 },
+      uSizeMin: { value: isSpray ? 0.24 : 0.7 },
+      uSizeMax: { value: isSpray ? 0.5 : 1.8 },
       uColor: { value: col(isSpray ? PAL.spray : PAL.mist) },
       uAlpha: { value: isSpray ? 0.42 : 0.13 },
       uFogMix: { value: isSpray ? 0.0 : 1.0 },
@@ -1330,10 +1404,12 @@ export function createWater({ terrain, renderer, sky } = {}) {
   const seaLevel = Number.isFinite(meta.seaLevel) ? meta.seaLevel : 0
 
   const params = {
-    swellAmp: 1.0, // multiplier over the authored 3-wave set (~±0.15 m total)
+    swellAmp: 0.8, // multiplier over the authored 3-wave set — the visible
+                   // strip is fw 0–0.07 at 45–110 m; it must read as a hazed
+                   // slate-teal band, not a busy seascape (FRAMING §8)
     swellSpeed: 0.85, // toy-world seas run slow
-    glitter: 0.45, // 0.85 spread the lobe over the whole sheet at the shipped
-                   // camera's grazing angle; 0.45 keeps a live animated sparkle
+    glitter: 0.3, // 0.85 spread the lobe over the whole sheet at the shipped
+                  // camera's grazing angle; 0.3 keeps a faint live sparkle
     flowBase: 0.85, // river m/s
     flowRapid: 1.7, // extra m/s at full rapids
   }
@@ -1370,12 +1446,17 @@ export function createWater({ terrain, renderer, sky } = {}) {
   for (const spec of riverSpecs) {
     // A reach that pours over a lip gets a short overhang past the edge so
     // the cyan surface visibly feeds the white sheet (the cap hides the seam).
-    if (spec.tailFalls) {
+    // tailFalls comes from splitReachesAtFalls when WE split the course, but
+    // terrain's meta.rivers arrives PRE-split (headwater ends exactly on the
+    // lip), so also detect lip-adjacency by proximity — otherwise the reach
+    // tapers + sinks right before the lip and the sheet starts from nothing.
+    {
       const tail = spec.pts[spec.pts.length - 1]
       const nearLip = fallsSpecs.find(
         (f) => Math.hypot(f.lip.x - tail.x, f.lip.z - tail.z) < 4
       )
       if (nearLip) {
+        spec.tailFalls = true
         spec.pts.push({
           x: tail.x + nearLip.out.x * 0.8,
           z: tail.z + nearLip.out.y * 0.8,
@@ -1410,11 +1491,13 @@ export function createWater({ terrain, renderer, sky } = {}) {
   const f0 = fallsSpecs[0]
   const impact = f0 ? { x: f0.impact.x, z: f0.impact.z } : null
 
-  // no-bed-lift guard zones under each falls (see buildRiver)
+  // no-bed-lift guard zones under each falls (see buildRiver). Radii sized to
+  // the 4 m round-3 falls: they must cover the chute + pool but NOT the river
+  // bend at (−28, +4.5), which still wants its bed-contact safety lift.
   const guards = []
   for (const f of fallsSpecs) {
-    guards.push({ x: f.impact.x, z: f.impact.z, r: 4.5 })
-    guards.push({ x: f.pool.x, z: f.pool.z, r: 3.5 })
+    guards.push({ x: f.impact.x, z: f.impact.z, r: 3.0 })
+    guards.push({ x: f.pool.x, z: f.pool.z, r: 2.2 })
   }
 
   const rivers = []
