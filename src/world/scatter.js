@@ -127,47 +127,75 @@ function sstep(e0, e1, x) {
 // sway: wind amplitude in radians at the crown (bible: trees 0.8–1.2°,
 //       wheat ×2, tufts ×1.5); rocks/wood 0.
 // blobA: contact-shadow decal alpha class (0 = none).
+// hueAmp: per-instance hue jitter amplitude (R↔B channel skew). Frame01 shows
+// STRONG hue variety between neighbouring crowns — olive, yellow-green and
+// blue-green in one stand — so trees swing far wider than ground cover.
+// clearR for trees is tuned so crowns OVERLAP 20–40 % inside clumps (bible §8:
+// spacing 1.2–2.2 m, no visible ground) — round 1's 0.55 kept every crown
+// isolated and read as park scatter.
 const SPECIES = {
-  pine_a:   { kind: 'tree',  baseH: 2.80, slopeMax: 0.55, clearR: 0.55, sway: 0.017, blobA: 0.50 },
-  pine_b:   { kind: 'tree',  baseH: 2.65, slopeMax: 0.55, clearR: 0.55, sway: 0.017, blobA: 0.50 },
-  pine_c:   { kind: 'tree',  baseH: 2.95, slopeMax: 0.55, clearR: 0.55, sway: 0.017, blobA: 0.50 },
-  pine_snow:{ kind: 'tree',  baseH: 2.75, slopeMax: 0.60, clearR: 0.55, sway: 0.015, blobA: 0.46 },
-  oak_a:    { kind: 'tree',  baseH: 1.95, slopeMax: 0.42, clearR: 0.52, sway: 0.016, blobA: 0.50 },
-  oak_b:    { kind: 'tree',  baseH: 1.85, slopeMax: 0.42, clearR: 0.52, sway: 0.016, blobA: 0.50 },
-  oak_c:    { kind: 'tree',  baseH: 2.05, slopeMax: 0.42, clearR: 0.52, sway: 0.016, blobA: 0.50 },
-  blossom_a:{ kind: 'tree',  baseH: 2.00, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
-  blossom_b:{ kind: 'tree',  baseH: 1.90, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
-  blossom_c:{ kind: 'tree',  baseH: 2.10, slopeMax: 0.45, clearR: 0.45, sway: 0.018, blobA: 0.50 },
-  bamboo_a: { kind: 'tree',  baseH: 2.50, slopeMax: 0.40, clearR: 0.40, sway: 0.021, blobA: 0.42 },
-  bamboo_b: { kind: 'tree',  baseH: 2.30, slopeMax: 0.40, clearR: 0.40, sway: 0.021, blobA: 0.42 },
-  bush_a:   { kind: 'bush',  baseH: 0.72, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40 },
-  bush_b:   { kind: 'bush',  baseH: 0.66, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40 },
-  bush_c:   { kind: 'bush',  baseH: 0.78, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40 },
+  pine_a:   { kind: 'tree',  baseH: 2.80, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
+  pine_b:   { kind: 'tree',  baseH: 2.65, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
+  pine_c:   { kind: 'tree',  baseH: 2.95, slopeMax: 0.55, clearR: 0.38, sway: 0.017, blobA: 0.50, hueAmp: 0.085 },
+  pine_snow:{ kind: 'tree',  baseH: 2.75, slopeMax: 0.60, clearR: 0.38, sway: 0.015, blobA: 0.46, hueAmp: 0.05 },
+  oak_a:    { kind: 'tree',  baseH: 1.95, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.15 },
+  oak_b:    { kind: 'tree',  baseH: 1.85, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.15 },
+  oak_c:    { kind: 'tree',  baseH: 2.05, slopeMax: 0.42, clearR: 0.36, sway: 0.016, blobA: 0.50, hueAmp: 0.12 },
+  blossom_a:{ kind: 'tree',  baseH: 2.00, slopeMax: 0.45, clearR: 0.36, sway: 0.018, blobA: 0.50 },
+  blossom_b:{ kind: 'tree',  baseH: 1.90, slopeMax: 0.45, clearR: 0.36, sway: 0.018, blobA: 0.50 },
+  blossom_c:{ kind: 'tree',  baseH: 2.10, slopeMax: 0.45, clearR: 0.36, sway: 0.018, blobA: 0.50 },
+  bamboo_a: { kind: 'tree',  baseH: 2.50, slopeMax: 0.40, clearR: 0.32, sway: 0.021, blobA: 0.42, hueAmp: 0.07 },
+  bamboo_b: { kind: 'tree',  baseH: 2.30, slopeMax: 0.40, clearR: 0.32, sway: 0.021, blobA: 0.42, hueAmp: 0.07 },
+  bush_a:   { kind: 'bush',  baseH: 0.72, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40, hueAmp: 0.09 },
+  bush_b:   { kind: 'bush',  baseH: 0.66, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40, hueAmp: 0.09 },
+  bush_c:   { kind: 'bush',  baseH: 0.78, slopeMax: 0.52, clearR: 0.55, sway: 0.012, blobA: 0.40, hueAmp: 0.09 },
   rock_a:   { kind: 'rock',  baseH: 0.70, slopeMax: 0.88, clearR: 0.55, sway: 0,     blobA: 0.42 },
   rock_b:   { kind: 'rock',  baseH: 0.62, slopeMax: 0.88, clearR: 0.55, sway: 0,     blobA: 0.42 },
   rock_c:   { kind: 'rock',  baseH: 0.80, slopeMax: 0.88, clearR: 0.55, sway: 0,     blobA: 0.42 },
   boulder_a:{ kind: 'rock',  baseH: 1.90, slopeMax: 0.80, clearR: 0.62, sway: 0,     blobA: 0.48 },
-  grass_tuft_a: { kind: 'ground', baseH: 0.32, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14 },
-  grass_tuft_b: { kind: 'ground', baseH: 0.30, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14 },
-  fern_a:   { kind: 'ground', baseH: 0.34, slopeMax: 0.55, clearR: 0.35, sway: 0.020, blobA: 0.16 },
-  flower_a: { kind: 'ground', baseH: 0.27, slopeMax: 0.42, clearR: 0.28, sway: 0.030, blobA: 0.12 },
-  flower_b: { kind: 'ground', baseH: 0.27, slopeMax: 0.42, clearR: 0.28, sway: 0.030, blobA: 0.12 },
-  wheat_a:  { kind: 'crop',  baseH: 0.85, slopeMax: 0.35, clearR: 0.26, sway: 0.034, blobA: 0.10 },
-  wheat_b:  { kind: 'crop',  baseH: 0.82, slopeMax: 0.35, clearR: 0.26, sway: 0.034, blobA: 0.10 },
+  // Tufts/flowers sized to the top of the bible band + lifted value range so
+  // pasture reads DRESSED — round 1's 0.30 m neutral-tint tufts vanished into
+  // the ground texture and left 40 m² patches effectively bald (hard fail).
+  grass_tuft_a: { kind: 'ground', baseH: 0.37, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14, vLo: 1.00, vHi: 1.15, hueAmp: 0.07 },
+  grass_tuft_b: { kind: 'ground', baseH: 0.34, slopeMax: 0.58, clearR: 0.30, sway: 0.026, blobA: 0.14, vLo: 1.00, vHi: 1.15, hueAmp: 0.07 },
+  fern_a:   { kind: 'ground', baseH: 0.34, slopeMax: 0.55, clearR: 0.35, sway: 0.020, blobA: 0.16, vLo: 0.96, vHi: 1.08 },
+  flower_a: { kind: 'ground', baseH: 0.30, slopeMax: 0.42, clearR: 0.28, sway: 0.030, blobA: 0.12, vLo: 1.02, vHi: 1.16 },
+  flower_b: { kind: 'ground', baseH: 0.30, slopeMax: 0.42, clearR: 0.28, sway: 0.030, blobA: 0.12, vLo: 1.02, vHi: 1.16 },
+  // Wheat: blobA 0 — per-stalk cast shadows and contact blobs are SUPPRESSED
+  // (they made the paddocks read as countable crunchy stalks); the field gets
+  // one soft AO gradient at its downwind edge instead (see buildBlobs). Hue
+  // jitter stays narrow so the mass reads as one coherent gold.
+  wheat_a:  { kind: 'crop',  baseH: 0.85, slopeMax: 0.35, clearR: 0.26, sway: 0.034, blobA: 0, hueAmp: 0.028 },
+  wheat_b:  { kind: 'crop',  baseH: 0.82, slopeMax: 0.35, clearR: 0.26, sway: 0.034, blobA: 0, hueAmp: 0.028 },
   stump:    { kind: 'wood',  baseH: 0.45, slopeMax: 0.40, clearR: 0.55, sway: 0,     blobA: 0.38 },
   log:      { kind: 'wood',  baseH: 0.50, slopeMax: 0.38, clearR: 0.55, sway: 0,     blobA: 0.38 },
   cattail:  { kind: 'reed',  baseH: 0.92, slopeMax: 0.70, clearR: 0.32, sway: 0.030, blobA: 0 },
   lilypad:  { kind: 'flat',  baseH: 0.46, slopeMax: 1.00, clearR: 0.50, sway: 0,     blobA: 0 },
 }
 
-// Global budgets (ART_BIBLE §8 table + the F2-biome extras).
+// Global budgets. Tree budgets are sized so they DON'T bind inside clumps:
+// round 1's 4200/3300 caps bound against the hash-shuffled candidate list,
+// which thinned every stand uniformly to park scatter — the critic's main
+// forest fail. Collision spacing (clearR) is the real density governor now.
 const BUDGET = {
-  conifer: 4200, oak: 3300, bush: 2300, rockAll: 950, tuft: 9000,
+  conifer: 6800, oak: 7400, bush: 2300, rockAll: 950, tuft: 12000,
   // wheat is thinned by the paddock fill spacing (see §4.7), not by this cap —
   // the cap must stay slack or it truncates the last paddock scanned.
-  wheat: 900, flower: 700, fern: 500, blossom: 400, bamboo: 120,
+  wheat: 2600, flower: 850, fern: 500, blossom: 400, bamboo: 120,
   cattail: 260, lilypad: 140, wood: 60,
 }
+
+// Wheat paddock ellipses — mirrors terrain.js PADDOCKS (authored constants),
+// the same trick props.js uses for the fences. Drives the packed paddock fill
+// (§4.7) and the per-field downwind AO decals (buildBlobs); the biome raster
+// stays the per-sample authority.
+const WHEAT_PADDOCKS = [
+  { x: -34, z: 14, rx: 6.0, rz: 3.6, rot: 0.30 },
+  { x: -42, z: 26, rx: 8.0, rz: 4.6, rot: -0.18 },
+  { x: -30, z: 30, rx: 6.6, rz: 4.0, rot: 0.42 },
+  { x: -20, z: 52, rx: 8.2, rz: 4.6, rot: 0.12 },
+  { x: 1, z: 36, rx: 9.0, rz: 5.0, rot: -0.30 },
+]
 
 // ===========================================================================
 // 3. createScatter
@@ -206,6 +234,29 @@ export function createScatter({ terrain, atlas, renderer }) {
     return false
   }
 
+  // ---- Structure clearance rects: no billboard within 1.5 m of a wall.
+  // The farm barn + cart (props.js buildFarm) sit outside every POI keep-out
+  // disc, so round 1 grew conifers straight through the barn walls. Oriented
+  // rects, half-extents cover the roof/lean-to overhang; trees get extra
+  // margin for crown overhang.
+  const STRUCT_CLEAR = [
+    { x: -62, z: 25, rot: 1.25, hx: 3.75, hz: 1.95 },   // barn + east lean-to
+    { x: -59.6, z: 23.2, rot: -0.5, hx: 1.35, hz: 1.0 }, // cart
+  ]
+  for (const s of STRUCT_CLEAR) { s.c = Math.cos(s.rot); s.s = Math.sin(s.rot) }
+  function structClear(x, z, margin) {
+    for (let i = 0; i < STRUCT_CLEAR.length; i++) {
+      const s = STRUCT_CLEAR[i]
+      const dx = x - s.x
+      const dz = z - s.z
+      // world -> struct local (inverse of props' makeRotationY(rot) frame)
+      const lx = dx * s.c - dz * s.s
+      const lz = dx * s.s + dz * s.c
+      if (Math.abs(lx) < s.hx + margin && Math.abs(lz) < s.hz + margin) return true
+    }
+    return false
+  }
+
   // ---- Occupancy hash grid: blue-noise spacing across every pass. Trees may
   // ---- interpenetrate crowns 20–40 % (bible §8) → clearR ~0.6 × halfwidth.
   const OCC_CELL = 2.5
@@ -238,14 +289,19 @@ export function createScatter({ terrain, atlas, renderer }) {
     return true
   }
 
-  // ---- Authored foreground copse belt: frame01's bottom blur band is dense
-  // ---- dark forest dissolving off-frame. These discs sit south of the open
-  // ---- pasture, inside the camera's lower defocus zone (z ≳ +75 at the
-  // ---- boot camera), so the frame's lower edge reads as soft crowns.
+  // ---- Authored south copses. NOTE the geometry, measured this round: the
+  // ---- boot camera sits at z +64.8 looking north and its bottom frame edge
+  // ---- meets the ground near z +34 — round 1 put these discs at z 78–130,
+  // ---- BEHIND the camera, which is why the bottom blur band rendered empty
+  // ---- road and grass. The near ring (z 46–70) now backs up the dedicated
+  // ---- foreground crown belt (§4.0); the far ring keeps free-orbit south
+  // ---- from going bald.
   const SOUTH_COPSES = [
-    { x: -62, z: 78, r: 18 }, { x: -70, z: 105, r: 20 }, { x: -52, z: 124, r: 16 },
-    { x: -44, z: 108, r: 15 }, { x: -16, z: 100, r: 12 }, { x: 0, z: 120, r: 15 },
-    { x: -90, z: 130, r: 22 }, { x: 24, z: 112, r: 13 },
+    { x: -70, z: 52, r: 15 }, { x: -54, z: 62, r: 17 }, { x: -34, z: 68, r: 14 },
+    { x: -12, z: 58, r: 13 }, { x: 8, z: 66, r: 15 }, { x: -88, z: 68, r: 18 },
+    { x: 28, z: 54, r: 12 },
+    { x: -62, z: 92, r: 19 }, { x: -24, z: 100, r: 18 }, { x: 6, z: 112, r: 16 },
+    { x: -90, z: 118, r: 21 }, { x: 34, z: 92, r: 14 },
   ]
 
   // ---- Forest mask: organic clump field over the whole map. terrain.biome
@@ -264,8 +320,11 @@ export function createScatter({ terrain, atlas, renderer }) {
       // (frame01's bottom blur strip) gets a density bias so the frame's
       // lower edge dissolves into crowns, not bare pasture.
       let n = fbm2(x * 0.0115 + 3.1, z * 0.0115 - 7.4, 3)
-      n += 0.2 * sstep(58, 100, z)
-      m = sstep(0.30, 0.60, n)
+      n += 0.25 * sstep(36, 62, z)
+      // threshold a touch higher than round 1: satellite copses spend the
+      // same tree budget as the authored stands — too many diffuse copses
+      // and the caps bind, thinning clump INTERIORS back to park scatter
+      m = sstep(0.33, 0.63, n)
       for (let i = 0; i < SOUTH_COPSES.length; i++) {
         const d = SOUTH_COPSES[i]
         const dd = Math.hypot(x - d.x, z - d.z) / d.r
@@ -278,9 +337,11 @@ export function createScatter({ terrain, atlas, renderer }) {
     // glade carve + ragged edges: ~9 m noise pokes clearings into stands and
     // chews the rims into fingers. Authored stands stay SOLID at heart —
     // frame01's clumps have no visible ground inside (bible §8) — while
-    // noise copses fray harder.
+    // noise copses fray harder. Round 1 carved 45 % out of authored interiors
+    // too, which opened grass gaps inside every clump; the carve now only
+    // nips the rims of authored stands.
     const c = fbm2(x * 0.11 - 11.2, z * 0.11 + 5.9, 2)
-    m *= 1 - (authored ? 0.45 : 0.8) * sstep(0.42, 0.72, c)
+    m *= 1 - (authored ? 0.22 : 0.7) * sstep(0.5, 0.8, c)
     m = m * sstep(0.06, authored ? 0.3 : 0.5, m + 0.26 * c)
     return clamp01(m)
   }
@@ -344,16 +405,21 @@ export function createScatter({ terrain, atlas, renderer }) {
     if (sp.kind === 'tree' && h > 5) h = 5 // bible: never > 5 m
     let wBias = 1
     if (key === 'oak_a' || key === 'oak_b' || key === 'oak_c') wBias = 1.09
+    else if (key === 'wheat_a' || key === 'wheat_b') wBias = 1.12 // packed-mass coverage
     const w = h * fr.aspect * wBias * lerp(0.92, 1.08, rnd())
-    // tint: ±6 % value, ±4° hue (warm↔cool channel skew; blossoms rotate
-    // along a pink↔violet axis instead so the stand mixes like frame02).
-    const v = lerp(0.94, 1.06, rnd())
+    // tint: ±6 % value (per-species range — ground cover is lifted so it pops
+    // against the terrain) + hue skew along an R↔B axis. Trees carry a WIDE
+    // per-species hueAmp: frame01 mixes olive, yellow-green and blue-green
+    // crowns inside a single stand — value-only jitter read as one flat green.
+    // Blossoms rotate along a pink↔violet axis instead (frame02 grammar).
+    const v = lerp(sp.vLo !== undefined ? sp.vLo : 0.94, sp.vHi !== undefined ? sp.vHi : 1.06, rnd())
     const hj = rnd() * 2 - 1
     let tr, tg, tb
     if (key.indexOf('blossom') === 0) {
       tr = v * (1 - 0.045 * hj); tg = v * (1 - 0.02 * Math.abs(hj)); tb = v * (1 + 0.06 * hj)
     } else {
-      tr = v * (1 + 0.055 * hj); tg = v * (1 + 0.012 * hj); tb = v * (1 - 0.05 * hj)
+      const ha = sp.hueAmp !== undefined ? sp.hueAmp : 0.055
+      tr = v * (1 + ha * hj); tg = v * (1 + 0.25 * ha * hj); tb = v * (1 - 0.9 * ha * hj)
     }
     const y = T.height(x, z) - (0.024 * h + 0.012) // base sinks 2–3 texels (§6)
     return {
@@ -366,6 +432,9 @@ export function createScatter({ terrain, atlas, renderer }) {
       rotY: o.rotY || 0,
       flat: sp.kind === 'flat',
       blobA: sp.blobA,
+      // crops never write the shadow map (depth pass collapses them) — the
+      // per-stalk cast shadows were half of the wheat's crunchy-noise read
+      cast: sp.kind === 'crop' ? 0 : 1,
     }
   }
 
@@ -377,8 +446,11 @@ export function createScatter({ terrain, atlas, renderer }) {
     if (T.slope(x, z) > sp.slopeMax) return false
     const road = T.onRoad(x, z)
     if (sp.kind === 'tree' && road > 0.01) return false
-    if (sp.kind !== 'tree' && sp.kind !== 'ground' && road > 0.05) return false
+    if (sp.kind === 'crop') {
+      if (road > 0.25) return false // wheat runs up to the road feather (frame01)
+    } else if (sp.kind !== 'tree' && sp.kind !== 'ground' && road > 0.05) return false
     if (sp.kind === 'ground' && road > 0.3) return false
+    if (structClear(x, z, sp.kind === 'tree' ? 2.1 : 1.5)) return false
     if (keepOut(x, z, sp.kind === 'ground' || sp.kind === 'crop', sp.kind === 'crop')) return false
     if (sp.kind === 'tree') {
       // crowns must not hang over water or punch into cliff faces
@@ -405,15 +477,46 @@ export function createScatter({ terrain, atlas, renderer }) {
   // 4. PLACEMENT PASSES (fixed order → deterministic under budget caps)
   // =========================================================================
 
+  // ---- 4.0 FOREGROUND CROWN BELT: fill the bottom blur band ---------------
+  // The §2 boot camera (z +64.8, pitch 28°, vFOV 26°) meets the ground with
+  // its bottom frame edge near z +34; crowns rooted in z ≈ 33.5–46.5 rise
+  // into the 0.88–1.0 fh near-blur zone as the big soft out-of-focus masses
+  // frame01 closes its bottom edge with — half the miniature illusion. Large
+  // scale bias so the crowns defocus into fat blobs; the farm keep-out, the
+  // road corridor and the 'field' biome carve the centre automatically, so
+  // the belt flanks the wheat/road stage exactly like the reference. Runs
+  // FIRST so tree budgets can never starve it.
+  {
+    const rnd = rngFor('foreground')
+    const step = 1.55
+    for (let gz = 33.5; gz <= 46.5; gz += step) {
+      for (let gx = -86; gx <= 30; gx += step) {
+        const jx = gx + (hash2(gx, gz, 231) - 0.5) * step * 1.3
+        const jz = gz + (hash2(gx, gz, 232) - 0.5) * step * 1.3
+        const b = T.biome(jx, jz)
+        if (b !== 'grass' && b !== 'forest') continue
+        const p = 0.86 * (0.58 + 0.42 * (fbm2(jx * 0.05 - 4.4, jz * 0.05 + 8.9, 2) * 0.5 + 0.5))
+        if (hash2(jx, jz, 233) > p) continue
+        const r = hash2(jx, jz, 234)
+        const key =
+          r < 0.30 ? (r < 0.15 ? 'pine_a' : 'pine_b')
+          : r < 0.44 ? 'oak_c' // olive-gold accents read strongly in the near blur
+          : r < 0.74 ? 'oak_a' : 'oak_b'
+        const grp = key.indexOf('pine') === 0 ? 'conifer' : 'oak'
+        plant(key, jx, jz, rnd, grp, { scale: 1.18 + hash2(jx, jz, 235) * 0.26 })
+      }
+    }
+  }
+
   // ---- 4.1 TREES: jittered-grid blue-noise over the whole map -------------
-  // Grid 1.55 m ≈ the bible's 1.2–2.2 m in-clump crown spacing; the forest
-  // mask thresholds acceptance so interiors are packed (260–420 /ha), edges
-  // fray into outrider clusters and pasture keeps only anchored lone trees.
+  // Grid 1.45 m ≈ the bible's 1.2–2.2 m in-clump crown spacing; the forest
+  // mask thresholds acceptance so interiors are packed solid, edges fray
+  // into outrider clusters and pasture keeps only anchored lone trees.
   {
     const rnd = rngFor('trees')
     const step = 1.45
-    let nConifer = 0
-    let nOak = 0
+    let nConifer = counts.conifer || 0 // budgets are global: count the belt
+    let nOak = counts.oak || 0
     // Candidates visited in hash-shuffled order: if a species budget binds,
     // the thinning lands uniformly across the whole map instead of
     // truncating whichever corner the scan reaches last.
@@ -445,7 +548,7 @@ export function createScatter({ terrain, atlas, renderer }) {
           m = forestMask(jx, jz)
           // interior ≈ saturated (collision spacing alone shapes it — frame01
           // clump hearts show NO ground); rims thin quadratically
-          p = m > 0.62 ? 0.96 : m * m * 0.9
+          p = m > 0.55 ? 0.985 : m * m * 1.05
           if (m < 0.14) {
             // open pasture: rare lone trees, anchored near features so they
             // read placed (fence lines / rocks / forks), never confetti.
@@ -479,7 +582,9 @@ export function createScatter({ terrain, atlas, renderer }) {
             key = r1 < 0.4 ? 'pine_a' : r1 < 0.74 ? 'pine_b' : 'pine_c'
           } else {
             const r1 = hash2(jx, jz, 6)
-            key = r1 < 0.086 ? 'oak_c' : r1 < 0.55 ? 'oak_a' : 'oak_b'
+            // olive-gold accent raised to ~1 in 6 — frame01 stands are salted
+            // with golden-olive crowns, not a rare fleck
+            key = r1 < 0.16 ? 'oak_c' : r1 < 0.58 ? 'oak_a' : 'oak_b'
           }
         }
         const isConifer = key.indexOf('pine') === 0
@@ -491,8 +596,9 @@ export function createScatter({ terrain, atlas, renderer }) {
         if (plant(key, jx, jz, rnd, isConifer ? 'conifer' : 'oak', landmark ? { scale: 1.45 } : undefined)) {
           if (isConifer) nConifer++
           else nOak++
-          // ecotone outriders: small satellite clusters off ragged clump rims
-          if (m > 0.18 && m < 0.5 && hash2(jx, jz, 8) < 0.3) {
+          // ecotone outriders: 2–5-tree satellite clusters off ragged clump
+          // rims so boundaries never read convex-smooth (bible §8 ecotone)
+          if (m > 0.15 && m < 0.55 && hash2(jx, jz, 8) < 0.34) {
             const n = 2 + ((hash2(jx, jz, 9) * 3.4) | 0)
             for (let k = 0; k < n; k++) {
               const a = hash2(jx, jz, 10 + k) * Math.PI * 2
@@ -537,8 +643,8 @@ export function createScatter({ terrain, atlas, renderer }) {
         const key =
           r < 0.34 ? (r < 0.17 ? 'pine_a' : 'pine_b')
           : r < 0.62 ? (r < 0.48 ? 'oak_a' : 'oak_b')
-          : r < 0.68 ? 'oak_c'
-          : r < 0.9 ? (r < 0.79 ? 'bush_a' : 'bush_b')
+          : r < 0.72 ? 'oak_c'
+          : r < 0.9 ? (r < 0.82 ? 'bush_a' : 'bush_b')
           : 'bush_c'
         const grp = key.indexOf('pine') === 0 ? 'conifer' : key.indexOf('oak') === 0 ? 'oak' : 'bush'
         if (grp === 'conifer' && (counts.conifer || 0) >= BUDGET.conifer) continue
@@ -672,37 +778,43 @@ export function createScatter({ terrain, atlas, renderer }) {
   }
 
   // ---- 4.7 WHEAT: only on the farm paddock fields (biome 'field') ---------
-  // Coarse 4 m pre-scan finds the paddocks, then a tight 0.8 m jittered fill
-  // packs them into the continuous golden mass of frame01.
+  // ROUND-2 REWRITE. Round 1's 0.86 m grid with ±0.2 m jitter drew visible
+  // diagonal lattice rows of one countable stalk sprite over the bare sand
+  // decal — grid alignment AND same-species-same-scale repetition, both §8
+  // hard fails. Frame01's wheat is a SOLID GOLDEN MASS. So: staggered-row
+  // packing at ~2.4 clusters/m² (≈2.2× round 1) with FULL-cell blue-noise
+  // jitter, cells ~1.2 m wide overlapping 30–50 %, no ground showing through
+  // the interior. Wheat takes NO part in the occupancy grid — the overlap is
+  // the point, and nothing else plants inside 'field' — and the mandatory
+  // per-instance jitter (height ×U(0.82,1.24), tint ±6 % value) plus the
+  // wheat_a/b frame mix and the sprite's pale WHEAT_TIPS heads keep the mass
+  // reading as wheat, not a texture. Per-stalk shadows are off (SPECIES
+  // blobA 0 + depth-pass collapse); buildBlobs lays one soft AO gradient at
+  // each field's downwind edge instead.
   {
     const rnd = rngFor('wheat')
-    const tiles = []
-    for (let gz = -LIM; gz <= LIM; gz += 4) {
-      for (let gx = -LIM; gx <= LIM; gx += 4) {
-        if (T.biome(gx, gz) === 'field') tiles.push(gx, gz)
-      }
-    }
-    // 0.62 m put ~2.2 clusters/m² in the paddocks: the billboards packed
-    // edge-to-edge and the field read as a bristle mat of stubble instead of
-    // frame01's golden mass with ground showing between the heads. Thinning via
-    // spacing (not the budget cap) matters — the cap breaks out of a tile scan
-    // that runs in z order, so it empties the LAST paddock instead of thinning
-    // all three evenly.
-    const fine = 0.86
-    for (let i = 0; i < tiles.length; i += 2) {
-      if ((counts.wheat || 0) >= BUDGET.wheat) break
-      const tx = tiles[i]
-      const tz = tiles[i + 1]
-      for (let oz = -2; oz < 2; oz += fine) {
-        for (let ox = -2; ox < 2; ox += fine) {
-          const jx = tx + ox + (hash2(tx + ox, tz + oz, 101) - 0.5) * 0.4
-          const jz = tz + oz + (hash2(tx + ox, tz + oz, 102) - 0.5) * 0.4
-          if (T.biome(jx, jz) !== 'field') continue
-          if (T.onRoad(jx, jz) > 0.05) continue
-          if (hash2(jx, jz, 103) > 0.86) continue // tiny breathing gaps
-          const key = hash2(jx, jz, 104) < 0.55 ? 'wheat_a' : 'wheat_b'
+    const colStep = 0.66
+    const rowStep = 0.60
+    for (const p of WHEAT_PADDOCKS) {
+      const ext = Math.max(p.rx, p.rz) * 1.2
+      const cr = Math.cos(p.rot)
+      const sr = Math.sin(p.rot)
+      let row = 0
+      for (let oz = -ext; oz <= ext; oz += rowStep, row++) {
+        const stag = row & 1 ? colStep * 0.5 : 0
+        for (let ox = -ext + stag; ox <= ext; ox += colStep) {
           if ((counts.wheat || 0) >= BUDGET.wheat) break
-          plant(key, jx, jz, rnd, 'wheat')
+          // full-amplitude jitter: no residual row/lattice read survives
+          const lx = ox + (hash2(p.x + ox, p.z + oz, 101) - 0.5) * colStep * 0.9
+          const lz = oz + (hash2(p.x + ox, p.z + oz, 102) - 0.5) * rowStep * 0.9
+          const jx = p.x + lx * cr - lz * sr
+          const jz = p.z + lx * sr + lz * cr
+          if (T.biome(jx, jz) !== 'field') continue
+          if (hash2(jx, jz, 103) > 0.955) continue // rare micro-gaps only
+          const key = hash2(jx, jz, 104) < 0.55 ? 'wheat_a' : 'wheat_b'
+          if (!accepts(key, jx, jz)) continue
+          const it = makeInstance(key, jx, jz, rnd)
+          if (it) { inst.push(it); bump('wheat') }
         }
       }
     }
@@ -713,10 +825,10 @@ export function createScatter({ terrain, atlas, renderer }) {
   // dense along the road feather, absent under closed canopy and on fields.
   {
     const rnd = rngFor('tufts')
-    const step = 1.75
+    const step = 1.85
     for (let gz = -LIM; gz <= LIM; gz += step) {
       for (let gx = -LIM; gx <= LIM; gx += step) {
-        if ((counts.tuft || 0) >= 12000) break
+        if ((counts.tuft || 0) >= BUDGET.tuft) break
         const jx = gx + (hash2(gx, gz, 111) - 0.5) * step * 1.2
         const jz = gz + (hash2(gx, gz, 112) - 0.5) * step * 1.2
         const b = T.biome(jx, jz)
@@ -724,8 +836,11 @@ export function createScatter({ terrain, atlas, renderer }) {
         if (b === 'grass' || b === 'forest') {
           const m = forestMask(jx, jz)
           if (m > 0.78) continue // closed canopy — no visible ground
+          // meadow waves, but with a raised FLOOR: round 1's troughs left
+          // 40 m²+ of pasture with nothing on it (a §8 hard fail) — the
+          // floor now guarantees ≥ ~400 tufts/ha everywhere on open grass
           const meadow = 0.5 + 0.5 * fbm2(jx * 0.03 + 23.4, jz * 0.03 - 8.8, 3)
-          p = 0.24 * (0.42 + 0.95 * meadow)
+          p = 0.25 * (0.58 + 0.82 * meadow)
           const road = T.onRoad(jx, jz)
           if (road > 0.02 && road < 0.3) p *= 1.35 // tufts crowd the feathered edge
         } else if (b === 'rock' || b === 'snow') p = 0.10
@@ -745,14 +860,14 @@ export function createScatter({ terrain, atlas, renderer }) {
     for (let gz = -LIM; gz <= LIM; gz += cellW) {
       for (let gx = -LIM; gx <= LIM; gx += cellW) {
         if ((counts.flower || 0) >= BUDGET.flower) break
-        if (hash2(gx, gz, 121) > 0.09) continue
+        if (hash2(gx, gz, 121) > 0.13) continue
         const cx = gx + (hash2(gx, gz, 122) - 0.5) * 8
         const cz = gz + (hash2(gx, gz, 123) - 0.5) * 8
         if (T.biome(cx, cz) !== 'grass') continue
         if (forestMask(cx, cz) > 0.4) continue
         const main = hash2(gx, gz, 124) < 0.55 ? 'flower_a' : 'flower_b'
         const alt = main === 'flower_a' ? 'flower_b' : 'flower_a'
-        const n = 5 + ((hash2(gx, gz, 125) * 9) | 0)
+        const n = 6 + ((hash2(gx, gz, 125) * 11) | 0)
         for (let k = 0; k < n; k++) {
           if ((counts.flower || 0) >= BUDGET.flower) break
           const a = hash2(gx, gz, 130 + k) * Math.PI * 2
@@ -926,7 +1041,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     attribute vec4 iRect;   // atlas u0, v0, uSize, vSize
     attribute vec3 iTint;   // per-instance albedo tint (value + hue jitter)
     attribute vec4 iWind;   // phase, amplitude(rad), frequency, flipU
-    attribute vec3 iSize;   // world w, world h (billb.) / depth (flat), cellId
+    attribute vec4 iSize;   // world w, world h (billb.) / depth (flat), cellId, castsShadow
     uniform float uTime;
     uniform float uCellVis[${CELLS * CELLS}];
     uniform vec2 uFadeRange;
@@ -961,6 +1076,11 @@ export function createScatter({ terrain, atlas, renderer }) {
       sctLocal = vec3( position.x * iSize.x, 0.0, position.z * iSize.y );
     #endif
     if ( sctVis < 0.5 || vSctFade <= 0.001 ) sctLocal = vec3( 0.0, -1.0e6, 0.0 );
+    #ifdef SCT_DEPTH
+      // shadow pass only: crops (wheat) never write the shadow map — the
+      // field reads as one lit golden mass, not 1200 crunchy stalk shadows
+      if ( iSize.w < 0.5 ) sctLocal = vec3( 0.0, -1.0e6, 0.0 );
+    #endif
     #ifdef USE_MAP
       float sctU = mix( uv.x, 1.0 - uv.x, iWind.w );
       vMapUv = vec2( iRect.x + sctU * iRect.z, iRect.y + uv.y * iRect.w );
@@ -1016,7 +1136,7 @@ export function createScatter({ terrain, atlas, renderer }) {
       alphaTest: 0.5,
       side: THREE.DoubleSide,
     })
-    mat.defines = { SCT_BILLBOARD: '' }
+    mat.defines = { SCT_BILLBOARD: '', SCT_DEPTH: '' }
     mat.onBeforeCompile = (shader) => patchVertex(shader, true)
     mat.customProgramCacheKey = () => 'sct_depth_bb'
     return mat
@@ -1050,7 +1170,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     const rect = new Float32Array(n * 4)
     const tint = new Float32Array(n * 3)
     const wind = new Float32Array(n * 4)
-    const size = new Float32Array(n * 3)
+    const size = new Float32Array(n * 4)
     const mat = makeColorMaterial(billboard)
     const mesh = new THREE.InstancedMesh(geo, mat, n)
     const m4 = new THREE.Matrix4()
@@ -1072,9 +1192,10 @@ export function createScatter({ terrain, atlas, renderer }) {
       wind[i * 4 + 1] = it.amp
       wind[i * 4 + 2] = it.freq
       wind[i * 4 + 3] = it.flip
-      size[i * 3] = it.w
-      size[i * 3 + 1] = billboard ? it.h : it.w / (atlas.frames[it.key].aspect || 1)
-      size[i * 3 + 2] = it.cell
+      size[i * 4] = it.w
+      size[i * 4 + 1] = billboard ? it.h : it.w / (atlas.frames[it.key].aspect || 1)
+      size[i * 4 + 2] = it.cell
+      size[i * 4 + 3] = it.cast === 0 ? 0 : 1
       pos.set(it.x, it.y, it.z)
       if (!billboard && it.rotY) q.setFromAxisAngle(up, it.rotY)
       else q.identity()
@@ -1084,7 +1205,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     geo.setAttribute('iRect', new THREE.InstancedBufferAttribute(rect, 4))
     geo.setAttribute('iTint', new THREE.InstancedBufferAttribute(tint, 3))
     geo.setAttribute('iWind', new THREE.InstancedBufferAttribute(wind, 4))
-    geo.setAttribute('iSize', new THREE.InstancedBufferAttribute(size, 3))
+    geo.setAttribute('iSize', new THREE.InstancedBufferAttribute(size, 4))
     mesh.instanceMatrix.needsUpdate = true
     mesh.frustumCulled = false // we cull per world cell in the shader
     return mesh
@@ -1104,7 +1225,9 @@ export function createScatter({ terrain, atlas, renderer }) {
       if (T.slope(it.x, it.z) > 0.75) continue
       items.push(it)
     }
-    const n = items.length
+    // + one crescent AO decal per wheat paddock: the field's single soft
+    // grounding shadow at its downwind edge (replaces per-stalk blobs).
+    const n = items.length + WHEAT_PADDOCKS.length
     // ±1-extent ground quad: instance scale columns are the ellipse RADII.
     const geo = new THREE.BufferGeometry()
     geo.setAttribute('position', new THREE.Float32BufferAttribute(
@@ -1113,6 +1236,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     geo.setIndex([0, 1, 2, 0, 2, 3])
     const alpha = new Float32Array(n)
     const cell = new Float32Array(n)
+    const cres = new Float32Array(n * 3) // local dirX, dirY(uv), strength
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uCellVis: uCellVis,
@@ -1123,11 +1247,13 @@ export function createScatter({ terrain, atlas, renderer }) {
       vertexShader: /* glsl */ `
         attribute float cAlpha;
         attribute float cCell;
+        attribute vec3 cCres;
         uniform float uCellVis[${CELLS * CELLS}];
         uniform vec2 uFadeRange;
         uniform float uFogDensity;
         varying vec2 vUv;
         varying float vA;
+        varying vec3 vCres;
         void main() {
           vec4 wp = modelMatrix * instanceMatrix * vec4( position, 1.0 );
           float vis = uCellVis[ int( cCell + 0.5 ) ];
@@ -1137,6 +1263,7 @@ export function createScatter({ terrain, atlas, renderer }) {
           vA = cAlpha * fade * mix( 0.12, 1.0, fogT );
           if ( vis < 0.5 || vA < 0.004 ) wp = vec4( 0.0, -1.0e6, 0.0, 1.0 );
           vUv = uv;
+          vCres = cCres;
           gl_Position = projectionMatrix * viewMatrix * wp;
         }
       `,
@@ -1144,11 +1271,18 @@ export function createScatter({ terrain, atlas, renderer }) {
         uniform vec3 uColor;
         varying vec2 vUv;
         varying float vA;
+        varying vec3 vCres;
         void main() {
           vec2 q = vUv * 2.0 - 1.0;
           float d = length( q );
           float a = 1.0 - smoothstep( 0.60, 1.0, d );   // 40 % feather
           a *= 0.82 + 0.18 * ( 1.0 - smoothstep( 0.0, 0.55, d ) ); // denser core
+          // crescent mode (wheat-field AO): alpha ramps toward the downwind
+          // rim and dies at the centre/upwind side — one soft edge gradient
+          if ( vCres.z > 0.001 ) {
+            float w = smoothstep( 0.02, 0.72, dot( q, vCres.xy ) );
+            a *= mix( 1.0, w, vCres.z );
+          }
           float outA = a * vA;
           if ( outA < 0.004 ) discard;
           gl_FragColor = vec4( uColor, outA );
@@ -1168,7 +1302,7 @@ export function createScatter({ terrain, atlas, renderer }) {
     const pos = new THREE.Vector3()
     const SHADOW_AZ = (70 * Math.PI) / 180 // shadow falls toward az 70° (NE-ish)
     const sd = new THREE.Vector3(Math.sin(SHADOW_AZ), 0, -Math.cos(SHADOW_AZ))
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < items.length; i++) {
       const it = items[i]
       const sp = SPECIES[it.key]
       const cr = it.w * 0.5
@@ -1186,9 +1320,41 @@ export function createScatter({ terrain, atlas, renderer }) {
       mesh.setMatrixAt(i, m4)
       alpha[i] = sp.blobA
       cell[i] = it.cell
+      // cres stays (0,0,0): plain elliptical blob
+    }
+    // ---- wheat-field AO: one soft crescent per paddock, hugging the
+    // ---- downwind (shadow-azimuth) edge of the golden mass. Drawn on the
+    // ---- ground before the billboards, so it grounds the field and darkens
+    // ---- interior peeks without per-stalk shadow crunch.
+    for (let pi = 0; pi < WHEAT_PADDOCKS.length; pi++) {
+      const i = items.length + pi
+      const p = WHEAT_PADDOCKS[pi]
+      const rx = p.rx * 1.16
+      const rz = p.rz * 1.16
+      T.normal(p.x, p.z, nrm)
+      if (nrm.y < 0.2) nrm.set(0, 1, 0)
+      const ax = Math.cos(p.rot)
+      const az = Math.sin(p.rot)
+      t1.set(ax, 0, az).addScaledVector(nrm, -(ax * nrm.x + az * nrm.z)).normalize()
+      t2.crossVectors(nrm, t1)
+      pos.set(p.x, T.height(p.x, p.z), p.z).addScaledVector(nrm, 0.07)
+      m4.makeBasis(t1.clone().multiplyScalar(rx), nrm.clone(), t2.clone().multiplyScalar(rz))
+      m4.setPosition(pos)
+      mesh.setMatrixAt(i, m4)
+      alpha[i] = 0.34
+      cell[i] = cellId(p.x, p.z)
+      // shadow direction expressed in the decal's local uv frame (uv.y runs
+      // opposite local z), radius-weighted so the crescent tracks the ellipse
+      let ldx = sd.dot(t1) * rx
+      let ldz = -sd.dot(t2) * rz
+      const ll = Math.hypot(ldx, ldz) || 1
+      cres[i * 3] = ldx / ll
+      cres[i * 3 + 1] = ldz / ll
+      cres[i * 3 + 2] = 1
     }
     geo.setAttribute('cAlpha', new THREE.InstancedBufferAttribute(alpha, 1))
     geo.setAttribute('cCell', new THREE.InstancedBufferAttribute(cell, 1))
+    geo.setAttribute('cCres', new THREE.InstancedBufferAttribute(cres, 3))
     mesh.instanceMatrix.needsUpdate = true
     mesh.frustumCulled = false
     mesh.renderOrder = 1 // over the opaque terrain, under everything else

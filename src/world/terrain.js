@@ -128,12 +128,25 @@ function smax(a, b, k) {
   return lerp(a, b, h) + k * h * (1 - h)
 }
 
-// Terrace shaping of the fractional step: flat-ish top (14 % tilt) then a
-// steep escarpment face over the last 45 % of the step. C0 across steps.
-function terraceFrac(fr) {
-  const s = sstep(0.55, 1.0, fr)
-  const face = s * s * (1.55 - 0.55 * s) // slightly eased-in cliff face
-  return 0.14 * fr + 0.86 * face
+// Hard terrace shaping of the fractional step: a near-flat shelf (10 % of the
+// step's rise spread over 93 % of its run) then a near-vertical riser over the
+// last 7 %. C0 across steps. This is what turns slopes into stacked plateaus
+// with lit tops and shadowed risers instead of striped clay ramps.
+function terraceHard(fr) {
+  const a = 0.93
+  if (fr < a) return 0.1 * (fr / a)
+  const u = (fr - a) / (1 - a)
+  return 0.1 + 0.9 * u * u * (3 - 2 * u)
+}
+
+// Quantise a height into hard terrace benches of stepM metres, anchored so a
+// bench top lands exactly at `anchor`. `wob` (m) wanders the bench edges in
+// plan; `keep` controls how much wobble is subtracted back off shelf tops
+// (1 = perfectly flat shelves, lower = gentle roll survives).
+function benchify(hIn, anchor, stepM, wob, keep) {
+  const t = (hIn + wob - anchor) / stepM
+  const f = Math.floor(t)
+  return anchor + (f + terraceHard(t - f)) * stepM - keep * wob
 }
 
 // Rounded-box SDF in 2D (rotated), negative inside
@@ -271,16 +284,19 @@ const RIVER_PTS = [
   { x: -26.5, z: -56, w: 4.2, lv: 21.6 }, // enters the massif top
   { x: -26.2, z: -47, w: 4.2, lv: 20.8 },
   { x: -26.5, z: -40, w: 4.4, lv: 20.2 }, // WATERFALL LIP (massif SW face)
-  { x: -29.5, z: -35.5, w: 5.0, lv: 11.0 }, // WATERFALL BASE → plunge pool
-  { x: -30.5, z: -34, w: 9.0, lv: 11.0 }, // pool centre (−31, −33)-ish
-  { x: -26, z: -31, w: 6.5, lv: 10.6 },
-  { x: -18, z: -28.5, w: 5.0, lv: 9.9 },
-  { x: -8, z: -26, w: 5.0, lv: 9.2 }, // bible waypoint
-  { x: 3, z: -23.5, w: 5.2, lv: 8.6 },
-  { x: 14, z: -20, w: 5.4, lv: 8.1 }, // bible waypoint
-  { x: 27, z: -13, w: 5.4, lv: 7.4 },
-  { x: 38, z: -3, w: 5.6, lv: 6.9 },
-  { x: 48, z: 4, w: 5.8, lv: 6.4 },
+  { x: -29.5, z: -35.5, w: 6.0, lv: 11.0 }, // WATERFALL BASE → plunge pool
+  { x: -30.5, z: -34, w: 9.5, lv: 11.0 }, // pool centre (−31, −33)-ish
+  // the reach the hero shot actually sees: kept WIDE (8–8.5 m, frame01's
+  // east-of-massif run is a broad cyan band) with low hugging banks so the
+  // 28°-pitch camera reads water, not a hidden slot
+  { x: -26, z: -31, w: 8.0, lv: 10.6 },
+  { x: -18, z: -28.5, w: 8.0, lv: 9.9 },
+  { x: -8, z: -26, w: 8.5, lv: 9.2 }, // bible waypoint
+  { x: 3, z: -23.5, w: 8.2, lv: 8.6 },
+  { x: 14, z: -20, w: 8.0, lv: 8.1 }, // bible waypoint
+  { x: 27, z: -13, w: 7.0, lv: 7.4 },
+  { x: 38, z: -3, w: 6.2, lv: 6.9 },
+  { x: 48, z: 4, w: 6.0, lv: 6.4 },
   { x: 60, z: 10, w: 6.0, lv: 6.0 }, // bible: exits SE at (+60, +10)
   { x: 84, z: 20, w: 6.5, lv: 5.4 },
   { x: 112, z: 33, w: 7.0, lv: 4.8 },

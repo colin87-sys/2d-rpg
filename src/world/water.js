@@ -15,11 +15,27 @@
  *   terrain.height(x, z)          — shoreline / depth field bake
  *   terrain.waterHeight(x, z)     — river surface levels (optional)
  *   terrain.meta.seaLevel         — default 0
- *   terrain.meta.river            — { points|path|centerline: [{x,z,level?}...],
- *                                     width|widths, levels? } | array of points
+ *   terrain.meta.river            — round-2 canonical: { points: [{x, z,
+ *                                     level|lv|y, width|w}...], waterfallIndex }
+ *                                     — still also accepts bare point arrays and
+ *                                     {path|centerline|spline} shapes
  *   terrain.meta.rivers           — array of the above (all are built)
- *   terrain.meta.waterfall(s)     — { lip:{x,y?,z}, pool|base:{x,y?,z},
+ *   terrain.meta.waterfall(s)     — round-2 canonical: { x, z, lipY, baseY,
+ *                                     drop, width, dir:{x,z} } — still also
+ *                                     accepts { lip:{x,y,z}, pool|base:{x,y,z},
  *                                     lipY?, poolY?, width? } | array
+ *
+ * River polylines are SPLIT at any near-vertical drop (the falls own those
+ * segments) so no cyan ribbon ever runs down a cliff face behind the sheet.
+ *
+ * FOG COORDINATION (round 2): the sky rig publishes a water-attenuated
+ * sky.params.fogDensity (fogWaterAtten) which update() live-reads every frame.
+ * On top of that EVERY water material declares its own `uFogMul` uniform
+ * (ocean 1.0, river 0.55, falls 0.5, mist/spray 1.0) so the grade pass can
+ * attenuate fog per-surface without touching this module — reach it via
+ * water.params.set.oceanFog/riverFog/fallsFog/mistFog(v) or directly on the
+ * materials (names: 'OceanSurface', 'RiverSurface', 'WaterfallSheet',
+ * 'FallsMist', 'FallsSpray').
  *   sky.sunDir (THREE.Vector3)    — glitter direction (falls back to §4 sun)
  *   sky.params.fogColor/fogDensity/fogHeightRef/fogHeightFalloff
  *
@@ -75,15 +91,20 @@ const PAL = {
   pool: '#2e7fc0', // plunge pool cobalt (sampled off f1 falls pool)
   rapids: '#dceef5',
   fallsBody: '#dceef5',
-  fallsShade: '#9fcfdd',
+  fallsShade: '#bcdbe7', // was #9fcfdd — striations must stay in the light range
+                         // so the column reads as ONE solid white sheet (f1)
   lipCyan: '#a9e2ec', // turquoise curl right on the lip (f2 falls crop)
   mist: '#e9f3f1',
   spray: '#f4fbfd',
   skyTint: '#ccd9cf', // fresnel horizon pull — sage-grey, keeps ocean un-navy
 }
 
-// ART_BIBLE §4 fallbacks (used until/unless sky.js hands us live values)
-const FOG_FALLBACK = { color: '#bcc8b2', density: 0.0072, hRef: 8, hFall: 38 }
+// Fallbacks (used until/unless sky.js hands us live values). Density mirrors
+// the sky rig's PUBLISHED water density — 0.0072 × (53/82) × fogWaterAtten 0.26
+// — NOT the raw §4 land density: full land fog is what greyed round 1's water
+// into an unreadable sheet. The reference's water is the most saturated thing
+// in the frame; it must never wear full fog.
+const FOG_FALLBACK = { color: '#bcc8b2', density: 0.00121, hRef: 8, hFall: 38 }
 const SUN_DIR_FALLBACK = new THREE.Vector3(-0.498, 0.848, 0.181).normalize()
 const SUN_COL_FALLBACK = '#fff1d0'
 
@@ -125,14 +146,17 @@ const GLSL_NOISE = /* glsl */ `
 // Exp2 fog with the bible's height falloff: density × e^(−max(0, y−8)/38).
 // At sea level this matches the scene's FogExp2 exactly, so water never pops
 // against fogged standard-material terrain.
+// uFogMul is PER-MATERIAL (not in the shared block): it is the hook the grade
+// pass uses to attenuate fog on each water surface independently.
 const GLSL_FOG = /* glsl */ `
   uniform vec3 uFogColor;
   uniform float uFogDensity;
   uniform float uFogHRef;
   uniform float uFogHFall;
+  uniform float uFogMul;
   vec3 applyFog(vec3 c, vec3 wp) {
     float d = distance(wp, cameraPosition);
-    float dens = uFogDensity * exp(-max(wp.y - uFogHRef, 0.0) / uFogHFall);
+    float dens = uFogDensity * uFogMul * exp(-max(wp.y - uFogHRef, 0.0) / uFogHFall);
     float f = 1.0 - exp(-dens * dens * d * d);
     return mix(c, uFogColor, clamp(f, 0.0, 1.0));
   }
@@ -345,14 +369,17 @@ const OCEAN_FRAG = /* glsl */ `
     float rz = fbm2(rp + vec2(0.0, 0.37)) - r0;
     vec3 N = normalize(vec3(-(dhx + rx * 0.35), 1.0, -(dhz + rz * 0.35)));
 
-    // ---- depth colour ramp (slate-teal, never navy — bible §10.5) ---------
-    // The shipped terrain's shelf bottoms out at ~6.5 m, so the authored
-    // 7→22 m band meant uDeep was mathematically unreachable and the whole sea
-    // rendered as uShallow/uMid pale cyan. Ramp rescaled to the real bathymetry.
-    vec3 c = mix(uShallow, uMid, smoothstep(0.5, 2.2, depth));
-    c = mix(c, uDeep, smoothstep(2.2, 5.4, depth));
-    // the signature: bright turquoise band hugging the coast
-    c = mix(c, uTurq, smoothstep(7.0, 0.8, sd) * 0.70);
+    // ---- banded colour ramp: OCEAN_DEEP → OCEAN_SHALLOW → FOAM ------------
+    // Driven by depth AND distance-to-coast: the carved shelf bottoms out at
+    // ~6.5 m, so depth alone could never reach uDeep — shore distance carries
+    // the ramp instead, and the bands march parallel to the coastline exactly
+    // as in frame01 (deep at the frame edge, turquoise glow at the rock).
+    float shallowMix = max(smoothstep(0.5, 2.2, depth), smoothstep(4.0, 12.0, sd));
+    vec3 c = mix(uShallow, uMid, shallowMix);
+    float deepMix = max(smoothstep(2.2, 5.4, depth), smoothstep(12.0, 34.0, sd));
+    c = mix(c, uDeep, deepMix);
+    // the signature: bright turquoise band hugging the coast, ~2–9 m wide
+    c = mix(c, uTurq, smoothstep(9.0, 1.3, sd) * 0.80);
 
     // ---- painterly streak bands (elongated N–S, shore-parallel) -----------
     vec2 sp = vec2(vWorld.x * 0.155, vWorld.z * 0.048);
@@ -366,28 +393,32 @@ const OCEAN_FRAG = /* glsl */ `
     float caps = smoothstep(0.62, 0.92, vCrest * 0.5 + 0.5 + (capN - 0.5) * 0.8)
                * smoothstep(2.5, 7.0, depth) * 0.35;
 
-    // ---- surf: rolling arcs + breathing edge foam hugging the rock --------
+    // ---- surf: THIN bright line hugging the rock + rolling arcs -----------
+    // Frame01's surf is a crisp 1–2 px white line at the cliff contact, not a
+    // wide sand-coloured wash — keep the edge band tight and let it breathe.
     float bandNoise = fbm2(vWorld.xz * 0.35 + vec2(0.0, uTime * 0.05));
     float band = fract(sd * 0.10 + uTime * 0.052 + (bandNoise - 0.5) * 0.30);
     float pulse = smoothstep(0.062, 0.016, abs(band - 0.085));
-    pulse *= smoothstep(16.0, 4.5, sd) * (0.55 + 0.45 * sin(uTime * 0.45 + sd * 0.4));
+    pulse *= smoothstep(12.0, 3.5, sd) * (0.55 + 0.45 * sin(uTime * 0.45 + sd * 0.4));
 
-    float breathe = 0.5 * sin(uTime * 0.6 + sd * 0.5 + bandNoise * 3.0);
-    float edgeFoam = smoothstep(2.4 + 1.6 * bandNoise + breathe, 0.5, sd);
+    float breathe = 0.35 * sin(uTime * 0.6 + sd * 0.5 + bandNoise * 3.0);
+    float edgeFoam = smoothstep(1.7 + 1.0 * bandNoise + breathe, 0.3, sd);
     float lineFoam = smoothstep(0.05, 0.45, land) * (1.0 - smoothstep(0.45, 0.95, land));
 
-    float foamAmt = clamp(edgeFoam + pulse * 0.9 + lineFoam * 1.2 + caps, 0.0, 1.0);
+    float foamAmt = clamp(edgeFoam + pulse * 0.7 + lineFoam * 1.3 + caps, 0.0, 1.0);
     // bubbly texture inside the foam — never flat white
-    foamAmt *= 0.72 + 0.28 * fbm2(vWorld.xz * 1.45 + vec2(uTime * 0.10, uTime * 0.16));
-    c = mix(c, uFoam, clamp(foamAmt, 0.0, 1.0));
+    foamAmt *= 0.74 + 0.26 * fbm2(vWorld.xz * 1.45 + vec2(uTime * 0.10, uTime * 0.16));
+    foamAmt = clamp(foamAmt, 0.0, 1.0);
+    // foam runs slightly hot so the surf line passes the 0.72 bloom threshold
+    c = mix(c, uFoam * 1.08, foamAmt);
 
     // ---- fresnel toward the sage horizon ----------------------------------
     vec3 V = normalize(cameraPosition - vWorld);
-    // Exponent raised from 3.5: the shipped camera reads the sea at 8–18° of
-    // grazing, where a 3.5 falloff pinned fresnel near 0.5 over the whole sheet
-    // and turned the ocean into a pale sage mirror.
+    // High exponent + low weight: at the shipped camera's 8–18° grazing angles
+    // anything stronger turns the whole sheet into a pale sage mirror — this
+    // was half of round 1's "flat fog-greyed ocean".
     float fres = pow(1.0 - max(dot(N, V), 0.0), 5.5);
-    c = mix(c, uSkyTint, fres * 0.30);
+    c = mix(c, uSkyTint, fres * 0.16);
 
     // ---- animated sun glitter (f2's specular sheet) -----------------------
     vec2 cell = floor(vWorld.xz * 1.55);
@@ -419,6 +450,7 @@ function buildOcean(shared, shoreTex, worldSize, seaLevel, params) {
       uSwellAmp: { value: params.swellAmp },
       uSwellSpeed: { value: params.swellSpeed },
       uGlitter: { value: params.glitter },
+      uFogMul: { value: 1.0 }, // grade-pass hook (see header)
       uDeep: { value: col(PAL.oceanDeep) },
       uMid: { value: col(PAL.oceanMid) },
       uShallow: { value: col(PAL.oceanShallow) },
@@ -455,8 +487,14 @@ function resolveRiverSpecs(terrain) {
     }
     if (typeof e === 'object' && Number.isFinite(e.x)) {
       const z = Number.isFinite(e.z) ? e.z : e.y // some authors use {x,y} for 2D
-      const level = Number.isFinite(e.level) ? e.level : Number.isFinite(e.y) && Number.isFinite(e.z) ? e.y : undefined
-      const w = Number.isFinite(e.width) ? e.width : undefined
+      const level = Number.isFinite(e.level)
+        ? e.level
+        : Number.isFinite(e.lv) // terrain round-2 spline key
+          ? e.lv
+          : Number.isFinite(e.y) && Number.isFinite(e.z)
+            ? e.y
+            : undefined
+      const w = Number.isFinite(e.width) ? e.width : Number.isFinite(e.w) ? e.w : undefined
       const lv = arrLevels && Number.isFinite(arrLevels[i]) ? arrLevels[i] : level
       return { x: e.x, z, level: lv, width: w }
     }
@@ -509,6 +547,38 @@ function resolveRiverSpecs(terrain) {
   return specs
 }
 
+/**
+ * Round-2 terrain publishes ONE polyline that runs straight over the falls
+ * (headwater → lip → base → sea). A single ribbon through that would drape a
+ * cyan sheet down the cliff face behind the falls. Split the polyline at any
+ * near-vertical drop; the falls sheets own those segments. Reaches keep flags
+ * so buildRiver can pour the upper tail over the lip (no end-taper) and start
+ * the lower head wide under the sheet.
+ */
+function splitReachesAtFalls(spec) {
+  const pts = spec.pts
+  const reaches = []
+  let cur = []
+  let headFalls = false
+  for (let i = 0; i < pts.length; i++) {
+    cur.push(pts[i])
+    const p = pts[i]
+    const q = pts[i + 1]
+    if (!q) break
+    if (!Number.isFinite(p.level) || !Number.isFinite(q.level)) continue
+    const run = Math.hypot(q.x - p.x, q.z - p.z)
+    const drop = p.level - q.level
+    if (drop > 2.2 && drop / Math.max(run, 0.001) > 0.55) {
+      if (cur.length >= 2) reaches.push({ ...spec, pts: cur, headFalls, tailFalls: true })
+      cur = []
+      headFalls = true
+    }
+  }
+  if (cur.length >= 2) reaches.push({ ...spec, pts: cur, headFalls, tailFalls: false })
+  // degenerate spec (all steep / too short): fall back to the original intact
+  return reaches.length ? reaches : [{ ...spec, headFalls: false, tailFalls: false }]
+}
+
 function resolveFallsSpecs(terrain, riverSpecs) {
   const meta = terrain?.meta || {}
   let raw = meta.waterfalls ?? meta.waterfall
@@ -520,10 +590,49 @@ function resolveFallsSpecs(terrain, riverSpecs) {
       Array.isArray(p) ? (p.length > 2 ? p[2] : p[1]) : p.z
     )
 
+  // find a river point near (x,z) whose level sits at the falls base — snaps
+  // the sheet's plunge line onto the actual water tongue below it
+  const snapPoolToRiver = (x, z, baseY) => {
+    let best = null
+    let bestD = 12 * 12 // never snap further than 12 m
+    for (const spec of riverSpecs || []) {
+      for (const p of spec.pts) {
+        if (!Number.isFinite(p.level) || Math.abs(p.level - baseY) > 0.6) continue
+        const d2 = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z)
+        if (d2 < bestD) {
+          bestD = d2
+          best = p
+        }
+      }
+    }
+    return best
+  }
+
   const push = (w) => {
     if (!w || typeof w !== 'object') return
-    const lipSrc = w.lip ?? w.top ?? w.from
-    const poolSrc = w.pool ?? w.base ?? w.basin ?? w.to
+    let lipSrc = w.lip ?? w.top ?? w.from
+    let poolSrc = w.pool ?? w.base ?? w.basin ?? w.to
+    // round-2 terrain shape: { x, z, lipY, baseY, drop, width, dir:{x,z} }
+    if (!lipSrc && Number.isFinite(w.x) && Number.isFinite(w.z)) {
+      lipSrc = { x: w.x, y: w.lipY, z: w.z }
+    }
+    if (!poolSrc && lipSrc && Number.isFinite(w.baseY)) {
+      const lx = Array.isArray(lipSrc) ? lipSrc[0] : lipSrc.x
+      const lz = Array.isArray(lipSrc) ? lipSrc[lipSrc.length > 2 ? 2 : 1] : lipSrc.z
+      const snapped = snapPoolToRiver(lx, lz, w.baseY)
+      if (snapped) {
+        poolSrc = { x: snapped.x, y: w.baseY, z: snapped.z }
+      } else {
+        // project along the published dir (or a plausible one) by the run a
+        // 9-ish-m plunge actually takes (~0.58 × drop, from the f1 geometry)
+        const drop = Number.isFinite(w.drop) ? w.drop : (w.lipY ?? 20) - w.baseY
+        const run = Number.isFinite(w.run) ? w.run : Math.max(2.5, drop * 0.58)
+        const dx = Number.isFinite(w.dir?.x) ? w.dir.x : -0.55
+        const dz = Number.isFinite(w.dir?.z) ? w.dir.z : 0.83
+        const dl = Math.hypot(dx, dz) || 1
+        poolSrc = { x: lx + (dx / dl) * run, y: w.baseY, z: lz + (dz / dl) * run }
+      }
+    }
     if (!lipSrc || !poolSrc) return
     const lip = V(lipSrc, w.lipY ?? w.topY)
     const pool = V(poolSrc, w.poolY ?? w.baseY ?? w.bottomY)
@@ -1167,8 +1276,8 @@ export function createWater({ terrain, renderer, sky } = {}) {
   const params = {
     swellAmp: 1.0, // multiplier over the authored 3-wave set (~±0.15 m total)
     swellSpeed: 0.85, // toy-world seas run slow
-    glitter: 0.38, // was 0.85 — the grazing shipped camera spreads the lobe
-                   // across the whole sheet instead of a compact sun track
+    glitter: 0.45, // 0.85 spread the lobe over the whole sheet at the shipped
+                   // camera's grazing angle; 0.45 keeps a live animated sparkle
     flowBase: 0.85, // river m/s
     flowRapid: 1.7, // extra m/s at full rapids
   }

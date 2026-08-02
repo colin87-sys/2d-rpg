@@ -7,6 +7,10 @@
 //   Sheet = { texture, frameW, frameH, cols, rows, anims, fps }
 //   anim keys: idle_s idle_n idle_e idle_w walk_s walk_n walk_e walk_w
 //              run_s run_n run_e run_w        (frame index = row * cols + col)
+//   The MOUNT sheet additionally exposes non-contract `ride_*` variants of all
+//   twelve keys (head dropped beside the breast — the frame01 ridden posture)
+//   plus meta.saddle / meta.bobByCell for the player's rider compositing.
+//   Extras are additive: the contract keys and their cells are unchanged.
 //
 // Art direction (docs/ART_BIBLE.md):
 //   - 64×64 cells, hero body ≈56 px tall in-cell → at 35 texels/m the sprite
@@ -794,7 +798,10 @@ function mountEast(p, o) {
   p.h(nx, nx + 3, ny - 4, BODY.mid)                      // lid
 }
 
-// --- SOUTH (front): round breast, head centre-high, both eyes visible
+// --- SOUTH (front): round breast, head centre-high, both eyes visible.
+// `headDrop` (ridden pose only) sinks the whole neck+head — with a rider
+// composited behind, the bird dips its head low beside the breast exactly like
+// the reference frame01 unit, leaving the rider's face clear.
 function mountSouth(p, o) {
   const b = o.bob | 0
   const lift = o.legs
@@ -851,7 +858,7 @@ function mountSouth(p, o) {
 
   // --- neck + head above the breast — tapered: slim throat, flared base
   const hx = 31 + sway
-  const hy = 18 + b + breath
+  const hy = 18 + b + breath + (o.headDrop | 0)
   p.r(hx - 3, hy + 5, 7, 5, BODY.lit)                    // throat
   p.r(hx - 4, hy + 9, 9, 5, BODY.lit)                    // base flare
   p.v(hx - 3, hy + 5, hy + 8, BODY.mid)
@@ -1044,6 +1051,19 @@ function mountFramePoses() {
   return F
 }
 
+// Ridden posture (frame01: the mounted unit's bird dips its head LOW and to
+// the sunward side, at the rider's shin — the rider owns the top silhouette).
+// Derived from the exact same pose tables so gait/bob stay in sync; painted
+// into the sheet's spare cells as `ride_*` anims, leaving every existing
+// (approved) cell untouched. North needs no variant: the composited rider is
+// drawn in front and fully covers the head from behind.
+function riddenMountPoses(F) {
+  return {
+    s: F.s.map((o) => ({ ...o, headDrop: 12, sway: (o.sway | 0) - 9 })),
+    e: F.e.map((o) => ({ ...o, neckY: (o.neckY | 0) + 6 })),
+  }
+}
+
 // Sun-side rim + bounce, applied after outlining. Bands are fractions of the
 // silhouette so they track bob without re-tuning.
 function lightPass(p) {
@@ -1082,12 +1102,19 @@ const LAYOUT = {
   run_s: [48, 6], run_n: [54, 6], run_e: [64, 6], run_w: [70, 6],
 }
 
-function buildSheet(painters, poses, seed, speckleRamp, speckleCount) {
-  const sheet = new Uint8ClampedArray(SHEET_W * SHEET_H * 4)
-  const rng = mulberry32(seed)
+// Mount-only ridden variants, packed into the cells LAYOUT leaves free
+// (60–63 and 76–125) so the base sheet stays byte-identical.
+const RIDE_LAYOUT = {
+  ride_idle_s: [60, 4], ride_walk_s: [76, 8], ride_run_s: [84, 6],
+  ride_idle_e: [90, 4], ride_walk_e: [94, 8], ride_run_e: [102, 6],
+  ride_idle_w: [108, 4], ride_walk_w: [112, 8], ride_run_w: [120, 6],
+}
+
+// Shared cell pipeline: paint → speckle → outline → light, or mirror a
+// finished cell. Used by the base builder and the ridden-variant pass.
+function makeCellPainters(sheet, rng, painters, speckleRamp, speckleCount) {
   const p = new Pix()
   const m = new Pix()
-
   const paintInto = (facing, pose, cell) => {
     p.clear()
     painters[facing](p, pose)
@@ -1109,6 +1136,13 @@ function buildSheet(painters, poses, seed, speckleRamp, speckleCount) {
     }
     m.blitTo(sheet, dstCell)
   }
+  return { paintInto, mirrorInto }
+}
+
+function buildSheet(painters, poses, seed, speckleRamp, speckleCount) {
+  const sheet = new Uint8ClampedArray(SHEET_W * SHEET_H * 4)
+  const rng = mulberry32(seed)
+  const { paintInto, mirrorInto } = makeCellPainters(sheet, rng, painters, speckleRamp, speckleCount)
 
   // idle (4): s n e, then w mirrors e
   for (let i = 0; i < 4; i++) {
@@ -1158,15 +1192,30 @@ function toTexture(sheetData) {
   return tex
 }
 
-function animsFromLayout() {
+function animsFromLayout(layout = LAYOUT) {
   const seq = (start, n) => Array.from({ length: n }, (_, i) => start + i)
   const anims = {}
-  for (const k of Object.keys(LAYOUT)) {
-    const [start, n] = LAYOUT[k]
-    if (k.startsWith('idle')) anims[k] = IDLE_ORDER.map((i) => start + i)
+  for (const k of Object.keys(layout)) {
+    const [start, n] = layout[k]
+    if (k.includes('idle')) anims[k] = IDLE_ORDER.map((i) => start + i)
     else anims[k] = seq(start, n)
   }
   return anims
+}
+
+// Per-cell body vertical offset (px, +down) — the bob/breath the painter baked
+// into that cell. The player module reads this to keep the composited rider
+// glued to the saddle as the mount's gait bobs.
+function bobByCellTable() {
+  const t = new Float32Array(COLS * ROWS)
+  const gait = { idle: IDLE.breath, walk: WALK.bob, run: RUN.bob }
+  for (const layout of [LAYOUT, RIDE_LAYOUT]) {
+    for (const [k, [start, n]] of Object.entries(layout)) {
+      const src = k.includes('idle') ? gait.idle : k.includes('walk') ? gait.walk : gait.run
+      for (let i = 0; i < n; i++) t[start + i] = src[i] || 0
+    }
+  }
+  return t
 }
 
 function makeSheet(painters, poses, seed, speckleRamp, speckleCount, meta) {
@@ -1199,18 +1248,51 @@ export function makeHeroSheet() {
       texelsPerMeter: 35,          // 64 px cell → 1.83 m world plane
       bodyPx: 56,                  // reads 1.60 m
       groundRow: GY,               // feet baseline inside the cell
+      hipRow: 45,                  // belt line — lands on the mount's saddle
       planeMeters: { w: CELL / 35, h: CELL / 35 },
     },
   )
 }
 
 export function makeMountSheet() {
-  return makeSheet(
-    { s: mountSouth, n: mountNorth, e: mountEast },
-    mountFramePoses(),
-    0x00c0b0b0,
-    BODY, 4,
-    {
+  const painters = { s: mountSouth, n: mountNorth, e: mountEast }
+  const poses = mountFramePoses()
+  const data = buildSheet(painters, poses, 0x00c0b0b0, BODY, 4)
+
+  // Ridden-posture pass (head dropped beside the breast, frame01 grammar) into
+  // the spare cells — the base cells above stay byte-identical to round 1.
+  const cp = makeCellPainters(data, mulberry32(0x9d5eedc3), painters, BODY, 4)
+  const R = riddenMountPoses(poses)
+  const ride = (kind, count, poseOff) => {
+    const s0 = RIDE_LAYOUT['ride_' + kind + '_s'][0]
+    const e0 = RIDE_LAYOUT['ride_' + kind + '_e'][0]
+    const w0 = RIDE_LAYOUT['ride_' + kind + '_w'][0]
+    for (let i = 0; i < count; i++) {
+      cp.paintInto('s', R.s[poseOff + i], s0 + i)
+      cp.paintInto('e', R.e[poseOff + i], e0 + i)
+      cp.mirrorInto(e0 + i, w0 + i)
+    }
+  }
+  ride('idle', 4, 0)
+  ride('walk', 8, 4)
+  ride('run', 6, 12)
+
+  const anims = { ...animsFromLayout(LAYOUT), ...animsFromLayout(RIDE_LAYOUT) }
+  // From behind the composited rider covers the head/neck completely, so the
+  // ridden north view IS the plain north view.
+  anims.ride_idle_n = anims.idle_n
+  anims.ride_walk_n = anims.walk_n
+  anims.ride_run_n = anims.run_n
+
+  return {
+    texture: toTexture(data),
+    frameW: CELL,
+    frameH: CELL,
+    cols: COLS,
+    rows: ROWS,
+    anims,
+    fps: FPS,
+    meta: {
       kind: 'mount',
       texelsPerMeter: 35,
       bodyPx: 52,
@@ -1221,8 +1303,9 @@ export function makeMountSheet() {
         s: { x: 31, y: 31 }, n: { x: 31, y: 31 },
         e: { x: 27, y: 30 }, w: { x: 36, y: 30 },
       },
+      bobByCell: bobByCellTable(),
     },
-  )
+  }
 }
 
 // Debug contact sheet: the packed texture at 2× on a checker, with grid lines
