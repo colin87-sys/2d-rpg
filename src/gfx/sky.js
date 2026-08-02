@@ -51,8 +51,9 @@
  *     NOTE: fogHeightRef/fogHeightFalloff (and the waterfall-mist constants)
  *     are baked into the chunk source at install (compile-time constants —
  *     live edits reach water.js only).
- *   - LAND density (ROUND 3): k = 0.0072, bible §4 verbatim, and it is a
- *     WORLD-SPACE CONSTANT. Earlier rounds scaled k by a camera-dolly ratio
+ *   - LAND density (ROUND 3): k = 0.0095 — bible §4's 0.0072 rescaled for the
+ *     framing solve, which compressed the visible world from ~250 m of depth
+ *     to ~90 m — and it is a WORLD-SPACE CONSTANT. Earlier rounds scaled k by a camera-dolly ratio
  *     (fogDollyRef / fogDolly) to "hold the authored profile" — that coupling
  *     was the round-3 defect: fog is an atmosphere property of the WORLD, and
  *     any term tying it to camera distance, dolly or viewport makes the haze
@@ -341,21 +342,30 @@ export function createSkyAndLights({ scene, renderer, terrain } = {}) {
     // Bible §4 verbatim. k is a WORLD-SPACE CONSTANT: it must never be scaled
     // by camera dolly, view distance or viewport size (round-3 defect — see
     // header). The framing solver may move the camera freely; this stays.
-    fogDensityBase: 0.0072,
+    // ROUND 3 (integrator): 0.0072 → 0.0095. The framing solve compressed the
+    // visible world from ~250 m of depth to ~90 m, so the bible's k — measured
+    // against the old layout — leaves the top band only 31 % veiled where the
+    // plate reads 55–70 %. At 0.0095: hero 47 m → 18 %, massif crown 62 m →
+    // 29 %, top band 85 m → 48 %, far NW ocean 125 m → 76 %.
+    fogDensityBase: 0.0095,
     // Published water density multiplier (assignment: the sea must keep its
     // saturation instead of greying out). 0.26 keeps the mid-left ocean band
     // under ~5 % sage — ≥55 % HSV saturation vs OCEAN_MID #2e6f95 after the
     // grade — while the far NW inlet still fades under distance + DOF.
     fogWaterAtten: 0.26,
     // DERIVED (apply() recomputes; initial values match the defaults above):
-    fogLandDensity: 0.0072,             // scene.fog + height chunks
-    fogDensity: 0.0072 * 0.26,          // PUBLISHED — water.js live-reads
+    fogLandDensity: 0.0095,             // scene.fog + height chunks
+    fogDensity: 0.0095 * 0.26,          // PUBLISHED — water.js live-reads
     fogHeightRef: 8,        // baked into the land chunks at install; water.js
     fogHeightFalloff: 38,   // reads both live per frame
-    // Waterfall mist (bible §4): +15 % local fog within 30 m of the falls
-    // base, below y 12. Baked into the chunk at install; §1: pool (−31, −33),
-    // water +11.
-    fogMist: { x: -31, z: -33, radius: 30, yTop: 12, boost: 0.15 },
+    // Waterfall mist (bible §4): +15 % local fog around the falls base.
+    // ROUND 3 (integrator): the falls moved with the framing solve — a 9 m drop
+    // at (−26, −40)/pool (−31, −33) became a 4 m drop at (−30.5, +3) → pool
+    // (−30, +2), impact ≈ (−30.05, +2.1). The radius drops 30 → 8 m and the
+    // ceiling 12 → 10 m to match the shorter fall; water.js caps its own mist
+    // pads at y 9.9, and a 30 m bubble here would have veiled the whole gorge,
+    // the castle plateau's west cliff and the river's exit reach.
+    fogMist: { x: -30, z: 2, radius: 8, yTop: 10, boost: 0.15 },
 
     // dome
     domeRadius: 600, // stays inside the diorama rig's 700 m far plane
