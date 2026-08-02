@@ -494,10 +494,10 @@ export function createScatter({ terrain, atlas, renderer }) {
   // Three pink ramps intermixed + dark conifers interleaved (bible F2 note).
   {
     const rnd = rngFor('blossom')
-    const cx = villagePOI ? villagePOI.x + 14 : -56
-    const cz = villagePOI ? villagePOI.z + 16 : -112
-    const R = 24
-    const step = 1.7
+    const cx = villagePOI ? villagePOI.x + 16 : -54
+    const cz = villagePOI ? villagePOI.z + 18 : -110
+    const R = 26
+    const step = 1.5
     let n = 0
     for (let gz = cz - R; gz <= cz + R; gz += step) {
       for (let gx = cx - R; gx <= cx + R; gx += step) {
@@ -509,8 +509,8 @@ export function createScatter({ terrain, atlas, renderer }) {
         const b = T.biome(jx, jz)
         if (b !== 'grass' && b !== 'forest') continue
         // clumpy falloff with ragged rim
-        const p = (1 - sstep(0.55, 1.0, d)) * (0.55 + 0.45 * fbm2(jx * 0.06, jz * 0.06, 2))
-        if (hash2(jx, jz, 43) > p * 0.8) continue
+        const p = (1 - sstep(0.5, 1.0, d)) * (0.62 + 0.38 * fbm2(jx * 0.06, jz * 0.06, 2))
+        if (hash2(jx, jz, 43) > p) continue
         const r = hash2(jx, jz, 44)
         const key =
           r < 0.36 ? 'blossom_a' : r < 0.62 ? 'blossom_b' : r < 0.82 ? 'blossom_c'
@@ -524,10 +524,10 @@ export function createScatter({ terrain, atlas, renderer }) {
   // ---- 4.4 BAMBOO STAND: tight cane clusters near the village -------------
   {
     const rnd = rngFor('bamboo')
-    const cx = villagePOI ? villagePOI.x + 11 : -59
-    const cz = villagePOI ? villagePOI.z + 9 : -119
+    const cx = villagePOI ? villagePOI.x + 16 : -54
+    const cz = villagePOI ? villagePOI.z + 6 : -122
     const R = 7.5
-    const step = 0.95
+    const step = 0.9
     let n = 0
     for (let gz = cz - R; gz <= cz + R; gz += step) {
       for (let gx = cx - R; gx <= cx + R; gx += step) {
@@ -556,7 +556,7 @@ export function createScatter({ terrain, atlas, renderer }) {
         const b = T.biome(jx, jz)
         if (b !== 'grass' && b !== 'forest' && b !== 'rock') continue
         const m = forestMask(jx, jz)
-        let p = 0.05 // pasture base
+        let p = 0.06 // pasture base
         if (m > 0.15 && m < 0.72) p = 0.52 // ecotone fringe — bushes skirt the stands
         else if (m >= 0.72) p = 0.10 // a few under the canopy
         if (!waterNear(jx, jz, 1.0) && waterNear(jx, jz, 2.8)) p = Math.max(p, 0.45)
@@ -609,4 +609,575 @@ export function createScatter({ terrain, atlas, renderer }) {
     }
   }
 
-/* @@CHUNK4@@ */
+  // ---- 4.7 WHEAT: only on the farm paddock fields (biome 'field') ---------
+  // Coarse 4 m pre-scan finds the paddocks, then a tight 0.8 m jittered fill
+  // packs them into the continuous golden mass of frame01.
+  {
+    const rnd = rngFor('wheat')
+    const tiles = []
+    for (let gz = -LIM; gz <= LIM; gz += 4) {
+      for (let gx = -LIM; gx <= LIM; gx += 4) {
+        if (T.biome(gx, gz) === 'field') tiles.push(gx, gz)
+      }
+    }
+    const fine = 0.8
+    for (let i = 0; i < tiles.length; i += 2) {
+      if ((counts.wheat || 0) >= BUDGET.wheat) break
+      const tx = tiles[i]
+      const tz = tiles[i + 1]
+      for (let oz = -2; oz < 2; oz += fine) {
+        for (let ox = -2; ox < 2; ox += fine) {
+          const jx = tx + ox + (hash2(tx + ox, tz + oz, 101) - 0.5) * 0.5
+          const jz = tz + oz + (hash2(tx + ox, tz + oz, 102) - 0.5) * 0.5
+          if (T.biome(jx, jz) !== 'field') continue
+          if (T.onRoad(jx, jz) > 0.05) continue
+          if (hash2(jx, jz, 103) > 0.86) continue // tiny breathing gaps
+          const key = hash2(jx, jz, 104) < 0.55 ? 'wheat_a' : 'wheat_b'
+          if ((counts.wheat || 0) >= BUDGET.wheat) break
+          plant(key, jx, jz, rnd, 'wheat')
+        }
+      }
+    }
+  }
+
+  // ---- 4.8 GRASS TUFTS: the ground-cover carpet that bans bare terrain ----
+  // Meadow-noise modulated so the pasture breathes (drifted waves of tufts),
+  // dense along the road feather, absent under closed canopy and on fields.
+  {
+    const rnd = rngFor('tufts')
+    const step = 1.75
+    for (let gz = -LIM; gz <= LIM; gz += step) {
+      for (let gx = -LIM; gx <= LIM; gx += step) {
+        if ((counts.tuft || 0) >= 12000) break
+        const jx = gx + (hash2(gx, gz, 111) - 0.5) * step * 1.2
+        const jz = gz + (hash2(gx, gz, 112) - 0.5) * step * 1.2
+        const b = T.biome(jx, jz)
+        let p
+        if (b === 'grass' || b === 'forest') {
+          const m = forestMask(jx, jz)
+          if (m > 0.78) continue // closed canopy — no visible ground
+          const meadow = 0.5 + 0.5 * fbm2(jx * 0.03 + 23.4, jz * 0.03 - 8.8, 3)
+          p = 0.24 * (0.42 + 0.95 * meadow)
+          const road = T.onRoad(jx, jz)
+          if (road > 0.02 && road < 0.3) p *= 1.35 // tufts crowd the feathered edge
+        } else if (b === 'rock' || b === 'snow') p = 0.10
+        else if (b === 'beach') p = 0.07
+        else continue
+        if (hash2(jx, jz, 113) > p) continue
+        const key = hash2(jx, jz, 114) < 0.55 ? 'grass_tuft_a' : 'grass_tuft_b'
+        plant(key, jx, jz, rnd, 'tuft')
+      }
+    }
+  }
+
+  // ---- 4.9 FLOWER DRIFTS: hand-sized colonies, one species per drift ------
+  {
+    const rnd = rngFor('flowers')
+    const cellW = 11
+    for (let gz = -LIM; gz <= LIM; gz += cellW) {
+      for (let gx = -LIM; gx <= LIM; gx += cellW) {
+        if ((counts.flower || 0) >= BUDGET.flower) break
+        if (hash2(gx, gz, 121) > 0.09) continue
+        const cx = gx + (hash2(gx, gz, 122) - 0.5) * 8
+        const cz = gz + (hash2(gx, gz, 123) - 0.5) * 8
+        if (T.biome(cx, cz) !== 'grass') continue
+        if (forestMask(cx, cz) > 0.4) continue
+        const main = hash2(gx, gz, 124) < 0.55 ? 'flower_a' : 'flower_b'
+        const alt = main === 'flower_a' ? 'flower_b' : 'flower_a'
+        const n = 5 + ((hash2(gx, gz, 125) * 9) | 0)
+        for (let k = 0; k < n; k++) {
+          if ((counts.flower || 0) >= BUDGET.flower) break
+          const a = hash2(gx, gz, 130 + k) * Math.PI * 2
+          const d = Math.sqrt(hash2(gx, gz, 150 + k)) * 2.8
+          const key = hash2(gx, gz, 170 + k) < 0.8 ? main : alt
+          plant(key, cx + Math.cos(a) * d, cz + Math.sin(a) * d, rnd, 'flower')
+        }
+      }
+    }
+  }
+
+  // ---- 4.10 FERNS: the shade layer at stand edges and damp banks ----------
+  {
+    const rnd = rngFor('ferns')
+    const step = 2.6
+    for (let gz = -LIM; gz <= LIM; gz += step) {
+      for (let gx = -LIM; gx <= LIM; gx += step) {
+        if ((counts.fern || 0) >= 600) break
+        const jx = gx + (hash2(gx, gz, 181) - 0.5) * step
+        const jz = gz + (hash2(gx, gz, 182) - 0.5) * step
+        const b = T.biome(jx, jz)
+        if (b !== 'grass' && b !== 'forest') continue
+        const m = forestMask(jx, jz)
+        let p = 0
+        if (m > 0.18 && m < 0.78) p = 0.34
+        if (!waterNear(jx, jz, 0.9) && waterNear(jx, jz, 2.4)) p = Math.max(p, 0.25)
+        if (p === 0 || hash2(jx, jz, 183) > p) continue
+        plant('fern_a', jx, jz, rnd, 'fern')
+      }
+    }
+  }
+
+  // ---- 4.11 CATTAILS + LILYPADS: the river dressing -----------------------
+  // Coarse scan finds fresh-water cells (surface above sea level); cattail
+  // clusters take the banks, lilypads take slow shallow pools.
+  {
+    const rnd = rngFor('reeds')
+    const wtiles = []
+    for (let gz = -LIM; gz <= LIM; gz += 4) {
+      for (let gx = -LIM; gx <= LIM; gx += 4) {
+        if (T.isWater(gx, gz) && T.waterHeight(gx, gz) > 0.3) wtiles.push(gx, gz)
+      }
+    }
+    const fine = 1.1
+    for (let i = 0; i < wtiles.length; i += 2) {
+      const tx = wtiles[i]
+      const tz = wtiles[i + 1]
+      for (let oz = -2.6; oz <= 2.6; oz += fine) {
+        for (let ox = -2.6; ox <= 2.6; ox += fine) {
+          const jx = tx + ox + (hash2(tx + ox, tz + oz, 191) - 0.5) * 0.7
+          const jz = tz + oz + (hash2(tx + ox, tz + oz, 192) - 0.5) * 0.7
+          if (jx < -LIM || jx > LIM || jz < -LIM || jz > LIM) continue
+
+          if (!T.isWater(jx, jz)) {
+            // ---- bank: cattail clusters right at the waterline
+            if ((counts.cattail || 0) >= BUDGET.cattail) continue
+            if (!waterNear(jx, jz, 0.9)) continue
+            if (T.slope(jx, jz) > 0.5 || T.onRoad(jx, jz) > 0.05) continue
+            if (hash2(jx, jz, 193) > 0.24) continue
+            plant('cattail', jx, jz, rnd, 'cattail')
+          } else {
+            // ---- pool: lilypads on slow, shallow fresh water
+            if ((counts.lilypad || 0) >= BUDGET.lilypad) continue
+            const wh = T.waterHeight(jx, jz)
+            if (wh <= 0.3) continue
+            const depth = wh - T.height(jx, jz)
+            if (depth < 0.12 || depth > 1.8) continue
+            // still water only: the surface level must be locally flat
+            // (kills rapids and the waterfall chute)
+            if (Math.abs(T.waterHeight(jx + 2, jz) - wh) > 0.06) continue
+            if (Math.abs(T.waterHeight(jx, jz + 2) - wh) > 0.06) continue
+            if (hash2(jx, jz, 194) > 0.06) continue
+            const n = 2 + ((hash2(jx, jz, 195) * 4) | 0)
+            for (let k = 0; k < n; k++) {
+              if ((counts.lilypad || 0) >= BUDGET.lilypad) break
+              const a = hash2(jx, jz, 200 + k) * Math.PI * 2
+              const d = hash2(jx, jz, 210 + k) * 1.1
+              const px = jx + Math.cos(a) * d
+              const pz = jz + Math.sin(a) * d
+              if (!T.isWater(px, pz)) continue
+              const pwh = T.waterHeight(px, pz)
+              if (pwh <= 0.3) continue
+              const it = makeInstance('lilypad', px, pz, rnd, { rotY: rnd() * Math.PI * 2 })
+              if (!it) continue
+              it.y = pwh + 0.02 // float ON the water surface
+              if (!occClear(px, pz, 0.28)) continue
+              occInsert(px, pz, 0.28)
+              inst.push(it)
+              bump('lilypad')
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ---- 4.12 STUMPS & LOGS: sparse woodland-margin storytelling ------------
+  {
+    const rnd = rngFor('wood')
+    const step = 6
+    for (let gz = -LIM; gz <= LIM; gz += step) {
+      for (let gx = -LIM; gx <= LIM; gx += step) {
+        if ((counts.wood || 0) >= BUDGET.wood) break
+        const jx = gx + (hash2(gx, gz, 221) - 0.5) * step
+        const jz = gz + (hash2(gx, gz, 222) - 0.5) * step
+        if (T.biome(jx, jz) !== 'grass') continue
+        const m = forestMask(jx, jz)
+        const nearRoad = roadNear(jx, jz, 2.6) > 0.3 && T.onRoad(jx, jz) < 0.03
+        if (!(m > 0.08 && m < 0.45) && !nearRoad) continue
+        if (hash2(jx, jz, 223) > 0.075) continue
+        plant(hash2(jx, jz, 224) < 0.55 ? 'stump' : 'log', jx, jz, rnd, 'wood')
+      }
+    }
+  }
+
+  // =========================================================================
+  // 5. GPU ASSEMBLY — one InstancedMesh for every upright billboard (single
+  //    draw call on the shared atlas), one for the flat lilypads, one for the
+  //    contact-shadow decals. 8×8 world cells drive frustum culling.
+  // =========================================================================
+
+  const CELLS = 8
+  const cellW = (half * 2) / CELLS
+  const cellId = (x, z) => {
+    const cx = Math.min(CELLS - 1, Math.max(0, Math.floor((x + half) / cellW)))
+    const cz = Math.min(CELLS - 1, Math.max(0, Math.floor((z + half) / cellW)))
+    return cz * CELLS + cx
+  }
+  const cellMinY = new Float32Array(CELLS * CELLS).fill(1e9)
+  const cellMaxY = new Float32Array(CELLS * CELLS).fill(-1e9)
+
+  const uprights = []
+  const flats = []
+  for (const it of inst) {
+    ;(it.flat ? flats : uprights).push(it)
+    const c = cellId(it.x, it.z)
+    it.cell = c
+    if (it.y < cellMinY[c]) cellMinY[c] = it.y
+    if (it.y + it.h > cellMaxY[c]) cellMaxY[c] = it.y + it.h
+  }
+
+  // ---- shared uniforms (one write updates every material) -----------------
+  const uTime = { value: 0 }
+  const uCellVis = { value: new Float32Array(CELLS * CELLS).fill(1) }
+  const uFadeRange = { value: new THREE.Vector2(270, 330) }
+
+  const GLSL_DECL = /* glsl */ `
+    attribute vec4 iRect;   // atlas u0, v0, uSize, vSize
+    attribute vec3 iTint;   // per-instance albedo tint (value + hue jitter)
+    attribute vec4 iWind;   // phase, amplitude(rad), frequency, flipU
+    attribute vec3 iSize;   // world w, world h (billb.) / depth (flat), cellId
+    uniform float uTime;
+    uniform float uCellVis[${CELLS * CELLS}];
+    uniform vec2 uFadeRange;
+    varying vec3 vSctTint;
+    varying float vSctFade;
+  `
+
+  // Runs at <uv_vertex> (the first include of main) in BOTH the colour and
+  // the depth vertex shaders. Y-axis-locked billboarding: the quad rotates
+  // toward the rendering camera about +Y only — during the shadow pass
+  // `cameraPosition` is the light's camera, so the same code yields a full
+  // tree-shaped silhouette in the shadow map. Wind shears the top of the
+  // quad while the base row (y = 0) stays planted.
+  const GLSL_PLACE = /* glsl */ `
+    vec3 sctPos = vec3( instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2] );
+    float sctVis = uCellVis[ int( iSize.z + 0.5 ) ];
+    vec3 sctToCam = cameraPosition - sctPos;
+    float sctDist = length( sctToCam );
+    vSctFade = 1.0 - smoothstep( uFadeRange.x, uFadeRange.y, sctDist );
+    vSctTint = iTint;
+    vec3 sctLocal;
+    #ifdef SCT_BILLBOARD
+      float sctYaw = atan( sctToCam.x, sctToCam.z );
+      float sctC = cos( sctYaw );
+      float sctS = sin( sctYaw );
+      float sctH01 = clamp( position.y, 0.0, 1.0 );
+      float sctSway = iWind.y * iSize.y * sctH01 *
+        ( sin( uTime * iWind.z + iWind.x ) + 0.35 * sin( uTime * iWind.z * 2.63 + iWind.x * 1.7 ) );
+      float sctX = position.x * iSize.x + sctSway;
+      sctLocal = vec3( sctX * sctC, position.y * iSize.y, -sctX * sctS );
+    #else
+      sctLocal = vec3( position.x * iSize.x, 0.0, position.z * iSize.y );
+    #endif
+    if ( sctVis < 0.5 || vSctFade <= 0.001 ) sctLocal = vec3( 0.0, -1.0e6, 0.0 );
+    #ifdef USE_MAP
+      float sctU = mix( uv.x, 1.0 - uv.x, iWind.w );
+      vMapUv = vec2( iRect.x + sctU * iRect.z, iRect.y + uv.y * iRect.w );
+    #endif
+  `
+
+  function patchVertex(shader, billboard) {
+    shader.uniforms.uTime = uTime
+    shader.uniforms.uCellVis = uCellVis
+    shader.uniforms.uFadeRange = uFadeRange
+    let v = shader.vertexShader
+    v = v.replace('#include <uv_vertex>', GLSL_PLACE)
+    v = v.replace('#include <begin_vertex>', 'vec3 transformed = sctLocal;')
+    if (v.indexOf('#include <beginnormal_vertex>') !== -1) {
+      // Faux billboard normal (bible §4): mostly up, leaned 35 % toward the
+      // camera — crowns take the sun + hemisphere like rounded masses, not
+      // like flat cards.
+      v = v.replace(
+        '#include <beginnormal_vertex>',
+        billboard
+          ? 'vec3 objectNormal = normalize( mix( vec3( 0.0, 1.0, 0.0 ), normalize( sctToCam ), 0.35 ) );'
+          : 'vec3 objectNormal = vec3( 0.0, 1.0, 0.0 );'
+      )
+    }
+    shader.vertexShader = GLSL_DECL + v
+  }
+
+  function makeColorMaterial(billboard) {
+    const mat = new THREE.MeshLambertMaterial({
+      map: atlas.texture,
+      alphaTest: 0.42,
+      side: THREE.DoubleSide,
+      transparent: false, // pure cutout — blending would break depth sorting
+    })
+    if (billboard) mat.defines = { SCT_BILLBOARD: '' }
+    mat.onBeforeCompile = (shader) => {
+      patchVertex(shader, billboard)
+      shader.fragmentShader = 'varying vec3 vSctTint;\nvarying float vSctFade;\n' +
+        shader.fragmentShader.replace(
+          '#include <alphatest_fragment>',
+          'diffuseColor.rgb *= vSctTint;\n\tdiffuseColor.a *= vSctFade;\n\t#include <alphatest_fragment>'
+        )
+    }
+    // patched shaders need their own program cache key
+    mat.customProgramCacheKey = () => 'sct_color_' + (billboard ? 'bb' : 'flat')
+    return mat
+  }
+
+  function makeDepthMaterial() {
+    const mat = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+      map: atlas.texture,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+    })
+    mat.defines = { SCT_BILLBOARD: '' }
+    mat.onBeforeCompile = (shader) => patchVertex(shader, true)
+    mat.customProgramCacheKey = () => 'sct_depth_bb'
+    return mat
+  }
+
+  // ---- base quads ---------------------------------------------------------
+  function uprightQuad() {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(
+      [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0], 3))
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2))
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(
+      [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], 3))
+    g.setIndex([0, 1, 2, 0, 2, 3])
+    return g
+  }
+  function flatQuad() {
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(
+      [-0.5, 0, 0.5, 0.5, 0, 0.5, 0.5, 0, -0.5, -0.5, 0, -0.5], 3))
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2))
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(
+      [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3))
+    g.setIndex([0, 1, 2, 0, 2, 3])
+    return g
+  }
+
+  function fillMesh(list, geometryBase, billboard) {
+    const n = list.length
+    const geo = geometryBase
+    const rect = new Float32Array(n * 4)
+    const tint = new Float32Array(n * 3)
+    const wind = new Float32Array(n * 4)
+    const size = new Float32Array(n * 3)
+    const mat = makeColorMaterial(billboard)
+    const mesh = new THREE.InstancedMesh(geo, mat, n)
+    const m4 = new THREE.Matrix4()
+    const q = new THREE.Quaternion()
+    const up = new THREE.Vector3(0, 1, 0)
+    const one = new THREE.Vector3(1, 1, 1)
+    const pos = new THREE.Vector3()
+    for (let i = 0; i < n; i++) {
+      const it = list[i]
+      const fr = atlas.frames[it.key]
+      rect[i * 4] = fr.u0
+      rect[i * 4 + 1] = fr.v0
+      rect[i * 4 + 2] = fr.u1 - fr.u0
+      rect[i * 4 + 3] = fr.v1 - fr.v0
+      tint[i * 3] = it.tint[0]
+      tint[i * 3 + 1] = it.tint[1]
+      tint[i * 3 + 2] = it.tint[2]
+      wind[i * 4] = it.phase
+      wind[i * 4 + 1] = it.amp
+      wind[i * 4 + 2] = it.freq
+      wind[i * 4 + 3] = it.flip
+      size[i * 3] = it.w
+      size[i * 3 + 1] = billboard ? it.h : it.w / (atlas.frames[it.key].aspect || 1)
+      size[i * 3 + 2] = it.cell
+      pos.set(it.x, it.y, it.z)
+      if (!billboard && it.rotY) q.setFromAxisAngle(up, it.rotY)
+      else q.identity()
+      m4.compose(pos, q, one)
+      mesh.setMatrixAt(i, m4)
+    }
+    geo.setAttribute('iRect', new THREE.InstancedBufferAttribute(rect, 4))
+    geo.setAttribute('iTint', new THREE.InstancedBufferAttribute(tint, 3))
+    geo.setAttribute('iWind', new THREE.InstancedBufferAttribute(wind, 4))
+    geo.setAttribute('iSize', new THREE.InstancedBufferAttribute(size, 3))
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.frustumCulled = false // we cull per world cell in the shader
+    return mesh
+  }
+
+  // ---- 5.1 contact-shadow decals ------------------------------------------
+  // Soft elliptical CONTACT_SHADOW (#241611) blobs projected onto the ground
+  // under every billboard (bible §8: radius 0.9× crown radius, α ~0.5, 40 %
+  // feather; ground cover gets faint micro-blobs). Slightly elongated and
+  // nudged along the sun's shadow azimuth (~70° — sun WSW at az 250°) so
+  // bases feel keyed to the light, oriented to the terrain normal so decals
+  // hug slopes instead of clipping them.
+  function buildBlobs() {
+    const items = []
+    for (const it of inst) {
+      if (!it.blobA || it.flat) continue
+      if (T.slope(it.x, it.z) > 0.75) continue
+      items.push(it)
+    }
+    const n = items.length
+    // ±1-extent ground quad: instance scale columns are the ellipse RADII.
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(
+      [-1, 0, 1, 1, 0, 1, 1, 0, -1, -1, 0, -1], 3))
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2))
+    geo.setIndex([0, 1, 2, 0, 2, 3])
+    const alpha = new Float32Array(n)
+    const cell = new Float32Array(n)
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uCellVis: uCellVis,
+        uFadeRange: uFadeRange,
+        uFogDensity: { value: 0.0072 }, // bible §4 — attenuates blobs into the haze
+        uColor: { value: new THREE.Color(0x241611) },
+      },
+      vertexShader: /* glsl */ `
+        attribute float cAlpha;
+        attribute float cCell;
+        uniform float uCellVis[${CELLS * CELLS}];
+        uniform vec2 uFadeRange;
+        uniform float uFogDensity;
+        varying vec2 vUv;
+        varying float vA;
+        void main() {
+          vec4 wp = modelMatrix * instanceMatrix * vec4( position, 1.0 );
+          float vis = uCellVis[ int( cCell + 0.5 ) ];
+          float dist = distance( cameraPosition, wp.xyz );
+          float fade = 1.0 - smoothstep( uFadeRange.x, uFadeRange.y, dist );
+          float fogT = exp( - uFogDensity * uFogDensity * dist * dist );
+          vA = cAlpha * fade * mix( 0.12, 1.0, fogT );
+          if ( vis < 0.5 || vA < 0.004 ) wp = vec4( 0.0, -1.0e6, 0.0, 1.0 );
+          vUv = uv;
+          gl_Position = projectionMatrix * viewMatrix * wp;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        varying float vA;
+        void main() {
+          vec2 q = vUv * 2.0 - 1.0;
+          float d = length( q );
+          float a = 1.0 - smoothstep( 0.60, 1.0, d );   // 40 % feather
+          a *= 0.82 + 0.18 * ( 1.0 - smoothstep( 0.0, 0.55, d ) ); // denser core
+          float outA = a * vA;
+          if ( outA < 0.004 ) discard;
+          gl_FragColor = vec4( uColor, outA );
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -2,
+    })
+    const mesh = new THREE.InstancedMesh(geo, mat, n)
+    const m4 = new THREE.Matrix4()
+    const nrm = new THREE.Vector3()
+    const t1 = new THREE.Vector3()
+    const t2 = new THREE.Vector3()
+    const pos = new THREE.Vector3()
+    const SHADOW_AZ = (70 * Math.PI) / 180 // shadow falls toward az 70° (NE-ish)
+    const sd = new THREE.Vector3(Math.sin(SHADOW_AZ), 0, -Math.cos(SHADOW_AZ))
+    for (let i = 0; i < n; i++) {
+      const it = items[i]
+      const sp = SPECIES[it.key]
+      const cr = it.w * 0.5
+      const rx = Math.max(0.13, 0.9 * cr * 1.15)
+      const rz = Math.max(0.10, 0.9 * cr * 0.82)
+      T.normal(it.x, it.z, nrm)
+      if (nrm.y < 0.2) nrm.set(0, 1, 0)
+      t1.copy(sd).addScaledVector(nrm, -sd.dot(nrm)).normalize()
+      t2.crossVectors(nrm, t1)
+      const lift = 0.035 + 0.03 * rx
+      pos.set(it.x + t1.x * rx * 0.18, T.height(it.x, it.z), it.z + t1.z * rx * 0.18)
+        .addScaledVector(nrm, lift)
+      m4.makeBasis(t1.clone().multiplyScalar(rx), nrm.clone(), t2.clone().multiplyScalar(rz))
+      m4.setPosition(pos)
+      mesh.setMatrixAt(i, m4)
+      alpha[i] = sp.blobA
+      cell[i] = it.cell
+    }
+    geo.setAttribute('cAlpha', new THREE.InstancedBufferAttribute(alpha, 1))
+    geo.setAttribute('cCell', new THREE.InstancedBufferAttribute(cell, 1))
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.frustumCulled = false
+    mesh.renderOrder = 1 // over the opaque terrain, under everything else
+    mesh.castShadow = false
+    mesh.receiveShadow = false
+    return mesh
+  }
+
+  // ---- 5.2 assemble -------------------------------------------------------
+  const group = new THREE.Group()
+  group.name = 'scatter'
+
+  const vegMesh = fillMesh(uprights, uprightQuad(), true)
+  vegMesh.name = 'scatter_billboards'
+  vegMesh.castShadow = true
+  vegMesh.receiveShadow = true
+  vegMesh.customDepthMaterial = makeDepthMaterial()
+  vegMesh.renderOrder = 2
+  group.add(vegMesh)
+
+  let flatMesh = null
+  if (flats.length > 0) {
+    flatMesh = fillMesh(flats, flatQuad(), false)
+    flatMesh.name = 'scatter_lilypads'
+    flatMesh.castShadow = false
+    flatMesh.receiveShadow = true
+    flatMesh.renderOrder = 3 // after the water surface so pads sit on it
+    group.add(flatMesh)
+  }
+
+  const blobMesh = buildBlobs()
+  blobMesh.name = 'scatter_contact_shadows'
+  group.add(blobMesh)
+
+  group.userData.counts = counts
+
+  // ---- 5.3 frustum-aware update -------------------------------------------
+  // 8×8 world-cell AABBs tested against the camera frustum each frame; a
+  // shared uniform array collapses hidden cells to degenerate triangles in
+  // the vertex shader — zero per-instance CPU work, still one draw call.
+  const cellBoxes = []
+  {
+    const PAD = 9 // covers crown overhang + wind sway + one frame of camera lag
+    for (let cz = 0; cz < CELLS; cz++) {
+      for (let cx = 0; cx < CELLS; cx++) {
+        const i = cz * CELLS + cx
+        const empty = cellMaxY[i] < cellMinY[i]
+        const x0 = -half + cx * cellW
+        const z0 = -half + cz * cellW
+        cellBoxes.push(
+          empty
+            ? null
+            : new THREE.Box3(
+                new THREE.Vector3(x0 - PAD, cellMinY[i] - 2, z0 - PAD),
+                new THREE.Vector3(x0 + cellW + PAD, cellMaxY[i] + 2, z0 + cellW + PAD)
+              )
+        )
+      }
+    }
+  }
+  const _viewProj = new THREE.Matrix4()
+  const _inv = new THREE.Matrix4()
+  const _frustum = new THREE.Frustum()
+
+  function update(t, camera) {
+    uTime.value = t
+    if (!camera) return
+    _inv.copy(camera.matrixWorld).invert()
+    _viewProj.multiplyMatrices(camera.projectionMatrix, _inv)
+    _frustum.setFromProjectionMatrix(_viewProj)
+    const vis = uCellVis.value
+    for (let i = 0; i < cellBoxes.length; i++) {
+      const box = cellBoxes[i]
+      vis[i] = box && _frustum.intersectsBox(box) ? 1 : 0
+    }
+  }
+
+  return {
+    object3D: group,
+    update,
+    count: inst.length,
+  }
+}
