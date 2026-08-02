@@ -1,0 +1,19 @@
+{
+  "name": "aetherbound",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "shot": "node tools/shot.mjs"
+  },
+  "dependencies": {
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0",
+    "vite": "^5.4.10"
+  }
+}
