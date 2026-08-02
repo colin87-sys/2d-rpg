@@ -1,39 +1,41 @@
 // ---------------------------------------------------------------------------
-// src/world/props.js — Aetherbound overworld landmarks
+// src/world/props.js — Aetherbound overworld landmarks (FRAMING.md round 4)
 //
-// Hand-built diorama architecture derived from terrain.meta.poi, matched to
-// docs/reference/frame01.png:
+// Rebuilt to docs/FRAMING.md §4 / §8 (the binding tabletop-miniature solve).
+// Everything sits within ~90 m of the boot camera; sizes are toy scale.
 //
-//   castle  — warm-white gothic keep on a balustraded motte behind a cream
-//             crenellated curtain wall (ART_BIBLE castle-stone ramp): huge
-//             frontal cobalt gable with an arched tracery window, dark
-//             window slits punched into every wall face, twin facade
-//             towers, asymmetric round spires (tallest tip 6.5 m),
-//             gatehouse to the §5 chart heights with arch + portcullis,
-//             enlarged gold finials that read at frame scale, pennants,
-//             and a solid stone ramp descending from the gate arch to the
-//             road mouth (no floating slabs).
-//   village — 11 houses of 4 plans (plaster / timber-framed), slate tile
-//             roofs with ridge caps and chimneys, well, red-awning market
-//             stall, barrels, a few warm lit windows.
-//   shrine  — vermilion torii (shimenawa + paper shide), stone lanterns,
-//             tiled shrine hall on a stepped stone base.
-//   bridges — west timber trestle (post-and-rail, sagging plank deck, per
-//             ART_BIBLE §10.7 and the frame01 upper-left crossing), the
-//             north gorge rope suspension bridge (catenary mains, hangers,
-//             individually placed planks), and a small stone arch
-//             footbridge over the river east of the castle.
-//   farm    — two-rail fences tracing the road-facing arcs of the wheat
-//             paddocks (each post samples terrain, rails follow the slope),
-//             a barn with lean-to, hay bales, a cart.
-//   camp    — canvas tent, stone fire ring with animated flame + point
-//             light + additive glow, crates, a log bench.
-//   extras  — signposts at forks, road milestones, a coastal pier with a
-//             moored rowboat, soft contact-shadow blobs under everything.
+//   castle   — white-and-cobalt layered palace on the y 10.5 plateau.
+//              Footprint x −28…−21.5, z +13…+19.3 (frontage ~6.5 m), S wall
+//              at z +19, gate arch centre (−24.8, +19.3) facing S-SW.
+//              Total height 6.0 m (curtain 2.4, roofline 3.9, gatehouse 3.1);
+//              tallest spire at the SW corner (−28, +19.5), tip y 16.5.
+//              Monumentality from spire COUNT and silhouette: seven slender
+//              white towers with tall cobalt cone spires + gold finials,
+//              plus mini pinnacles; the curtain ring is cut back to the S
+//              frontage and two short returns so towers own the skyline.
+//   paddocks — exactly three §4 wheat paddocks + P1's small W lobe:
+//              P1 (−37, +15.5) 8×5.5 (road clips its W edge — the fence gap
+//              comes straight from terrain.onRoad), W lobe (−40.5, +16) 3×4,
+//              P2 (−36.5, +22.5) 12×7, big SE field (−29.5, +28.5) 14×9.
+//              Two-rail toy fences: post 0.5 m, rails 0.22 / 0.42, span 1.3.
+//              The old giant southern fields are DELETED.
+//   bridges  — north timber trestle at (−41, −1), deck y 13.5, span 9,
+//              oriented N–S (plainly visible at 0.44 fw / 0.145 fh: planks,
+//              stringers, post-and-rail parapets, cribs and full trestle
+//              bents down into the gorge). Inlet trestle at (−59, +9.5),
+//              deck y 12, span 10, crossing NW–SE (hazed silhouette).
+//   village  — hazy slate-roof hamlet at the village POI (−50.5, −16.5):
+//              rooftop silhouettes (slate #3f4450, ridge caps, chimneys) —
+//              no clutter, it reads at the top edge through fog.
+//   signpost — road-fork signpost (−49.5, +8.5), 1.3 m, three arms.
+//   pier     — (−64, −16), deck +0.4, 5 m, pointing WSW, moored rowboat.
+//   shrine   — torii + lantern + hall at the shrine POI (fog-hidden).
+//   camp     — tent, fire ring (animated flame/glow/light), crates — POI-
+//              relative, below the boot frame.
 //
-// Every texture is painted in Canvas2D at runtime (masonry, cobalt roof,
-// slate, shingles, planks, plaster, timber framing, hay, canvas, flag
-// stone). All geometry merges into one mesh per material (~20 draw calls).
+// Every texture is painted in Canvas2D at runtime; geometry merges into one
+// mesh per material. Painted-diorama read: 4-shade ramps, no gradients,
+// colour-matched dark openings, contact-shadow blobs under everything.
 //
 // Contract: export function createProps({ terrain, atlas, renderer }): Props
 //           Props = { object3D, update(t, camera) }   — signature frozen.
@@ -74,47 +76,31 @@ function shade(c, s) {
 
 // ART_BIBLE §3 — architecture & prop palette (authored sRGB albedo)
 const PAL = {
-  KEEP_LIT: rgb(0xe8e3d3),
-  KEEP_MID: rgb(0xd6d0bd),
-  KEEP_DARK: rgb(0xb2ad9b),
-  KEEP_MORTAR: rgb(0x9b9787),
-  // INTEGRATION (round 2): the curtain ring is most of the castle's screen
-  // area, and at CURT_MID/DARK it read as a grey keep — frame01's castle is
-  // the brightest warm-white mass in the frame (it is the eye path's terminus).
-  // Lifted one ramp step toward CASTLE_STONE_LIT #e8e3d3 and warmed; the window
-  // slots, mortar and cobalt roofs still carry all the contrast.
-  CURT_LIT: rgb(0xeae5d5),
-  CURT_MID: rgb(0xd8d2bf),
-  CURT_DARK: rgb(0xaaa593),
-  CURT_MORTAR: rgb(0x9c9887),
+  // castle stone: the FRAMING defect-5 ramp — white, never beige
+  KEEP_LIT: rgb(0xe8e3d3), // CASTLE_STONE_LIT
+  KEEP_MID: rgb(0xc2bdac), // CASTLE_STONE_MID
+  KEEP_DARK: rgb(0x8e8b7d), // CASTLE_STONE_SHADOW
+  KEEP_MORTAR: rgb(0xa5a191),
   PAVE_LIT: rgb(0xe0dac8),
   PAVE_MID: rgb(0xc7c1af),
   PAVE_DARK: rgb(0xa19d8b),
   PAVE_MORTAR: rgb(0x8d8a79),
-  BARN_WOOD: rgb(0x84633c),
   MOSS: rgb(0x5c7048),
-  COBALT_LIT: rgb(0x5477c8),
-  COBALT: rgb(0x35549c),
-  COBALT_DARK: rgb(0x232f56),
-  COBALT_SPEC: rgb(0xb9c6e4),
-  SLATE: rgb(0x3f4450),
+  COBALT_LIT: rgb(0x5477c8), // ROOF_COBALT_LIT
+  COBALT: rgb(0x35549c), // ROOF_COBALT
+  COBALT_DARK: rgb(0x232f56), // ROOF_COBALT_SHADOW
+  COBALT_SPEC: rgb(0xb9c6e4), // ROOF_SPEC streak
+  SLATE: rgb(0x3f4450), // VILLAGE_ROOF
   SLATE_DARK: rgb(0x25272e),
-  SLATE_CHIP: rgb(0x9aa0a8),
-  SHINGLE: rgb(0x6f4530),
-  SHINGLE_DARK: rgb(0x38221a),
-  SHINGLE_CHIP: rgb(0x9a6a45),
-  WOOD_DARK: rgb(0x5d4226),
+  SLATE_CHIP: rgb(0x9aa0a8), // VILLAGE_ROOF_RIDGE
+  WOOD_DARK: rgb(0x5d4226), // FENCE / TRESTLE WOOD
   WOOD_MID: rgb(0x7b5c3a),
-  PLASTER: rgb(0xd9c9a8),
+  PLASTER: rgb(0xd9c9a8), // VILLAGE_WALL
   TIMBER: rgb(0x55402a),
   STONE_LIT: rgb(0x9aa38c),
   STONE_MID: rgb(0x7d8a76),
   STONE_DARK: rgb(0x5f6d5f),
   STONE_MORTAR: rgb(0x3f4a42),
-  HAY_BASE: rgb(0xc9a34f),
-  HAY_LIT: rgb(0xe0c26e),
-  HAY_TIP: rgb(0xeed794),
-  HAY_DARK: rgb(0x8a6a2e),
   CANVAS: rgb(0xe8dcc0),
   RED: rgb(0xb0453c),
   RED_DARK: rgb(0x86322b),
@@ -159,7 +145,6 @@ function paintMasonry(g, S, rnd, o) {
       const bw = o.blockW * (0.75 + rnd() * 0.6)
       let base = mixc(o.lit, o.mid, Math.pow(rnd(), 1.4))
       if (rnd() < (o.darkP === undefined ? 0.1 : o.darkP)) base = mixc(o.mid, o.dark, 0.4 + rnd() * 0.5)
-      // slight hue wobble so courses never read flat
       base = mixc(base, [base[0] + 8, base[1] + 4, base[2] - 6], rnd() * 0.5)
       g.fillStyle = css(base)
       wrapRect(g, S, x + 1, y + 1, bw - 2, ch - 2)
@@ -180,15 +165,6 @@ function paintMasonry(g, S, rnd, o) {
         g.fillStyle = css(shade(o.dark, 0.62))
         wrapRect(g, S, x + 2 + rnd() * bw * 0.4, y + ch * 0.55, bw * (0.3 + rnd() * 0.3), ch * 0.4)
         g.globalAlpha = 1
-      }
-      if (rnd() < 0.05) {
-        g.strokeStyle = css(shade(o.mortar, 0.75))
-        g.lineWidth = 1
-        g.beginPath()
-        const cx = x + bw * (0.3 + rnd() * 0.4)
-        g.moveTo(cx, y + 2)
-        g.lineTo(cx + (rnd() - 0.5) * 6, y + ch * 0.6)
-        g.stroke()
       }
       if (o.moss && r > rows * 0.55 && rnd() < 0.3) {
         g.globalAlpha = 0.24 + rnd() * 0.22
@@ -216,8 +192,7 @@ function paintMasonry(g, S, rnd, o) {
   }
 }
 
-// Roof tiles / shingles: offset rows of tiles, tint jitter, dark undersides,
-// bright chipped leading edges. Used for slate (village) and shingle (barn).
+// Roof tiles: offset rows, tint jitter, dark undersides, chipped edges.
 function paintTiles(g, S, rnd, o) {
   g.fillStyle = css(o.gap)
   g.fillRect(0, 0, S, S)
@@ -253,12 +228,9 @@ function paintTiles(g, S, rnd, o) {
   }
 }
 
-// Cobalt spire roofing: vertical panel strips with shingle courses, a few
-// near-white specular streak panels (the plate's signature roof glints).
+// Cobalt spire roofing: vertical panel strips with shingle courses and
+// guaranteed ROOF_SPEC #b9c6e4 streaks — the plate's signature roof glints.
 function paintCobalt(g, S, rnd) {
-  // Biased toward ROOF_COBALT_LIT #5477c8 — the round-1 roofs authored at the
-  // #35549c base fogged down to slate. Wider strips so the courses survive
-  // frame scale, and a guaranteed ROOF_SPEC streak roughly every third flute.
   g.fillStyle = css(PAL.COBALT_LIT)
   g.fillRect(0, 0, S, S)
   const stripW = 26
@@ -281,7 +253,7 @@ function paintCobalt(g, S, rnd) {
     if ((x / stripW) % 3 === 1 || rnd() < 0.12) {
       g.globalAlpha = 0.65
       g.fillStyle = css(PAL.COBALT_SPEC)
-      g.fillRect(x + 3, 0, 3, S) // specular flute streak (the plate's glint)
+      g.fillRect(x + 3, 0, 3, S) // specular flute streak
       g.globalAlpha = 0.3
       g.fillRect(x + 7, 0, 2, S)
       g.globalAlpha = 1
@@ -384,7 +356,6 @@ function paintTimber(g, S, rnd) {
     g.fillRect(x, 0, 9, S)
     g.fillStyle = beamLit
     g.fillRect(x, 0, 1.6, S)
-    // diagonal brace
     g.strokeStyle = beam
     g.lineWidth = 8
     g.beginPath()
@@ -396,30 +367,6 @@ function paintTimber(g, S, rnd) {
       g.lineTo(x + 9, S * (0.25 + rnd() * 0.2))
     }
     g.stroke()
-  }
-}
-
-// Directional straw for hay bales.
-function paintHay(g, S, rnd) {
-  g.fillStyle = css(PAL.HAY_BASE)
-  g.fillRect(0, 0, S, S)
-  const cols = [PAL.HAY_LIT, PAL.HAY_BASE, PAL.HAY_DARK, PAL.HAY_TIP, shade(PAL.HAY_DARK, 0.8)]
-  for (let i = 0; i < 1500; i++) {
-    const x = rnd() * S
-    const y = rnd() * S
-    const len = 5 + rnd() * 11
-    const lean = (rnd() - 0.5) * 0.5
-    g.strokeStyle = css(cols[(rnd() * cols.length) | 0])
-    g.globalAlpha = 0.55 + rnd() * 0.4
-    g.lineWidth = 1
-    for (let ox = -1; ox <= 1; ox++)
-      for (let oy = -1; oy <= 1; oy++) {
-        g.beginPath()
-        g.moveTo(x + ox * S, y + oy * S)
-        g.lineTo(x + Math.sin(lean) * len + ox * S, y + Math.cos(lean) * len + oy * S)
-        g.stroke()
-      }
-    g.globalAlpha = 1
   }
 }
 
@@ -662,7 +609,6 @@ function makePut(B, frame) {
 }
 
 // Gable roof: two overhanging slabs + light ridge cap. Ridge along local Z.
-// yEave = top of the walls; W = wall span across the ridge; D = wall depth.
 function gableRoof(put, bkRoof, W, D, R, ovS, ovE, x, yEave, z, o = {}) {
   const th = Math.atan2(R, W / 2)
   const runX = W / 2 + ovS
@@ -682,10 +628,10 @@ function gableRoof(put, bkRoof, W, D, R, ovS, ovE, x, yEave, z, o = {}) {
 
 // Crenellated parapet run between two local points.
 function crenels(put, bk, ax, az, bx, bz, y, o = {}) {
-  const w = o.w || 0.3
-  const h = o.h || 0.32
-  const d = o.d || 0.2
-  const pitch = o.pitch || 0.6
+  const w = o.w || 0.24
+  const h = o.h || 0.22
+  const d = o.d || 0.16
+  const pitch = o.pitch || 0.5
   const dx = bx - ax
   const dz = bz - az
   const L = Math.hypot(dx, dz)
@@ -699,339 +645,180 @@ function crenels(put, bk, ax, az, bx, bz, y, o = {}) {
   }
 }
 
-// Balustrade: white rail on little posts (the plate's terrace strip).
-function balustrade(put, bk, ax, az, bx, bz, y, o = {}) {
-  const h = o.h || 0.3
-  const dx = bx - ax
-  const dz = bz - az
-  const L = Math.hypot(dx, dz)
-  const ux = dx / L
-  const uz = dz / L
-  const yaw = yawX(ux, uz)
-  const n = Math.max(2, Math.round(L / (o.pitch || 0.34)))
-  for (let i = 0; i <= n; i++) {
-    const t = i / n
-    put.cyl(bk, 0.026, 0.034, h - 0.06, 5, ax + ux * t * L, y, az + uz * t * L, {})
-  }
-  put.box(bk, L + 0.08, 0.055, 0.09, ax + dx * 0.5, y + h - 0.055, az + dz * 0.5, { ry: yaw, uv: 0.9 })
-  put.box(bk, L + 0.08, 0.04, 0.07, ax + dx * 0.5, y - 0.01, az + dz * 0.5, { ry: yaw, uv: 0.9 })
-}
-
 // ===========================================================================
-// 4. THE CASTLE — the frame's terminal focal point (frame01 right third)
+// 4. THE CASTLE — white-and-cobalt palace, FRAMING §4 (defect 5 rebuild)
 //
-// Proportions read off the plate: total base->tip 6.5 m over a 15 x 12 m
-// octagonal curtain ring; low grey wall (~2.0 with merlons), white
-// balustraded motte just proud of the wall top, cream keep with one huge
-// frontal cobalt gable, twin facade towers, and asymmetric round spires.
+// World targets (poi at (−24.5, +16), plateau flat y 10.5):
+//   footprint x −28…−21.5, z +13…+19.3  → local x −3.5…+3.0, z −3.0…+3.3
+//   S wall z +19 (local +3.0); gate arch centre (−24.8, +19.3) local (−0.3, +3.3)
+//   curtain 2.4 · gatehouse 3.1 · roofline 3.9 · SW spire (−28, +19.5) tip 6.0
+// Silhouette = seven slender white towers with tall cobalt cones + gold
+// finials; the curtain ring is only the S frontage + two short returns.
 // ===========================================================================
 
 function buildCastle(ctx, poi) {
-  const { B, T, meta, rnd, blob, pennant } = ctx
-  const padY = T.height(poi.x, poi.z)
-
-  // Gate axis: aim at the castle road's end, pulled toward the camera side
-  // (south) so the facade fronts the shot like the plate.
-  let ex = -2
-  let ez = 1.5
-  const road = (meta.roads || []).find((r) => r.name === 'castle')
-  const LP = road && road.points.length ? road.points[road.points.length - 1] : null
-  if (LP) {
-    ex = LP.x - poi.x
-    ez = LP.z - poi.z
-  }
-  let gl = Math.hypot(ex, ez) || 1
-  let gdx = (ex / gl) * 0.62
-  let gdz = (ez / gl) * 0.62 + 0.38
-  gl = Math.hypot(gdx, gdz)
-  gdx /= gl
-  gdz /= gl
-  const yaw = Math.atan2(gdx, gdz)
-  const frame = new THREE.Matrix4().makeRotationY(yaw)
-  frame.setPosition(poi.x, padY, poi.z)
+  const { B, T, blob, pennant } = ctx
+  const padY = T.height(poi.x, poi.z) // plateau flat ≈ 10.5
+  const frame = new THREE.Matrix4().setPosition(poi.x, padY, poi.z)
   const put = makePut(B, frame)
 
-  // ---- curtain wall: chamfered 15 x 12 octagon, gate opening on +Z -------
-  const P = [
-    [-7.5, 3.6], [-7.5, -3.6], [-5.1, -6], [5.1, -6],
-    [7.5, -3.6], [7.5, 3.6], [5.1, 6], [-5.1, 6],
-  ]
-  const gx = 0.5
-  const segs = []
-  for (let i = 0; i < 8; i++) {
-    if (i === 6) continue // front wall is split around the gatehouse
-    segs.push([P[i], P[(i + 1) % 8]])
+  // -- slender white tower with a tall cobalt cone spire + gold finial.
+  //    Finial cone top lands exactly at body + 0.07 + coneH + 0.33.
+  const spire = (x, z, r, body, coneH, opts = {}) => {
+    put.cyl('keep', r + 0.1, r + 0.2, 0.3, 9, x, -0.35, z, { uv: 1.1 }) // footing
+    put.cyl('keep', r * 0.9, r, body, 9, x, 0, z, { uv: 1.1, vlock: true })
+    put.cyl('keep', r * 1.14, r * 1.14, 0.07, 9, x, body, z, {}) // corbel ring
+    put.cone('roofCobalt', r * 1.22, coneH, 10, x, body + 0.07, z, { uv: 0.9 })
+    const tip = body + 0.07 + coneH
+    put.sphere('gold', Math.max(0.05, r * 0.17), x, tip + 0.06, z, {})
+    put.cone('gold', 0.042, 0.24, 6, x, tip + 0.09, z, {})
+    // dark slit windows on the S face (toward camera)
+    const nS = opts.slits === undefined ? 2 : opts.slits
+    for (let i = 0; i < nS; i++) {
+      put.box('dark', 0.09, 0.26, 0.05, x, body * (0.32 + i * 0.3), z + r * 0.96, {})
+    }
+    if (opts.flag) pennant(put.world(x, tip + 0.3, z), 0, opts.flag)
+    return tip
   }
-  segs.push([P[6], [gx + 1.4, 6]])
-  segs.push([[gx - 1.4, 6], P[7]])
 
-  const WALL_H = 2.2 // §5 chart: curtain wall 2.6 to merlon top (2.2 + cap + 0.3)
-  for (const [a, b] of segs) {
-    const dx = b[0] - a[0]
-    const dz = b[1] - a[1]
+  // ---- the seven towers (heights all differ; SW is the 6.0 m landmark) ---
+  spire(-3.5, 3.5, 0.42, 3.2, 2.4, { slits: 3, flag: 0x35549c }) // SW — tip y 16.5
+  spire(3.0, 3.0, 0.36, 2.3, 1.55, { slits: 2 }) // SE corner
+  spire(-3.5, 0.4, 0.3, 2.7, 1.5, { slits: 2 }) // W return
+  spire(-3.3, -2.5, 0.36, 2.9, 1.9, { slits: 2 }) // NW rear
+  spire(-0.9, -2.9, 0.32, 3.3, 1.75, { slits: 2, flag: 0xd9b542 }) // N centre — 2nd tallest
+  spire(2.3, -2.6, 0.34, 2.5, 1.6, { slits: 2 }) // NE rear
+  spire(3.0, 0.9, 0.27, 2.1, 1.3, { slits: 1 }) // E return, smallest
+
+  // ---- main keep block: white walls, huge cobalt gable (roofline 3.9) ----
+  const KX = -0.15
+  const KZ = 0.1
+  put.box('keep', 4.5, 2.7, 3.5, KX, 0, KZ, { uv: 1.4, vlock: true })
+  put.box('keep', 4.8, 0.4, 3.8, KX, -0.3, KZ, { uv: 1.4 }) // plinth
+  put.prism('roofCobalt', 4.6, 1.2, 3.6, KX, 2.7, KZ, { uv: 1.0 }) // ridge y 3.9
+  put.box('gold', 0.1, 0.08, 3.65, KX, 3.86, KZ, { uv: 0.6 }) // gold ridge cap
+  put.sphere('gold', 0.09, KX, 3.98, KZ + 1.8, {})
+  put.sphere('gold', 0.09, KX, 3.98, KZ - 1.8, {})
+  // S gable face: arched tracery window over a portal band
+  put.arch('keep', 0.9, 1.05, 0.12, 0.56, 0.92, KX, 1.75, KZ + 1.79, { uv: 1.0 })
+  put.box('dark', 0.6, 0.9, 0.05, KX, 1.78, KZ + 1.77, {})
+  put.box('keep', 0.035, 0.7, 0.045, KX - 0.1, 1.8, KZ + 1.81, {})
+  put.box('keep', 0.035, 0.7, 0.045, KX + 0.1, 1.8, KZ + 1.81, {})
+  put.box('gold', 1.0, 0.05, 0.1, KX, 1.68, KZ + 1.79, {})
+  // dark slit windows on the keep S + E/W faces
+  for (const sx of [-1.6, -0.9, 0.7, 1.4]) put.box('dark', 0.11, 0.34, 0.05, KX + sx, 0.9, KZ + 1.77, {})
+  for (const s of [-1, 1]) {
+    for (const zz of [-0.9, 0.2, 1.0]) put.box('dark', 0.11, 0.3, 0.05, KX + s * 2.27, 0.85, KZ + zz, { ry: HPI })
+  }
+  // mini pinnacles on the keep's roof corners — spire-count silhouette
+  for (const [px, pz] of [[KX - 2.05, KZ + 1.55], [KX + 2.05, KZ + 1.55], [KX - 2.05, KZ - 1.55], [KX + 2.05, KZ - 1.55]]) {
+    put.cyl('keep', 0.085, 0.105, 0.55, 6, px, 2.55, pz, {})
+    put.cone('roofCobalt', 0.13, 0.42, 6, px, 3.1, pz, {})
+    put.sphere('gold', 0.045, px, 3.56, pz, {})
+  }
+
+  // ---- side wings (layered massing, lower cobalt gables) -----------------
+  put.box('keep', 1.5, 1.7, 2.4, -2.85, 0, 0.5, { uv: 1.4, vlock: true }) // W wing
+  put.prism('roofCobalt', 1.6, 0.7, 2.5, -2.85, 1.7, 0.5, { uv: 1.0 })
+  put.box('dark', 0.11, 0.3, 0.05, -2.85, 0.8, 1.72, {})
+  put.box('keep', 1.9, 1.9, 2.5, 2.15, 0, 0.4, { uv: 1.4, vlock: true }) // E wing
+  put.prism('roofCobalt', 2.0, 0.8, 2.6, 2.15, 1.9, 0.4, { uv: 1.0 })
+  put.box('dark', 0.11, 0.3, 0.05, 1.85, 0.85, 1.67, {})
+  put.box('dark', 0.11, 0.3, 0.05, 2.55, 0.85, 1.67, {})
+
+  // ---- curtain: S frontage (h 2.4) + two short returns, gate split -------
+  const wallSeg = (ax, az, bx, bz) => {
+    const dx = bx - ax
+    const dz = bz - az
     const L = Math.hypot(dx, dz)
-    const ux = dx / L
-    const uz = dz / L
-    const mx = (a[0] + b[0]) / 2
-    const mz = (a[1] + b[1]) / 2
-    const wy = yawX(ux, uz)
-    put.box('curtain', L + 0.15, WALL_H, 0.6, mx, 0, mz, { ry: wy, uv: 1.45, vlock: true })
-    put.box('curtain', L + 0.15, 0.5, 0.84, mx, -0.22, mz, { ry: wy, uv: 1.45 })
-    put.box('curtain', L + 0.15, 0.1, 0.8, mx, WALL_H, mz, { ry: wy, uv: 1.45 })
-    // merlons ride the outer lip
-    let nx = -uz
-    let nz = ux
+    const wy = yawX(dx / L, dz / L)
+    const mx = (ax + bx) / 2
+    const mz = (az + bz) / 2
+    put.box('keep', L + 0.1, 2.4, 0.42, mx, 0, mz, { ry: wy, uv: 1.4, vlock: true })
+    put.box('keep', L + 0.1, 0.45, 0.6, mx, -0.35, mz, { ry: wy, uv: 1.4 }) // batter
+    put.box('keep', L + 0.1, 0.09, 0.56, mx, 2.4, mz, { ry: wy, uv: 1.4 }) // coping
+    crenels(put, 'keep', ax, az, bx, bz, 2.49, { w: 0.22, h: 0.2, d: 0.15, pitch: 0.48 })
+    // slits on the OUTER face, whatever the wall's orientation
+    let nx = -dz / L
+    let nz = dx / L
     if (nx * mx + nz * mz < 0) {
       nx = -nx
       nz = -nz
     }
-    crenels(put, 'curtain', a[0] + nx * 0.29, a[1] + nz * 0.29, b[0] + nx * 0.29, b[1] + nz * 0.29,
-      WALL_H + 0.1, { w: 0.3, h: 0.3, d: 0.19, pitch: 0.62 })
-    // dark window slits on every outer wall face — the plate's architecture tell
-    const nS = Math.max(1, Math.floor(L / 2.0))
+    const nS = Math.max(1, Math.floor(L / 1.6))
     for (let k = 0; k < nS; k++) {
-      const tt = (k + 0.5) / nS
-      put.box('dark', 0.13, 0.38, 0.05, a[0] + ux * tt * L + nx * 0.31, 1.32, a[1] + uz * tt * L + nz * 0.31, { ry: wy })
+      const t = (k + 0.5) / nS
+      put.box('dark', 0.1, 0.3, 0.05, ax + dx * t + nx * 0.24, 1.35, az + dz * t + nz * 0.24,
+        { ry: Math.atan2(nx, nz) })
     }
   }
+  wallSeg(-3.5, 3.0, -1.25, 3.0) // S wall, W of gate
+  wallSeg(0.65, 3.0, 3.0, 3.0) // S wall, E of gate
+  wallSeg(-3.5, 3.0, -3.5, 1.2) // short W return
+  wallSeg(3.0, 3.0, 3.0, 1.5) // short E return
 
-  // ---- wall turrets with cobalt caps (heights all differ) ----------------
-  const turret = (x, z, r, hb, hc, slits) => {
-    put.cyl('curtain', r + 0.08, r + 0.17, 0.45, 10, x, -0.2, z, { uv: 1.2 })
-    put.cyl('curtain', r * 0.93, r + 0.05, hb, 10, x, 0, z, { uv: 1.2, vlock: true })
-    put.cyl('curtain', r + 0.12, r + 0.12, 0.06, 10, x, hb, z, {})
-    put.cone('roofCobalt', r + 0.16, hc, 10, x, hb + 0.06, z, { uv: 1.1 })
-    put.sphere('gold', 0.085, x, hb + hc + 0.13, z, {})
-    put.cone('gold', 0.05, 0.22, 6, x, hb + hc + 0.18, z, {})
-    if (slits) {
-      const ol = Math.hypot(x, z) || 1
-      const ox = x / ol
-      const oz = z / ol
-      for (const yy of [hb * 0.38, hb * 0.68]) {
-        put.box('dark', 0.12, 0.36, 0.05, x + ox * (r + 0.02), yy, z + oz * (r + 0.02),
-          { ry: Math.atan2(ox, oz) })
-      }
-    }
-  }
-  turret(-5.1, 6, 0.5, 3.0, 0.92, true) // front-left, tallest on the wall
-  turret(5.1, 6, 0.48, 2.85, 0.85, true)
-  turret(-7.5, -3.6, 0.44, 2.6, 0.76, true)
-  turret(7.5, -3.6, 0.44, 2.52, 0.72, true)
-  turret(0, -6, 0.4, 2.4, 0.66, true)
-
-  // ---- gatehouse: §5 chart 3.4 tall, gate arch 1.9, raised portcullis ----
-  put.box('curtain', 0.78, 2.8, 1.9, gx - 1.02, 0, 6.05, { uv: 1.45, vlock: true })
-  put.box('curtain', 0.78, 2.8, 1.9, gx + 1.02, 0, 6.05, { uv: 1.45, vlock: true })
-  put.arch('curtain', 2.85, 2.8, 0.3, 1.25, 1.9, gx, 0, 6.85, { uv: 1.45 })
-  put.arch('curtain', 2.85, 2.8, 0.3, 1.25, 1.9, gx, 0, 5.25, { uv: 1.45 })
-  put.box('curtain', 3.0, 0.12, 2.1, gx, 2.8, 6.05, { uv: 1.45 })
-  crenels(put, 'curtain', gx - 1.35, 7.0, gx + 1.35, 7.0, 2.92, { w: 0.28, h: 0.3, d: 0.18, pitch: 0.5 })
-  crenels(put, 'curtain', gx - 1.42, 6.75, gx - 1.42, 5.35, 2.92, { w: 0.24, h: 0.26, d: 0.18, pitch: 0.5 })
-  crenels(put, 'curtain', gx + 1.42, 6.75, gx + 1.42, 5.35, 2.92, { w: 0.24, h: 0.26, d: 0.18, pitch: 0.5 })
+  // ---- gatehouse: h 3.1, arch centred at local (−0.3, +3.3) --------------
+  const GX = -0.3
   for (const s of [-1, 1]) {
-    // arrow slits on the gatehouse front faces
-    put.box('dark', 0.13, 0.42, 0.05, gx + s * 1.02, 1.4, 7.01, {})
-    put.box('dark', 0.12, 0.32, 0.05, gx + s * 1.02, 2.25, 7.01, {})
-    const tx = gx + s * 1.28
-    put.cyl('curtain', 0.2, 0.25, 1.6, 8, tx, 2.0, 6.9, { uv: 1.2 })
-    put.cyl('curtain', 0.26, 0.26, 0.05, 8, tx, 3.6, 6.9, {})
-    put.cone('roofCobalt', 0.32, 0.6, 8, tx, 3.65, 6.9, { uv: 1.1 })
-    put.sphere('gold', 0.07, tx, 4.32, 6.9, {})
-    put.box('dark', 0.1, 0.26, 0.05, tx, 2.6, 7.13, {})
+    const tx = GX + s * 0.78
+    put.box('keep', 0.62, 3.1, 0.72, tx, 0, 3.12, { uv: 1.2, vlock: true })
+    put.box('keep', 0.72, 0.08, 0.82, tx, 3.1, 3.12, {})
+    crenels(put, 'keep', tx - 0.28, 3.12, tx + 0.28, 3.12, 3.22, { w: 0.16, h: 0.16, d: 0.13, pitch: 0.3 })
+    put.cone('roofCobalt', 0.3, 0.85, 8, tx, 3.18, 3.12, { uv: 0.9 })
+    put.sphere('gold', 0.06, tx, 4.1, 3.12, {})
+    put.box('dark', 0.1, 0.3, 0.05, tx, 1.5, 3.5, {})
+    put.box('dark', 0.09, 0.24, 0.05, tx, 2.35, 3.5, {})
   }
-  // portcullis, raised: spiked bars visible in the arch head
+  put.arch('keep', 1.56, 2.55, 0.4, 0.92, 1.45, GX, 0, 3.3, { uv: 1.2 }) // gate wall
+  put.box('keep', 2.2, 0.09, 0.5, GX, 2.55, 3.3, {})
+  crenels(put, 'keep', GX - 0.5, 3.3, GX + 0.5, 3.3, 2.64, { w: 0.18, h: 0.18, d: 0.14, pitch: 0.34 })
+  put.box('gold', 0.07, 0.4, 0.07, GX, 2.64, 3.3, {})
+  put.sphere('gold', 0.07, GX, 3.08, 3.3, {})
+  pennant(put.world(GX, 3.0, 3.3), 0, 0xb0453c)
+  // raised portcullis bars in the arch head + dark passage behind
   for (let i = -2; i <= 2; i++) {
-    const bx2 = gx + i * 0.21
-    put.box('dark', 0.045, 0.9, 0.045, bx2, 0.78, 6.42, {})
-    put.cone('dark', 0.04, 0.12, 4, bx2, 0.68, 6.42, { rx: Math.PI, c: true })
+    put.box('dark', 0.04, 0.55, 0.04, GX + i * 0.17, 0.95, 3.34, {})
   }
-  put.box('dark', 1.05, 0.045, 0.05, gx, 1.08, 6.42, {})
-  put.box('dark', 1.05, 0.045, 0.05, gx, 1.42, 6.42, {})
-  put.box('pave', 1.9, 0.08, 1.7, gx, -0.03, 6.35, { uv: 1.1 })
+  put.box('dark', 0.85, 0.04, 0.045, GX, 1.18, 3.34, {})
+  put.box('dark', 0.95, 1.35, 0.1, GX, 0, 2.95, {}) // shadowed passage mouth
 
-  // stair turret left of the gate (plate: slender spire by the portal)
-  put.cyl('curtain', 0.44, 0.52, 0.4, 9, -1.75, -0.15, 6.3, { uv: 1.2 })
-  put.cyl('curtain', 0.36, 0.44, 3.0, 9, -1.75, 0, 6.3, { uv: 1.2, vlock: true })
-  put.cyl('curtain', 0.48, 0.48, 0.06, 9, -1.75, 3.0, 6.3, {})
-  put.cone('roofCobalt', 0.52, 0.95, 9, -1.75, 3.06, 6.3, { uv: 1.1 })
-  put.sphere('gold', 0.08, -1.75, 4.08, 6.3, {})
-  put.box('dark', 0.12, 0.34, 0.05, -1.75, 0.9, 6.72, {})
-  put.box('dark', 0.12, 0.34, 0.05, -1.75, 1.9, 6.72, {})
-  pennant(put.world(-1.75, 4.0, 6.3), yaw, 0xd9b542)
-
-  // ---- courtyard + balustraded motte -------------------------------------
-  put.box('pave', 12.6, 0.06, 9.6, 0, 0.01, -0.2, { uv: 2.3 })
-  put.box('keep', 9.8, 1.85, 6.6, 0.15, 0, -1.55, { uv: 1.5, vlock: true })
-  put.box('keep', 10.3, 0.55, 7.1, 0.15, -0.2, -1.55, { uv: 1.5 })
-  const TY = 1.85
-  balustrade(put, 'keep', -4.55, 1.71, -0.75, 1.71, TY, { h: 0.3 })
-  balustrade(put, 'keep', 1.45, 1.71, 4.85, 1.71, TY, { h: 0.3 })
-  // arrow-slit windows punched into the motte faces
-  for (const i of [-2, -1, 1, 2]) put.box('dark', 0.15, 0.42, 0.05, 0.35 + i * 1.7, 0.95, 1.78, {})
+  // ---- courtyard pave + gate apron / steps down to the road --------------
+  put.box('pave', 6.3, 0.05, 6.1, -0.25, 0.015, 0.1, { uv: 2.2 })
+  // apron in front of the gate (plateau is flat to z +22) + two low steps,
+  // each sampling terrain so the approach never floats
+  const A = put.world(GX, 0, 3.75)
+  const steps = [
+    [A.x - 0.35, A.z + 0.55, 2.2, 1.1],
+    [A.x - 0.7, A.z + 1.5, 2.0, 0.95],
+  ]
+  let prevTop = padY + 0.05
+  const putW = makePut(B, null)
+  for (const [sx, sz, sw, sd] of steps) {
+    const gy = Math.min(T.height(sx, sz), prevTop - 0.09)
+    putW.box('pave', sw, prevTop - gy + 0.35, sd, sx, gy - 0.35, sz, { ry: -0.35, uv: 1.1 })
+    prevTop = gy
+  }
+  // gold-tipped red pennant posts framing the approach
   for (const s of [-1, 1]) {
-    for (const zz of [-3.4, -1.2, 0.8]) put.box('dark', 0.15, 0.42, 0.05, 0.15 + s * 4.92, 0.95, zz, { ry: HPI })
+    const bx = A.x - 0.5 + s * 1.35
+    const bz = A.z + 1.1 - s * 0.35
+    const by = T.height(bx, bz)
+    putW.cyl('woodDark', 0.03, 0.04, 1.3, 6, bx, by - 0.05, bz, {})
+    putW.sphere('gold', 0.045, bx, by + 1.3, bz, {})
+    ctx.pennant(new THREE.Vector3(bx, by + 1.2, bz), -0.35, 0xb0453c)
+    blob(bx, bz, 0.22, 0.18, 0.24, 0)
   }
-  for (let i = 0; i < 8; i++) {
-    put.box('pave', 1.9, TY - i * (TY / 8), 0.27, 0.35, 0, 1.75 + (i + 0.5) * 0.27, { uv: 1.1 })
-  }
-  for (const s of [-1, 1]) {
-    put.box('keep', 0.34, 0.8, 0.34, 0.35 + s * 1.25, 0, 2.7, { uv: 1.0 })
-    put.sphere('gold', 0.1, 0.35 + s * 1.25, 0.9, 2.7, {})
-  }
-
-  // ---- the keep ----------------------------------------------------------
-  // nave + the huge frontal cobalt gable
-  put.box('keep', 3.2, 1.15, 3.1, 0.2, TY, -1.4, { uv: 1.5, vlock: true })
-  for (const s of [-1, 1]) put.box('dark', 0.13, 0.4, 0.05, 0.2 + s * 1.15, TY + 0.5, 0.17, {})
-  put.prism('roofCobalt', 3.44, 1.4, 3.3, 0.2, TY + 1.13, -1.4, { uv: 1.15 })
-  put.sphere('gold', 0.09, 0.2, TY + 2.6, 0.15, {})
-  put.cone('gold', 0.05, 0.24, 6, 0.2, TY + 2.65, 0.15, {})
-  // tracery window on the gable face
-  put.arch('keep', 0.8, 1.0, 0.1, 0.5, 0.86, 0.2, TY + 1.25, 0.28, { uv: 1.0 })
-  put.box('dark', 0.56, 0.86, 0.05, 0.2, TY + 1.27, 0.26, {})
-  put.box('keep', 0.035, 0.68, 0.04, 0.11, TY + 1.29, 0.3, {})
-  put.box('keep', 0.035, 0.68, 0.04, 0.29, TY + 1.29, 0.3, {})
-  put.box('gold', 0.9, 0.05, 0.1, 0.2, TY + 1.2, 0.28, {})
-  // portal: two nested cream arches over a dark doorway
-  put.arch('keep', 1.15, 1.08, 0.12, 0.72, 0.98, 0.2, TY, 0.22, { uv: 1.0 })
-  put.arch('keep', 0.9, 1.0, 0.1, 0.56, 0.9, 0.2, TY, 0.3, { uv: 1.0 })
-  put.box('dark', 0.58, 0.88, 0.06, 0.2, TY, 0.2, {})
-  // aisles with cobalt shed roofs
-  for (const s of [-1, 1]) {
-    put.box('keep', 1.05, 0.75, 2.9, 0.2 + s * 2.12, TY, -1.35, { uv: 1.5, vlock: true })
-    put.box('roofCobalt', 1.35, 0.055, 3.15, 0.2 + s * 2.17, TY + 0.92, -1.35,
-      { rz: -s * 0.28, c: true, uv: 1.15 })
-    put.box('dark', 0.14, 0.36, 0.05, 0.2 + s * 2.12, TY + 0.2, 0.13, {})
-    for (const zz of [-0.7, -1.9]) put.box('dark', 0.13, 0.34, 0.05, 0.2 + s * 2.66, TY + 0.24, zz, { ry: HPI })
-  }
-  // buttresses
-  const buttress = (x, z, h) => {
-    put.box('keep', 0.18, h, 0.26, x, TY, z, { uv: 1.0 })
-    put.box('keep', 0.14, h * 0.55, 0.2, x, TY + h * 0.9, z - 0.02, { uv: 1.0 })
-    put.prism('keep', 0.18, 0.15, 0.2, x, TY + h * 0.9 + h * 0.55, z - 0.02, { uv: 1.0 })
-  }
-  buttress(-1.35, 0.32, 0.8)
-  buttress(1.75, 0.32, 0.8)
-  buttress(-2.46, -0.6, 0.55)
-  buttress(2.86, -0.6, 0.55)
-  buttress(-2.46, -2.1, 0.55)
-  buttress(2.86, -2.1, 0.55)
-  // twin facade towers with cobalt pyramids
-  for (const s of [-1, 1]) {
-    const tx = 0.2 + s * 2.5
-    put.box('keep', 0.8, 2.05, 0.8, tx, TY, 0.35, { uv: 1.4, vlock: true })
-    put.box('keep', 0.95, 0.08, 0.95, tx, TY + 2.05, 0.35, { uv: 1.0 })
-    put.cone('roofCobalt', 0.62, 1.0, 4, tx, TY + 2.13, 0.35, { ry: Math.PI / 4, uv: 1.1 })
-    put.sphere('gold', 0.09, tx, TY + 3.2, 0.35, {})
-    put.cone('gold', 0.05, 0.22, 6, tx, TY + 3.25, 0.35, {})
-    put.box('dark', 0.16, 0.44, 0.05, tx, TY + 0.45, 0.77, {})
-    put.box('dark', 0.16, 0.44, 0.05, tx, TY + 1.1, 0.77, {})
-    put.box('dark', 0.13, 0.3, 0.05, tx, TY + 1.72, 0.77, {})
-    put.box('dark', 0.13, 0.34, 0.05, tx + s * 0.41, TY + 0.6, 0.35, { ry: HPI })
-    pennant(put.world(tx, TY + 3.16, 0.35), yaw, 0x35549c)
-  }
-  // grand rear spire — the 6.5 m tip
-  put.cyl('keep', 0.55, 0.64, 0.5, 9, -1.5, TY - 0.2, -3.0, { uv: 1.3 })
-  put.cyl('keep', 0.46, 0.54, 3.15, 9, -1.5, TY, -3.0, { uv: 1.3, vlock: true })
-  put.cyl('keep', 0.52, 0.52, 0.06, 9, -1.5, TY + 1.5, -3.0, {})
-  put.cyl('keep', 0.6, 0.6, 0.07, 9, -1.5, TY + 3.15, -3.0, {})
-  put.cone('roofCobalt', 0.66, 1.42, 10, -1.5, TY + 3.22, -3.0, { uv: 1.1 })
-  put.sphere('gold', 0.12, -1.5, TY + 4.72, -3.0, {})
-  put.cone('gold', 0.055, 0.3, 6, -1.5, TY + 4.78, -3.0, {})
-  pennant(put.world(-1.5, TY + 4.72, -3.0), yaw, 0x35549c)
-  for (const s of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
-    const px = -1.5 + s[0] * 0.52
-    const pz = -3.0 + s[1] * 0.52
-    put.cyl('keep', 0.05, 0.068, 0.42, 6, px, TY + 2.9, pz, {})
-    put.cone('roofCobalt', 0.095, 0.24, 6, px, TY + 3.32, pz, {})
-    put.sphere('gold', 0.05, px, TY + 3.58, pz, {})
-  }
-  for (let i = 0; i < 3; i++) put.box('dark', 0.14, 0.4, 0.05, -1.5, TY + 0.5 + i * 0.8, -2.44, {})
-  for (const s of [-1, 1]) put.box('dark', 0.13, 0.36, 0.05, -1.5 + s * 0.52, TY + 1.1, -3.0, { ry: HPI })
-  // rear-right and mid-left round towers (asymmetric heights)
-  put.cyl('keep', 0.36, 0.45, 2.6, 9, 2.6, TY, -2.75, { uv: 1.3, vlock: true })
-  put.cyl('keep', 0.5, 0.5, 0.06, 9, 2.6, TY + 2.6, -2.75, {})
-  put.cone('roofCobalt', 0.55, 1.05, 10, 2.6, TY + 2.66, -2.75, { uv: 1.1 })
-  put.sphere('gold', 0.09, 2.6, TY + 3.78, -2.75, {})
-  put.cone('gold', 0.05, 0.22, 6, 2.6, TY + 3.83, -2.75, {})
-  put.box('dark', 0.13, 0.36, 0.05, 2.6, TY + 0.7, -2.3, {})
-  put.box('dark', 0.13, 0.36, 0.05, 2.6, TY + 1.5, -2.3, {})
-  put.cyl('keep', 0.34, 0.42, 1.95, 9, -2.75, TY, -0.5, { uv: 1.3, vlock: true })
-  put.cyl('keep', 0.46, 0.46, 0.06, 9, -2.75, TY + 1.95, -0.5, {})
-  put.cone('roofCobalt', 0.5, 0.9, 10, -2.75, TY + 2.01, -0.5, { uv: 1.1 })
-  put.sphere('gold', 0.08, -2.75, TY + 2.98, -0.5, {})
-  put.box('dark', 0.13, 0.34, 0.05, -2.75, TY + 0.55, -0.09, {})
-  put.box('dark', 0.13, 0.34, 0.05, -2.75, TY + 1.25, -0.09, {})
-  // rear connecting wing
-  put.box('keep', 3.0, 1.0, 1.3, 0.6, TY, -3.55, { uv: 1.5, vlock: true })
-  put.prism('roofCobalt', 1.45, 0.5, 3.2, 0.6, TY + 0.98, -3.55, { ry: HPI, uv: 1.15 })
-  put.box('dark', 0.13, 0.34, 0.05, -0.3, TY + 0.4, -2.88, {})
-  put.box('dark', 0.13, 0.34, 0.05, 1.5, TY + 0.4, -2.88, {})
-  // nave flank slit rows
-  for (const s of [-1, 1]) {
-    for (let i = 0; i < 3; i++) {
-      put.box('dark', 0.12, 0.36, 0.08, 0.2 + s * 1.62, TY + 0.38, -0.65 - i * 0.75, {})
-    }
-  }
-
-  // ---- solid stone ramp: descends from the gate arch to the road mouth ---
-  // Round 1 floated thin slabs over the plateau lip; every step here is a
-  // full-height block sunk below grade, so the approach reads as masonry.
-  {
-    const A = put.world(gx, 0, 7.0) // gate threshold, at pad height
-    const EX = LP ? LP.x : A.x + gdx * 8
-    const EZ = LP ? LP.z : A.z + gdz * 8
-    const endY = T.height(EX, EZ)
-    const cxp = A.x + gdx * 2.6
-    const czp = A.z + gdz * 2.6
-    const n = Math.max(6, Math.round(Math.hypot(EX - A.x, EZ - A.z) / 0.8))
-    let px = A.x
-    let pz = A.z
-    for (let i = 1; i <= n; i++) {
-      const t = i / n
-      const qx = (1 - t) * (1 - t) * A.x + 2 * (1 - t) * t * cxp + t * t * EX
-      const qz = (1 - t) * (1 - t) * A.z + 2 * (1 - t) * t * czp + t * t * EZ
-      const mx2 = (px + qx) / 2
-      const mz2 = (pz + qz) / 2
-      const seg = Math.hypot(qx - px, qz - pz)
-      const tm = (i - 0.5) / n
-      const ss = tm * tm * (3 - 2 * tm)
-      const topY = A.y + 0.06 + (endY + 0.05 - A.y - 0.06) * ss
-      const gmin = Math.min(T.height(px, pz), T.height(mx2, mz2), T.height(qx, qz), topY)
-      addG(B.pave, gBox(2.25, topY - gmin + 0.55, seg + 0.34, mx2, gmin - 0.55, mz2,
-        { ry: yawX(qx - px, qz - pz), uv: 1.15 }), null)
-      px = qx
-      pz = qz
-    }
-    // low cheek walls where the ramp leaves the plateau lip
-    for (const s of [-1, 1]) {
-      const wx2 = A.x + gdx * 0.9 - gdz * s * 1.2
-      const wz2 = A.z + gdz * 0.9 + gdx * s * 1.2
-      addG(B.pave, gBox(1.9, 0.5, 0.24, wx2, A.y - 0.05, wz2, { ry: yawX(gdx, gdz), uv: 0.8 }), null)
-    }
-    // red pennant posts framing the ramp foot at the road
-    for (const s of [-1, 1]) {
-      const bxp = EX - gdz * s * 1.45
-      const bzp = EZ + gdx * s * 1.45
-      const byp = T.height(bxp, bzp)
-      addG(B.woodDark, gCyl(0.035, 0.045, 1.5, 6, bxp, byp - 0.05, bzp, {}), null)
-      addG(B.gold, gSphere(0.05, bxp, byp + 1.52, bzp, {}), null)
-      pennant(new THREE.Vector3(bxp, byp + 1.42, bzp), yaw, 0xb0453c)
-      blob(bxp, bzp, 0.24, 0.2, 0.26, 0)
-    }
-    // grounding shade where the ramp meets the road
-    blob(EX, EZ, 1.7, 1.3, 0.22, yaw)
-  }
+  blob(poi.x - 0.25, poi.z + 0.2, 4.3, 3.9, 0.24, 0)
 }
 
 // ===========================================================================
-// 5. VILLAGE — Ferren Hamlet: 11 houses, 4 plans, organic lane, well, stall
+// 5. VILLAGE — hazy slate hamlet at the POI: rooftop silhouettes only
 // ===========================================================================
 
 const HOUSE_PLANS = {
   A: { w: 2.5, d: 2.1, wallH: 1.15, rise: 0.95, chimney: true },
-  B: { w: 2.7, d: 2.1, wallH: 1.2, rise: 1.0, chimney: true, ell: true },
-  C: { w: 3.6, d: 2.3, wallH: 1.3, rise: 1.05, chimney: true, porch: true },
+  B: { w: 2.7, d: 2.1, wallH: 1.2, rise: 1.0, chimney: true },
+  C: { w: 3.6, d: 2.3, wallH: 1.3, rise: 1.05, chimney: true },
   D: { w: 1.9, d: 1.7, wallH: 0.95, rise: 0.8 },
 }
 
@@ -1048,32 +835,20 @@ function buildHouse(ctx, hx, hz, rot, planKey, wallBk, lit) {
     if (h > hmax) hmax = h
   }
   const baseY = hmin - 0.03
-  const ph = hmax - hmin + 0.42
+  const ph = hmax - hmin + 0.3
   const frame = new THREE.Matrix4().makeRotationY(rot)
   frame.setPosition(hx, baseY, hz)
   const put = makePut(B, frame)
 
-  put.box('stoneBase', p.w + 0.24, ph, p.d + 0.24, 0, 0, 0, { uv: 1.1 })
+  put.box('stoneBase', p.w + 0.2, ph, p.d + 0.2, 0, 0, 0, { uv: 1.1 })
   const GF = ph
   put.box(wallBk, p.w, p.wallH, p.d, 0, GF, 0, { uv: p.w + 0.001, vlock: true })
   put.prism(wallBk, p.w, p.rise, p.d, 0, GF + p.wallH, 0, { uv: p.w + 0.001 })
-  const yr = gableRoof(put, 'roofSlate', p.w, p.d, p.rise, 0.22, 0.18, 0, GF + p.wallH, 0, { uv: 1.05 })
+  gableRoof(put, 'roofSlate', p.w, p.d, p.rise, 0.22, 0.18, 0, GF + p.wallH, 0, { uv: 1.05 })
 
-  // door + trim on the front (+Z) face
-  const dxo = p.porch ? -p.w * 0.18 : 0
-  put.box('dark', 0.5, 0.9, 0.07, dxo, GF, p.d / 2 + 0.01, {})
-  put.box('woodDark', 0.07, 0.98, 0.055, dxo - 0.3, GF, p.d / 2 + 0.02, {})
-  put.box('woodDark', 0.07, 0.98, 0.055, dxo + 0.3, GF, p.d / 2 + 0.02, {})
-  put.box('woodDark', 0.7, 0.07, 0.055, dxo, GF + 0.95, p.d / 2 + 0.02, {})
-
-  // windows — a couple lit warm (assignment: a few lit windows)
-  const win = (bk, x, z, ry) => {
-    put.box(bk, 0.3, 0.36, 0.08, x, GF + 0.42, z, { ry })
-    put.box('woodDark', 0.42, 0.05, 0.1, x, GF + 0.36, z, { ry })
-  }
-  win(lit ? 'lit' : 'dark', p.w * 0.28, p.d / 2 - 0.01, 0)
-  if (p.w > 2.2 && rnd() < 0.8) win('dark', -p.w * 0.3, p.d / 2 - 0.01, 0)
-  if (rnd() < 0.7) win(lit && rnd() < 0.4 ? 'lit' : 'dark', p.w / 2 - 0.01, -p.d * 0.1, HPI)
+  // door + one window — silhouette dressing only, the hamlet is 70 m out
+  put.box('dark', 0.5, 0.9, 0.07, 0, GF, p.d / 2 + 0.01, {})
+  put.box(lit ? 'lit' : 'dark', 0.3, 0.36, 0.08, p.w * 0.28, GF + 0.42, p.d / 2 - 0.01, {})
 
   if (p.chimney) {
     const chx = -p.w * 0.22
@@ -1082,128 +857,36 @@ function buildHouse(ctx, hx, hz, rot, planKey, wallBk, lit) {
     put.box('stoneBase', 0.42, 0.07, 0.42, chx, GF + p.wallH + p.rise + 0.7, chz, { uv: 0.7 })
     put.box('dark', 0.16, 0.06, 0.16, chx, GF + p.wallH + p.rise + 0.77, chz, {})
   }
-  if (p.porch) {
-    for (const s of [-1, 1]) put.cyl('woodDark', 0.045, 0.055, 0.92, 6, p.w * 0.3 + s * 0.55, GF, p.d / 2 + 0.72, {})
-    put.box('roofSlate', 1.5, 0.05, 1.05, p.w * 0.3, GF + 1.06, p.d / 2 + 0.45, { rx: 0.3, c: true, uv: 1.05 })
-  }
-  if (p.ell) {
-    put.box(wallBk, 1.5, 1.0, 1.3, 0.75, GF, p.d / 2 + 0.5, { uv: 1.501, vlock: true })
-    put.prism(wallBk, 1.5, 0.7, 1.3, 0.75, GF + 1.0, p.d / 2 + 0.5, { uv: 1.501 })
-    gableRoof(put, 'roofSlate', 1.5, 1.3, 0.7, 0.18, 0.15, 0.75, GF + 1.0, p.d / 2 + 0.5, { uv: 1.05 })
-    put.box('dark', 0.3, 0.34, 0.06, 0.75, GF + 0.3, p.d / 2 + 1.16, {})
-  }
-  blob(hx, hz, p.w * 0.62 + 0.55, p.d * 0.62 + 0.55, 0.36, rot)
-  return yr
+  blob(hx, hz, p.w * 0.62 + 0.5, p.d * 0.62 + 0.5, 0.34, rot)
 }
 
 function buildVillage(ctx, poi) {
-  const { B, T, rnd, blob } = ctx
-  const houses = [
-    [-75.0, -124.5, 1.62, 'A', 'plaster', true],
-    [-65.2, -126.5, -1.45, 'B', 'timber', false],
-    [-76.2, -130.8, 1.48, 'C', 'timber', true],
-    [-64.0, -131.6, -1.72, 'A', 'plaster', false],
-    [-70.8, -135.8, 3.02, 'A', 'timber', false],
-    [-66.0, -138.2, -0.51, 'D', 'plaster', false],
-    [-75.8, -137.0, 0.78, 'B', 'plaster', true],
-    [-69.0, -121.8, 3.05, 'D', 'timber', false],
-    [-60.8, -124.0, -2.2, 'A', 'plaster', false],
-    [-74.0, -142.2, 1.75, 'C', 'plaster', false],
-    [-59.6, -129.8, -1.9, 'D', 'timber', false],
+  // FRAMING §4: hamlet at (−50.5, −16.5) y 11.5, projects to (0.30, 0.055) —
+  // a tight cluster of slate ridgelines at the hazed top edge.
+  const layout = [
+    [-2.4, 1.6, 1.62, 'A', 'plaster', true],
+    [2.2, -0.4, -1.45, 'B', 'timber', false],
+    [-3.1, -2.6, 1.48, 'C', 'timber', false],
+    [3.3, -3.0, -1.72, 'A', 'plaster', false],
+    [0.2, -4.4, 3.02, 'A', 'timber', false],
+    [-1.6, 3.9, -0.51, 'D', 'plaster', false],
+    [4.7, 1.9, 0.78, 'B', 'plaster', false],
+    [-5.3, -0.4, 3.05, 'D', 'timber', false],
+    [0.4, -0.9, 0.35, 'C', 'plaster', false],
   ]
-  for (const [hx, hz, rot, plan, wall, lit] of houses) buildHouse(ctx, hx, hz, rot, plan, wall, lit)
-
-  // lane of worn flags from the road mouth through the well plaza
-  const lane = [[-70, -125.4], [-70.2, -128.2], [-70.4, -131], [-70.9, -133.5], [-71.4, -136]]
-  const putW = makePut(B, null)
-  for (let i = 0; i < lane.length - 1; i++) {
-    const [ax, az] = lane[i]
-    const [bx2, bz2] = lane[i + 1]
-    const n = Math.max(2, Math.round(Math.hypot(bx2 - ax, bz2 - az) / 0.7))
-    for (let j = 0; j < n; j++) {
-      const t = (j + 0.5) / n
-      const x = ax + (bx2 - ax) * t + (rnd() - 0.5) * 0.2
-      const z = az + (bz2 - az) * t + (rnd() - 0.5) * 0.2
-      putW.box('stoneBase', 0.6 + rnd() * 0.25, 0.05, 1.15, x, T.height(x, z) + 0.02, z,
-        { ry: yawX(bx2 - ax, bz2 - az), uv: 1.1 })
-    }
+  for (const [ox, oz, rot, plan, wall, lit] of layout) {
+    buildHouse(ctx, poi.x + ox, poi.z + oz, rot, plan, wall, lit)
   }
-
-  // the well: stone ring, twin posts, little slate roof, windlass + bucket
-  const wx = -69.5
-  const wz = -130.6
-  const wy = T.height(wx, wz)
-  const fw = new THREE.Matrix4().makeRotationY(0.35)
-  fw.setPosition(wx, wy, wz)
-  const putV = makePut(B, fw)
-  putV.cyl('stoneBase', 0.6, 0.68, 0.55, 10, 0, 0, 0, { uv: 0.9 })
-  putV.cyl('dark', 0.48, 0.48, 0.05, 10, 0, 0.52, 0, {})
-  for (const s of [-1, 1]) putV.box('woodDark', 0.09, 1.25, 0.09, s * 0.58, 0.1, 0, {})
-  putV.cyl('woodDark', 0.05, 0.05, 1.16, 6, 0, 1.02, 0, { rz: HPI, c: true })
-  putV.box('woodDark', 0.12, 0.3, 0.04, 0.62, 0.9, 0.14, { rz: 0.5 })
-  putV.tube('rope', [new THREE.Vector3(0, 1.02, 0), new THREE.Vector3(0, 0.62, 0)], 0.018, {})
-  putV.box('woodDark', 0.17, 0.15, 0.17, 0, 0.52, 0, {})
-  gableRoof(putV, 'roofSlate', 1.5, 1.0, 0.42, 0.12, 0.15, 0, 1.28, 0, { uv: 1.05 })
-  for (const s of [-1, 1]) putV.prism('woodDark', 1.5, 0.42, 0.06, 0, 1.28, s * 0.5, { uv: 1.0 })
-  blob(wx, wz, 1.05, 0.95, 0.35, 0)
-
-  // market stall with the village-red awning
-  const sx = -67.4
-  const sz = -128.9
-  const sy = T.height(sx, sz)
-  const fs = new THREE.Matrix4().makeRotationY(0.5)
-  fs.setPosition(sx, sy, sz)
-  const putS = makePut(B, fs)
-  putS.box('woodMid', 1.5, 0.72, 0.55, 0, 0.06, 0.3, { uv: 1.0 })
-  for (const s of [-1, 1]) {
-    putS.box('woodDark', 0.07, 1.6, 0.07, s * 0.7, 0, -0.32, {})
-    putS.box('woodDark', 0.07, 1.32, 0.07, s * 0.7, 0, 0.52, {})
-  }
-  putS.box('red', 1.74, 0.045, 1.16, 0, 1.44, 0.1, { rx: 0.26, c: true, uv: 0.9 })
-  putS.box('hay', 0.42, 0.2, 0.3, -0.3, 0.78, 0.3, { ry: 0.2, uv: 0.5 })
-  putS.box('woodMid', 0.34, 0.3, 0.34, 0.4, 0.78, 0.28, { ry: -0.15, uv: 0.6 })
-  blob(sx, sz, 1.1, 0.8, 0.3, 0.5)
-
-  // barrels + a crate tucked against walls
-  const barrel = (x, z, lean) => {
-    const y = T.height(x, z)
-    const fb = new THREE.Matrix4().makeRotationY(rnd() * TAU)
-    fb.setPosition(x, y, z)
-    const pb = makePut(B, fb)
-    pb.lathe('woodMid', [[0.16, 0], [0.21, 0.09], [0.235, 0.3], [0.21, 0.5], [0.16, 0.58]], 9, 0, 0, 0,
-      lean ? { rz: 0.12 } : {})
-    pb.cyl('dark', 0.15, 0.15, 0.025, 9, 0, 0.575, 0, lean ? { rz: 0.12 } : {})
-    pb.cyl('woodDark', 0.242, 0.242, 0.035, 9, 0, 0.12, 0, lean ? { rz: 0.12 } : {})
-    pb.cyl('woodDark', 0.242, 0.242, 0.035, 9, 0, 0.44, 0, lean ? { rz: 0.12 } : {})
-    blob(x, z, 0.32, 0.32, 0.3, 0)
-  }
-  barrel(-64.55, -127.6, false)
-  barrel(-75.7, -125.7, true)
-  barrel(-67.9, -128.2, false)
-  const cy = T.height(-70.6, -134.6)
-  putW.box('woodMid', 0.5, 0.5, 0.5, -70.6, cy, -134.6, { ry: 0.4, uv: 0.55 })
-  putW.box('woodDark', 0.54, 0.07, 0.54, -70.6, cy + 0.22, -134.6, { ry: 0.4 })
-  blob(-70.6, -134.6, 0.42, 0.42, 0.3, 0.4)
 }
 
 // ===========================================================================
-// 6. SHRINE — torii, stone lanterns, tiled hall on a stepped stone base
+// 6. SHRINE — torii, stone lanterns, tiled hall (fog-hidden POI, kept alive)
 // ===========================================================================
 
 function buildShrine(ctx, poi) {
-  const { B, T, meta, blob } = ctx
-  let ax = -0.6
-  let az = -0.8
-  const road = (meta.roads || []).find((r) => r.name === 'shrine')
-  if (road && road.points.length > 4) {
-    const LPp = road.points[road.points.length - 1]
-    const PPp = road.points[road.points.length - 4]
-    const dx = PPp.x - LPp.x
-    const dz = PPp.z - LPp.z
-    const L = Math.hypot(dx, dz) || 1
-    ax = dx / L
-    az = dz / L
-  }
+  const { B, T, blob } = ctx
+  const ax = -0.6
+  const az = -0.8
   const yaw = Math.atan2(ax, az)
   const px2 = poi.x - ax * 0.6
   const pz2 = poi.z - az * 0.6
@@ -1212,13 +895,8 @@ function buildShrine(ctx, poi) {
   frame.setPosition(px2, py, pz2)
   const put = makePut(B, frame)
 
-  // stepped stone base + approach steps
   put.box('stoneBase', 4.4, 0.28, 3.4, 0, 0, 0, { uv: 1.0 })
   put.box('stoneBase', 3.7, 0.26, 2.8, 0, 0.28, 0, { uv: 1.0 })
-  put.box('stoneBase', 1.6, 0.36, 0.36, 0, 0, 1.88, { uv: 0.8 })
-  put.box('stoneBase', 1.6, 0.18, 0.36, 0, 0, 2.24, { uv: 0.8 })
-
-  // the hall: posts, dark timber body, sliding doors, tiled gable roof
   for (const [hx2, hz2] of [[-0.88, -0.66], [0.88, -0.66], [-0.88, 0.66], [0.88, 0.66]]) {
     put.cyl('red', 0.055, 0.07, 0.98, 7, hx2, 0.54, hz2, {})
   }
@@ -1226,17 +904,16 @@ function buildShrine(ctx, poi) {
   put.box('dark', 0.34, 0.66, 0.05, -0.19, 0.72, 0.63, {})
   put.box('dark', 0.34, 0.66, 0.05, 0.19, 0.72, 0.63, {})
   put.box('gold', 0.035, 0.66, 0.06, 0, 0.72, 0.63, {})
-  put.box('woodDark', 1.85, 0.12, 1.4, 0, 0.48, 0, { uv: 1.2 }) // floor slab
+  put.box('woodDark', 1.85, 0.12, 1.4, 0, 0.48, 0, { uv: 1.2 })
   put.prism('woodDark', 2.4, 0.72, 1.5, 0, 1.55, 0, { uv: 1.2 })
   const yr = gableRoof(put, 'roofSlate', 2.4, 1.5, 0.72, 0.42, 0.34, 0, 1.55, 0, { uv: 1.05, ridgeW: 0.16 })
   put.sphere('gold', 0.05, 0, yr + 0.02, 1.12, {})
   put.sphere('gold', 0.05, 0, yr + 0.02, -1.12, {})
-  put.box('woodDark', 0.5, 0.3, 0.32, 0, 0.54, 1.05, { uv: 0.7 })
   blob(px2, pz2, 2.6, 2.1, 0.32, yaw)
 
   // torii astride the approach
-  const tx = poi.x + ax * 4.6
-  const tz = poi.z + az * 4.6
+  const tx = poi.x + ax * 4.2
+  const tz = poi.z + az * 4.2
   const ty = T.height(tx, tz)
   const ft = new THREE.Matrix4().makeRotationY(yaw)
   ft.setPosition(tx, ty, tz)
@@ -1253,371 +930,215 @@ function buildShrine(ctx, poi) {
   putT.box('canvas', 0.07, 0.16, 0.012, 0.35, 1.06, 0.08, { rz: -0.1 })
   blob(tx, tz, 1.35, 0.5, 0.38, yaw)
 
-  // stone lanterns flanking the path, softly lit
-  for (const s of [-1, 1]) {
-    const lx = poi.x + ax * 2.9 - az * 1.05 * s
-    const lz = poi.z + az * 2.9 + ax * 1.05 * s
-    const ly = T.height(lx, lz)
-    const fl = new THREE.Matrix4().makeRotationY(yaw)
-    fl.setPosition(lx, ly, lz)
-    const putL = makePut(B, fl)
-    putL.box('stoneBase', 0.34, 0.14, 0.34, 0, 0, 0, { uv: 0.6 })
-    putL.cyl('stoneBase', 0.05, 0.068, 0.4, 7, 0, 0.14, 0, {})
-    putL.box('stoneBase', 0.26, 0.24, 0.26, 0, 0.54, 0, { uv: 0.6 })
-    putL.box('lit', 0.11, 0.12, 0.28, 0, 0.6, 0, {})
-    putL.cone('stoneBase', 0.3, 0.2, 4, 0, 0.78, 0, { ry: Math.PI / 4, uv: 0.6 })
-    putL.sphere('gold', 0.04, 0, 1.0, 0, {})
-    blob(lx, lz, 0.3, 0.3, 0.3, 0)
-  }
-
-  // path flags torii -> steps
-  const putW = makePut(B, null)
-  for (let i = 1; i <= 5; i++) {
-    const t = i / 6
-    const fx2 = tx + (poi.x + ax * 1.6 - tx) * t
-    const fz2 = tz + (poi.z + az * 1.6 - tz) * t
-    putW.box('stoneBase', 0.55, 0.05, 1.05, fx2, T.height(fx2, fz2) + 0.02, fz2, { ry: yaw + HPI, uv: 1.0 })
-  }
+  // one stone lantern beside the path
+  const lx = poi.x + ax * 2.6 - az * 1.0
+  const lz = poi.z + az * 2.6 + ax * 1.0
+  const ly = T.height(lx, lz)
+  const fl = new THREE.Matrix4().makeRotationY(yaw)
+  fl.setPosition(lx, ly, lz)
+  const putL = makePut(B, fl)
+  putL.box('stoneBase', 0.34, 0.14, 0.34, 0, 0, 0, { uv: 0.6 })
+  putL.cyl('stoneBase', 0.05, 0.068, 0.4, 7, 0, 0.14, 0, {})
+  putL.box('stoneBase', 0.26, 0.24, 0.26, 0, 0.54, 0, { uv: 0.6 })
+  putL.box('lit', 0.11, 0.12, 0.28, 0, 0.6, 0, {})
+  putL.cone('stoneBase', 0.3, 0.2, 4, 0, 0.78, 0, { ry: Math.PI / 4, uv: 0.6 })
+  blob(lx, lz, 0.3, 0.3, 0.3, 0)
 }
 
 // ===========================================================================
-// 7. BRIDGES — timber trestle (west), rope suspension (north gorge), and a
-//    stone arch footbridge over the river. Decks sag; planks are individual.
+// 7. TRESTLE BRIDGES — timber post-and-rail with full bents into the gorge
 // ===========================================================================
 
-function buildPlankBridge(ctx, A, Bp, deckY, style) {
-  const { B, T, rnd } = ctx
+function buildTrestle(ctx, A, Bp, deckSpec) {
+  const { B, T, rnd, blob } = ctx
   const put = makePut(B, null)
   let dx = Bp.x - A.x
   let dz = Bp.z - A.z
   const span = Math.hypot(dx, dz)
   dx /= span
   dz /= span
-  const px2 = -dz
-  const pz2 = dx
-  const inset = style === 'rope' ? 0.25 : 1.0
-  const ax = A.x + dx * inset
-  const az = A.z + dz * inset
-  const L = span - inset * 2
-  const sag = style === 'rope' ? 0.5 : 0.32
-  const yawP = yawX(px2, pz2)
+  const px = -dz
+  const pz = dx
+  const yawP = yawX(px, pz)
   const yawD = yawX(dx, dz)
+  // never bury the deck: honour the spec height but clear both abutments
+  const hA = T.height(A.x, A.z)
+  const hB = T.height(Bp.x, Bp.z)
+  const deckY = Math.max(deckSpec, hA + 0.12, hB + 0.12)
+  const sag = 0.12
   const deckAt = (t) => deckY - sag * 4 * t * (1 - t)
-  const wood = style === 'rope' ? 'woodMid' : 'woodMid'
 
-  // individually placed planks riding the sag, with age jitter
-  const step = style === 'rope' ? 0.34 : 0.36
-  const n = Math.floor(L / step)
+  // planks riding the shallow sag, slight age jitter
+  const step = 0.36
+  const n = Math.floor(span / step)
   for (let i = 0; i <= n; i++) {
     const t = i / n
-    if (style === 'rope' && (i === ((n * 0.32) | 0) || i === ((n * 0.71) | 0))) continue // missing planks
-    const x = ax + dx * t * L
-    const z = az + dz * t * L
-    const slope = Math.atan2(-sag * 4 * (1 - 2 * t), L)
-    const w = style === 'rope' ? 0.98 : 1.18
-    put.box(wood, w, 0.045, step * 0.72, x, deckAt(t), z,
-      { ry: yawP + (rnd() - 0.5) * (style === 'rope' ? 0.09 : 0.03), rx: slope, c: true, uv: 0.9 })
+    const x = A.x + dx * t * span
+    const z = A.z + dz * t * span
+    const slope = Math.atan2(-sag * 4 * (1 - 2 * t), span)
+    put.box('woodMid', 1.18, 0.05, step * 0.72, x, deckAt(t), z,
+      { ry: yawP + (rnd() - 0.5) * 0.03, rx: slope, c: true, uv: 0.9 })
   }
-
-  if (style === 'trestle') {
-    // stringers under the planks
-    for (const s of [-1, 1]) {
-      const off = s * 0.42
-      for (let i = 0; i < 8; i++) {
-        const t0 = i / 8
-        const t1 = (i + 1) / 8
-        const x0 = ax + dx * t0 * L + px2 * off
-        const z0 = az + dz * t0 * L + pz2 * off
-        const x1 = ax + dx * t1 * L + px2 * off
-        const z1 = az + dz * t1 * L + pz2 * off
-        const y0 = deckAt(t0) - 0.08
-        const y1 = deckAt(t1) - 0.08
-        const seg = Math.hypot(x1 - x0, z1 - z0)
-        put.box('woodDark', seg + 0.06, 0.11, 0.13, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2,
-          { rz: Math.atan2(y1 - y0, seg), ry: yawD, c: true, uv: 0.9 })
-      }
-    }
-    // post-and-rail parapets both sides (the bible's timber trestle read)
-    for (const s of [-1, 1]) {
-      const off = s * 0.56
-      const posts = Math.max(3, Math.round(L / 1.45))
-      const top = []
-      const mid = []
-      for (let i = 0; i <= posts; i++) {
-        const t = i / posts
-        const x = ax + dx * t * L + px2 * off
-        const z = az + dz * t * L + pz2 * off
-        const y = deckAt(t)
-        put.cyl('woodDark', 0.032, 0.042, 0.82, 5, x, y - 0.04, z, {})
-        top.push(new THREE.Vector3(x, y + 0.78, z))
-        mid.push(new THREE.Vector3(x, y + 0.42, z))
-      }
-      put.tube('woodDark', top, 0.028, {})
-      put.tube('woodDark', mid, 0.024, {})
-    }
-    // abutment cribs + raking struts down to the rock
-    for (const [ex, ez, sgn] of [[ax, az, 1], [ax + dx * L, az + dz * L, -1]]) {
-      for (let lay = 0; lay < 2; lay++) {
-        put.cyl('woodDark', 0.08, 0.08, 1.5, 6, ex - dx * sgn * 0.15, deckY - 0.22 - lay * 0.19, ez - dz * sgn * 0.15,
-          { rz: HPI, ry: yawP, c: true })
-      }
-      for (const s of [-1, 1]) {
-        const bx3 = ex + dx * sgn * 1.7 + px2 * s * 0.4
-        const bz3 = ez + dz * sgn * 1.7 + pz2 * s * 0.4
-        const gx2 = ex - dx * sgn * 0.6 + px2 * s * 0.4
-        const gz2 = ez - dz * sgn * 0.6 + pz2 * s * 0.4
-        put.tube('woodDark', [
-          new THREE.Vector3(bx3, deckY - 0.12, bz3),
-          new THREE.Vector3(gx2, Math.min(deckY - 1.6, T.height(gx2, gz2) + 0.4), gz2),
-        ], 0.06, {})
-      }
-    }
-  } else {
-    // rope suspension: pylons, catenary mains, hangers, anchors
-    const ends = [[ax, az, 1], [ax + dx * L, az + dz * L, -1]]
-    for (const [ex, ez, sgn] of ends) {
-      for (const s of [-1, 1]) {
-        put.cyl('woodDark', 0.05, 0.065, 1.3, 6, ex + px2 * s * 0.52, deckY - 0.08, ez + pz2 * s * 0.52, {})
-      }
-      put.box('woodDark', 1.3, 0.09, 0.09, ex, deckY + 1.12, ez, { ry: yawP })
-      // anchor stakes + tie-back ropes
-      const sx2 = ex - dx * sgn * 1.1
-      const sz2 = ez - dz * sgn * 1.1
-      const sy = T.height(sx2, sz2)
-      put.box('woodDark', 0.1, 0.5, 0.1, sx2, sy - 0.05, sz2, { rz: 0.2 * sgn })
-      for (const s of [-1, 1]) {
-        put.tube('rope', [
-          new THREE.Vector3(ex + px2 * s * 0.52, deckY + 1.18, ez + pz2 * s * 0.52),
-          new THREE.Vector3(sx2 + px2 * s * 0.2, sy + 0.35, sz2 + pz2 * s * 0.2),
-        ], 0.02, {})
-      }
-    }
-    for (const s of [-1, 1]) {
-      const dr = catPts(ax + px2 * s * 0.44, deckY - 0.03, az + pz2 * s * 0.44,
-        ax + dx * L + px2 * s * 0.44, deckY - 0.03, az + dz * L + pz2 * s * 0.44, sag, 16)
-      put.tube('rope', dr, 0.032, { seg: 22 })
-      const hr = catPts(ax + px2 * s * 0.5, deckY + 1.12, az + pz2 * s * 0.5,
-        ax + dx * L + px2 * s * 0.5, deckY + 1.12, az + dz * L + pz2 * s * 0.5, 0.34, 16)
-      put.tube('rope', hr, 0.024, { seg: 22 })
-      const hangers = Math.round(L / 0.85)
-      for (let i = 1; i < hangers; i++) {
-        const t = i / hangers
-        const hx3 = ax + dx * t * L + px2 * s * 0.5
-        const hz3 = az + dz * t * L + pz2 * s * 0.5
-        const yTop = deckY + 1.12 - 0.34 * 4 * t * (1 - t)
-        const yBot = deckAt(t) + 0.02
-        put.tube('rope', [new THREE.Vector3(hx3, yTop, hz3), new THREE.Vector3(hx3, yBot, hz3)], 0.013, { seg: 4 })
-      }
-    }
-  }
-}
-
-function buildArchBridge(ctx) {
-  const { B, T } = ctx
-  const cx2 = 6
-  const cz2 = -23
-  const rdx = 0.953
-  const rdz = 0.303
-  const px2 = -rdz
-  const pz2 = rdx
-  const waterY = T.waterHeight(cx2, cz2)
-  const hA = T.height(cx2 - px2 * 3.9, cz2 - pz2 * 3.9)
-  const hB = T.height(cx2 + px2 * 3.9, cz2 + pz2 * 3.9)
-  const y0 = waterY - 1.0
-  const deckTop = Math.max(hA, hB) + 0.3
-  const H = Math.max(1.6, deckTop - y0)
-  const ah = Math.min(H - 0.45, waterY - y0 + 1.5)
-  const fy = Math.atan2(-pz2, px2)
-  const frame = new THREE.Matrix4().makeRotationY(fy)
-  frame.setPosition(cx2, y0, cz2)
-  const put = makePut(B, frame)
-  put.arch('stoneBase', 7.6, H, 1.7, 3.0, ah, 0, 0, 0, { uv: 1.15 })
-  // humped deck + parapets + end caps
-  put.box('stoneBase', 3.0, 0.1, 1.8, 0, H, 0, { uv: 1.0 })
-  put.box('stoneBase', 2.6, 0.09, 1.75, -2.55, H - 0.16, 0, { rz: 0.12, c: true, uv: 1.0 })
-  put.box('stoneBase', 2.6, 0.09, 1.75, 2.55, H - 0.16, 0, { rz: -0.12, c: true, uv: 1.0 })
+  // stringers under the planks
   for (const s of [-1, 1]) {
-    put.box('stoneBase', 2.9, 0.4, 0.14, 0, H + 0.08, s * 0.82, { uv: 0.8 })
-    put.box('stoneBase', 2.3, 0.36, 0.13, -2.5, H - 0.14, s * 0.82, { rz: 0.12, c: true, uv: 0.8 })
-    put.box('stoneBase', 2.3, 0.36, 0.13, 2.5, H - 0.14, s * 0.82, { rz: -0.12, c: true, uv: 0.8 })
-    put.box('stoneBase', 0.3, 0.62, 0.24, -3.65, H - 0.5, s * 0.82, { uv: 0.6 })
-    put.box('stoneBase', 0.3, 0.62, 0.24, 3.65, H - 0.5, s * 0.82, { uv: 0.6 })
+    const off = s * 0.42
+    const segN = 8
+    for (let i = 0; i < segN; i++) {
+      const t0 = i / segN
+      const t1 = (i + 1) / segN
+      const x0 = A.x + dx * t0 * span + px * off
+      const z0 = A.z + dz * t0 * span + pz * off
+      const x1 = A.x + dx * t1 * span + px * off
+      const z1 = A.z + dz * t1 * span + pz * off
+      const y0 = deckAt(t0) - 0.08
+      const y1 = deckAt(t1) - 0.08
+      const seg = Math.hypot(x1 - x0, z1 - z0)
+      put.box('woodDark', seg + 0.06, 0.11, 0.13, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2,
+        { rz: Math.atan2(y1 - y0, seg), ry: yawD, c: true, uv: 0.9 })
+    }
+  }
+  // post-and-rail parapets both sides — the frame01 timber-trestle read
+  for (const s of [-1, 1]) {
+    const off = s * 0.56
+    const posts = Math.max(3, Math.round(span / 1.4))
+    const top = []
+    const mid = []
+    for (let i = 0; i <= posts; i++) {
+      const t = i / posts
+      const x = A.x + dx * t * span + px * off
+      const z = A.z + dz * t * span + pz * off
+      const y = deckAt(t)
+      put.cyl('woodDark', 0.032, 0.042, 0.78, 5, x, y - 0.04, z, {})
+      top.push(new THREE.Vector3(x, y + 0.74, z))
+      mid.push(new THREE.Vector3(x, y + 0.4, z))
+    }
+    put.tube('woodDark', top, 0.028, {})
+    put.tube('woodDark', mid, 0.024, {})
+  }
+  // trestle bents: paired legs + cross beam down into the gorge — these are
+  // what make the bridge read as a trestle at 40 px
+  for (let d = 1.4; d < span - 1.0; d += 2.1) {
+    const t = d / span
+    const bx = A.x + dx * t * span
+    const bz = A.z + dz * t * span
+    const dy = deckAt(t) - 0.14
+    let legMax = 0
+    for (const s of [-1, 1]) {
+      const lx = bx + px * s * 0.44
+      const lz = bz + pz * s * 0.44
+      const gy = T.height(lx, lz)
+      const h = Math.min(6.5, Math.max(0.35, dy - gy + 0.3))
+      put.cyl('woodDark', 0.055, 0.075, h, 6, lx, dy - h, lz, {})
+      if (h > legMax) legMax = h
+    }
+    if (legMax > 0.9) {
+      put.box('woodDark', 1.1, 0.09, 0.09, bx, dy - legMax * 0.55, bz, { ry: yawP, c: true, uv: 0.9 })
+      put.box('woodDark', 1.25, 0.07, 0.07, bx, dy - legMax * 0.2, bz,
+        { ry: yawP, rz: 0.5, c: true, uv: 0.9 })
+    }
+  }
+  // abutment cribs
+  for (const [ex, ez] of [[A.x, A.z], [Bp.x, Bp.z]]) {
+    const gy = T.height(ex, ez)
+    for (let lay = 0; lay < 2; lay++) {
+      put.cyl('woodDark', 0.08, 0.08, 1.5, 6, ex, Math.max(gy - 0.1, deckY - 0.3) - lay * 0.19, ez,
+        { rz: HPI, ry: yawP, c: true })
+    }
+    blob(ex, ez, 0.9, 0.7, 0.26, yawD)
   }
 }
 
 // ===========================================================================
-// 8. FARM — paddock fences that hug the road-facing arcs, barn, cart, bales
+// 8. FARM PADDOCK FENCES — the §4 accent paddocks and NOTHING more
+//
+// Toy fences (§5 unchanged): post 0.5 m, rails at 0.22 / 0.42, span ~1.3.
+// The gap on P1's W edge falls out of terrain.onRoad — the road clips it,
+// so wheat + fence read on BOTH of the hero's shoulders.
 // ===========================================================================
 
-// Wheat paddock ellipses — mirrors terrain.js PADDOCKS (authored constants).
-const PADDOCKS = [
-  { x: -34, z: 14, rx: 6.0, rz: 3.6, rot: 0.30 },
-  { x: -42, z: 26, rx: 8.0, rz: 4.6, rot: -0.18 },
-  { x: -30, z: 30, rx: 6.6, rz: 4.0, rot: 0.42 },
-  { x: -20, z: 52, rx: 8.2, rz: 4.6, rot: 0.12 },
-  { x: 1, z: 36, rx: 9.0, rz: 5.0, rot: -0.30 },
-]
-
-function buildFences(ctx) {
-  const { B, T, rnd, blob, roadPts } = ctx
+function fenceLoop(ctx, cx, cz, w, d, rot, opt = {}) {
+  const { B, T, rnd, blob } = ctx
   const put = makePut(B, null)
-  const roadNear = (x, z) => {
-    let best = 1e9
-    for (let i = 0; i < roadPts.length; i += 2) {
-      const dx = roadPts[i] - x
-      const dz = roadPts[i + 1] - z
-      const d2 = dx * dx + dz * dz
-      if (d2 < best) best = d2
-    }
-    return Math.sqrt(best)
+  const a = w / 2
+  const b = d / 2
+  const cr = Math.cos(rot)
+  const sr = Math.sin(rot)
+  const per = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)))
+  const n = Math.max(10, Math.round(per / 1.28))
+  const p = 3.0 // superellipse exponent: rounded-rectangle paddock
+  const pts = []
+  for (let i = 0; i < n; i++) {
+    const th = (i / n) * TAU
+    const ct = Math.cos(th)
+    const st = Math.sin(th)
+    const wob = 1 + 0.03 * Math.sin(th * 3 + cx) + 0.02 * Math.sin(th * 7 + cz)
+    const lx = Math.sign(ct) * a * Math.pow(Math.abs(ct), 2 / p) * wob
+    const lz = Math.sign(st) * b * Math.pow(Math.abs(st), 2 / p) * wob
+    const x = cx + lx * cr - lz * sr
+    const z = cz + lx * sr + lz * cr
+    // outward normal in world space (for partial-fence keep rules)
+    let ox = lx / a
+    let oz = lz / b
+    const ol = Math.hypot(ox, oz) || 1
+    ox /= ol
+    oz /= ol
+    const nx = ox * cr - oz * sr
+    const nz = ox * sr + oz * cr
+    let keep = T.onRoad(x, z) < 0.3 && !T.isWater(x, z) && T.slope(x, z) < 0.5
+    if (keep && opt.keepFn) keep = opt.keepFn(nx, nz, x, z)
+    pts.push({ x, z, keep })
   }
-  for (let pi = 0; pi < PADDOCKS.length; pi++) {
-    const p = PADDOCKS[pi]
-    const k = 1.14
-    const a = p.rx * k
-    const b = p.rz * k
-    const per = Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)))
-    const n = Math.max(10, Math.round(per / 1.32))
-    const cr = Math.cos(p.rot)
-    const sr = Math.sin(p.rot)
-    const pts = []
-    for (let i = 0; i < n; i++) {
-      const th = (i / n) * TAU
-      const wob = 1 + 0.035 * Math.sin(th * 3 + pi * 2.1) + 0.02 * Math.sin(th * 7 + pi)
-      const lx = Math.cos(th) * a * wob
-      const lz = Math.sin(th) * b * wob
-      const x = p.x + lx * cr - lz * sr
-      const z = p.z + lx * sr + lz * cr
-      // outward normal (approx): radial direction
-      let ox = lx / a
-      let oz = lz / b
-      const ol = Math.hypot(ox, oz) || 1
-      ox /= ol
-      oz /= ol
-      const wx2 = ox * cr - oz * sr
-      const wz2 = ox * sr + oz * cr
-      const facing = wx2 * -0.32 + wz2 * 0.95 // bias fences to the S/SW arcs
-      const keep = (roadNear(x, z) < 8.0 || facing > 0.3) &&
-        T.slope(x, z) < 0.5 && !T.isWater(x, z) && T.onRoad(x, z) < 0.35
-      pts.push({ x, z, keep })
-    }
-    // dilate keeps by one so runs end past corners
-    const keep2 = pts.map((q, i) => q.keep || pts[(i + 1) % n].keep || pts[(i + n - 1) % n].keep)
-    for (let i = 0; i < n; i++) pts[i].keep = keep2[i]
-    // posts + rails over contiguous runs
-    for (let i = 0; i < n; i++) {
-      const q = pts[i]
-      if (!q.keep) continue
-      const y = T.height(q.x, q.z)
-      const hJ = 0.5 * (0.92 + rnd() * 0.16)
-      put.box('woodDark', 0.07, hJ, 0.07, q.x, y - 0.06, q.z,
-        { rx: (rnd() - 0.5) * 0.07, rz: (rnd() - 0.5) * 0.07, ry: rnd() * TAU, uv: 0.6 })
-      blob(q.x, q.z, 0.2, 0.15, 0.22, 0)
-      const r = pts[(i + 1) % n]
-      if (!r.keep) continue
-      const dx = r.x - q.x
-      const dz = r.z - q.z
-      const flat = Math.hypot(dx, dz)
-      if (flat > 1.9) continue
-      const y2 = T.height(r.x, r.z)
-      const yawR = yawX(dx / flat, dz / flat)
-      const pitch = Math.atan2(y2 - y, flat)
-      for (const rh of [0.21, 0.4]) {
-        put.box('woodDark', flat + 0.1, 0.055, 0.038, (q.x + r.x) / 2, (y + y2) / 2 + rh - 0.06, (q.z + r.z) / 2,
-          { rz: pitch, ry: yawR, c: true, uv: 0.6 })
-      }
+  for (let i = 0; i < n; i++) {
+    const q = pts[i]
+    if (!q.keep) continue
+    const y = T.height(q.x, q.z)
+    const hJ = 0.5 * (0.92 + rnd() * 0.16) // §5 fence post 0.5 m — toy scale
+    put.box('woodDark', 0.065, hJ, 0.065, q.x, y - 0.06, q.z,
+      { rx: (rnd() - 0.5) * 0.07, rz: (rnd() - 0.5) * 0.07, ry: rnd() * TAU, uv: 0.6 })
+    blob(q.x, q.z, 0.18, 0.14, 0.22, 0)
+    const r = pts[(i + 1) % n]
+    if (!r.keep) continue
+    const dx = r.x - q.x
+    const dz = r.z - q.z
+    const flat = Math.hypot(dx, dz)
+    if (flat > 1.8) continue
+    const y2 = T.height(r.x, r.z)
+    const yawR = yawX(dx / flat, dz / flat)
+    const pitch = Math.atan2(y2 - y, flat)
+    for (const rh of [0.22, 0.42]) {
+      put.box('woodDark', flat + 0.09, 0.05, 0.036, (q.x + r.x) / 2, (y + y2) / 2 + rh - 0.05, (q.z + r.z) / 2,
+        { rz: pitch, ry: yawR, c: true, uv: 0.6 })
     }
   }
 }
 
 function buildFarm(ctx, poi) {
-  const { B, T, rnd, blob } = ctx
-  buildFences(ctx)
-
-  // barn against the western tree line (kept out of the boot framing)
-  const bx2 = -62
-  const bz2 = 25
-  const rot = 1.25
-  const cr = Math.cos(rot)
-  const sr = Math.sin(rot)
-  let hmin = Infinity
-  let hmax = -Infinity
-  for (const [ox, oz] of [[-2.05, -1.55], [2.05, -1.55], [-2.05, 1.55], [2.05, 1.55], [0, 0]]) {
-    const h = T.height(bx2 + ox * cr + oz * sr, bz2 - ox * sr + oz * cr)
-    if (h < hmin) hmin = h
-    if (h > hmax) hmax = h
-  }
-  const frame = new THREE.Matrix4().makeRotationY(rot)
-  frame.setPosition(bx2, hmin - 0.03, bz2)
-  const put = makePut(B, frame)
-  // Scale-chart sized (ridge ~2.6 m, village-house band). Walls use the
-  // 'barnWood' material whose teal emissive floor keeps the shadowed gable
-  // end near #2c3a30 instead of crushing to black.
-  const ph = hmax - hmin + 0.4
-  put.box('stoneBase', 4.15, ph, 3.1, 0, 0, 0, { uv: 1.1 })
-  put.box('barnWood', 3.9, 1.55, 2.85, 0, ph, 0, { uv: 1.951, vlock: true })
-  put.prism('barnWood', 3.9, 1.0, 2.85, 0, ph + 1.55, 0, { uv: 1.951 })
-  gableRoof(put, 'roofShingle', 3.9, 2.85, 1.0, 0.26, 0.22, 0, ph + 1.55, 0, { uv: 1.2, ridgeW: 0.14, bkRidge: 'woodDark' })
-  // big double door + hayloft on the gable front (+Z)
-  put.box('dark', 1.25, 1.3, 0.08, 0, ph, 1.44, {})
-  put.box('woodDark', 0.09, 1.4, 0.06, -0.7, ph, 1.46, {})
-  put.box('woodDark', 0.09, 1.4, 0.06, 0.7, ph, 1.46, {})
-  put.box('woodDark', 1.48, 0.09, 0.06, 0, ph + 1.38, 1.46, {})
-  put.box('woodDark', 0.06, 1.28, 0.05, 0, ph + 0.01, 1.47, {})
-  put.box('dark', 0.5, 0.5, 0.08, 0, ph + 1.75, 1.44, {})
-  put.box('woodDark', 0.6, 0.07, 0.07, 0, ph + 2.28, 1.47, {})
-  put.box('dark', 0.3, 0.34, 0.07, -1.3, ph + 0.45, 1.44, {})
-  // lean-to shelter on the east flank with hay inside
-  for (const zz of [-1.0, 1.0]) put.cyl('woodDark', 0.05, 0.06, 1.0, 6, 2.75, 0.1, zz, {})
-  put.box('roofShingle', 1.4, 0.05, 2.65, 2.4, 1.5, 0, { rz: 0.42, c: true, uv: 1.2 })
-  put.box('hay', 0.6, 0.48, 0.6, 2.5, 0.12, -0.45, { ry: 0.3, uv: 0.7 })
-  blob(bx2, bz2, 2.7, 2.2, 0.38, rot)
-
-  // hay bales — two out by the visible paddock, the rest in the yard
-  const bale = (x, z, ry, standing) => {
-    const y = T.height(x, z)
-    addG(B.hay, gCyl(0.32, 0.32, 0.56, 9, x, standing ? y - 0.02 : y + 0.3, z,
-      standing ? { ry } : { rz: HPI, ry, c: true, uv: 0.8 }), null)
-    blob(x, z, 0.42, 0.36, 0.3, ry)
-  }
-  bale(-46.6, 27.6, 0.5, false)
-  bale(-45.7, 26.2, 2.3, false)
-  bale(-60.6, 27.1, 1.1, false)
-  bale(-63.2, 22.4, 0.2, true)
-
-  // the cart, parked by the barn yard
-  const cx3 = -59.6
-  const cz3 = 23.2
-  const cy3 = T.height(cx3, cz3)
-  const fc = new THREE.Matrix4().makeRotationY(-0.5)
-  fc.setPosition(cx3, cy3, cz3)
-  const putC = makePut(B, fc)
-  putC.box('woodMid', 1.4, 0.1, 0.85, 0, 0.5, 0, { uv: 0.9 })
-  for (const s of [-1, 1]) {
-    putC.box('woodMid', 1.4, 0.22, 0.05, 0, 0.6, s * 0.42, { uv: 0.9 })
-    putC.box('woodMid', 0.05, 0.22, 0.78, s * 0.68, 0.6, 0, { uv: 0.9 })
-  }
-  putC.cyl('woodDark', 0.035, 0.035, 1.15, 6, 0, 0.34, 0, { rz: HPI, c: true })
-  for (const s of [-1, 1]) {
-    putC.torus('woodDark', 0.3, 0.045, s * 0.58, 0.34, 0, { ry: HPI, c: true })
-    for (let sp = 0; sp < 3; sp++) {
-      putC.box('woodDark', 0.05, 0.56, 0.04, s * 0.58, 0.34, 0, { rx: sp * (Math.PI / 3), c: true })
-    }
-    putC.cyl('woodDark', 0.06, 0.06, 0.08, 6, s * 0.62, 0.34, 0, { rz: HPI, c: true })
-  }
-  for (const s of [-1, 1]) putC.box('woodDark', 0.05, 0.05, 1.1, s * 0.3, 0.42, 0.95, { rx: 0.18, c: true })
-  blob(cx3, cz3, 0.95, 0.7, 0.32, -0.5)
+  const { rnd } = ctx
+  // poi = P1 centre (−37, +15.5); the other paddocks are authored offsets so
+  // the whole set tracks the farm POI if terrain lands it a hair off.
+  const px = poi.x
+  const pz = poi.z
+  // P1 (−37, +15.5) ~8 × 5.5 — hero's shoulder paddock, road clips its W edge
+  fenceLoop(ctx, px, pz, 8, 5.5, 0.08)
+  // P1's small W lobe (−40.5, +16) 3 × 4 — wheat on the hero's other shoulder
+  fenceLoop(ctx, px - 3.5, pz + 0.5, 3, 4, -0.12)
+  // P2 (−36.5, +22.5) ~12 × 7
+  fenceLoop(ctx, px + 0.5, pz + 7, 12, 7, -0.1)
+  // big SE field (−29.5, +28.5) ~14 × 9 — PARTIAL rails only (N + W arcs
+  // facing the eye path, plus a few strays), per §4
+  fenceLoop(ctx, px + 7.5, pz + 13, 14, 9, 0.3, {
+    keepFn: (nx, nz) => nz < -0.25 || nx < -0.35 || rnd() < 0.12,
+  })
 }
 
 // ===========================================================================
-// 9. CAMP — tent, fire ring (animated flame lives in createProps), crates
+// 9. CAMP — tent, fire ring, crates (POI-relative; below the boot frame)
 // ===========================================================================
 
 function buildCamp(ctx, poi) {
   const { B, T, rnd, blob } = ctx
-  // tent
-  const tx = 7.0
-  const tz = 87.1
+  const tx = poi.x - 1.0
+  const tz = poi.z - 0.9
   const ty = T.height(tx, tz)
   const rot = 2.2
   const ft = new THREE.Matrix4().makeRotationY(rot)
@@ -1629,180 +1150,129 @@ function buildCamp(ctx, poi) {
     put.cyl('woodDark', 0.028, 0.034, 1.42, 5, 0.28 * s, 0, s * 0.98, { rz: s * 0.4 })
   }
   put.cyl('woodDark', 0.03, 0.03, 2.5, 5, 0, 1.19, 0, { rx: HPI, c: true })
-  for (const s of [-1, 1]) {
-    const gx2 = s * 1.15
-    put.tube('rope', [new THREE.Vector3(0, 1.16, s * 1.22), new THREE.Vector3(gx2 * 0.4, 0.02, s * 1.75)], 0.012, { seg: 4 })
-    put.box('woodDark', 0.05, 0.16, 0.05, gx2 * 0.4, -0.02, s * 1.75, { rz: 0.3 })
-  }
   blob(tx, tz, 1.35, 1.45, 0.36, rot)
 
   // fire ring — flame + glow + light are added by createProps at firePos
-  const fx2 = 8.7
-  const fz2 = 88.6
-  const fy2 = T.height(fx2, fz2)
-  ctx.firePos = new THREE.Vector3(fx2, fy2, fz2)
+  const fx = poi.x + 0.7
+  const fz = poi.z + 0.6
+  const fy = T.height(fx, fz)
+  ctx.firePos = new THREE.Vector3(fx, fy, fz)
   const putW = makePut(B, null)
   for (let i = 0; i < 7; i++) {
     const th = (i / 7) * TAU + 0.3
-    const sx2 = fx2 + Math.cos(th) * 0.42
-    const sz2 = fz2 + Math.sin(th) * 0.42
+    const sx = fx + Math.cos(th) * 0.42
+    const sz = fz + Math.sin(th) * 0.42
     putW.box('stoneBase', 0.15 + rnd() * 0.08, 0.14 + rnd() * 0.06, 0.13 + rnd() * 0.07,
-      sx2, T.height(sx2, sz2) - 0.03, sz2, { ry: rnd() * TAU, rz: (rnd() - 0.5) * 0.2, uv: 0.5 })
+      sx, T.height(sx, sz) - 0.03, sz, { ry: rnd() * TAU, rz: (rnd() - 0.5) * 0.2, uv: 0.5 })
   }
-  putW.cyl('dark', 0.3, 0.34, 0.05, 9, fx2, fy2 - 0.02, fz2, {})
+  putW.cyl('dark', 0.3, 0.34, 0.05, 9, fx, fy - 0.02, fz, {})
   for (let i = 0; i < 3; i++) {
     const th = (i / 3) * TAU + 0.8
-    putW.cyl('woodDark', 0.045, 0.05, 0.62, 5, fx2 + Math.cos(th) * 0.16, fy2 + 0.16, fz2 + Math.sin(th) * 0.16,
+    putW.cyl('woodDark', 0.045, 0.05, 0.62, 5, fx + Math.cos(th) * 0.16, fy + 0.16, fz + Math.sin(th) * 0.16,
       { rz: 0.95, ry: -th, c: true })
   }
-  blob(fx2, fz2, 0.6, 0.6, 0.3, 0)
+  blob(fx, fz, 0.6, 0.6, 0.3, 0)
 
-  // crates, barrel, log bench
-  const cy2 = T.height(6.9, 89.4)
-  putW.box('woodMid', 0.55, 0.55, 0.55, 6.9, cy2, 89.4, { ry: 0.35, uv: 0.55 })
-  putW.box('woodDark', 0.59, 0.07, 0.59, 6.9, cy2 + 0.24, 89.4, { ry: 0.35 })
-  putW.box('woodMid', 0.4, 0.4, 0.4, 6.75, cy2 + 0.55, 89.25, { ry: 0.7, uv: 0.55 })
-  blob(6.9, 89.4, 0.5, 0.5, 0.32, 0.35)
-  const by2 = T.height(9.6, 87.5)
-  addG(B.woodMid, gLathe([[0.16, 0], [0.21, 0.09], [0.235, 0.3], [0.21, 0.5], [0.16, 0.58]], 9, 9.6, by2, 87.5, {}), null)
-  addG(B.woodDark, gCyl(0.242, 0.242, 0.035, 9, 9.6, by2 + 0.1, 87.5, {}), null)
-  addG(B.dark, gCyl(0.15, 0.15, 0.025, 9, 9.6, by2 + 0.57, 87.5, {}), null)
-  blob(9.6, 87.5, 0.32, 0.32, 0.3, 0)
-  const ly2 = T.height(8.1, 89.9)
-  putW.cyl('woodDark', 0.09, 0.09, 1.15, 7, 8.1, ly2 + 0.09, 89.9, { rz: HPI, ry: 0.5, c: true })
-  blob(8.1, 89.9, 0.65, 0.25, 0.28, 0.5)
+  // crates + a log bench
+  const cx = poi.x - 1.1
+  const cz = poi.z + 1.4
+  const cy = T.height(cx, cz)
+  putW.box('woodMid', 0.55, 0.55, 0.55, cx, cy, cz, { ry: 0.35, uv: 0.55 })
+  putW.box('woodDark', 0.59, 0.07, 0.59, cx, cy + 0.24, cz, { ry: 0.35 })
+  blob(cx, cz, 0.5, 0.5, 0.32, 0.35)
+  const lx = poi.x + 0.1
+  const lz = poi.z + 1.9
+  const ly = T.height(lx, lz)
+  putW.cyl('woodDark', 0.09, 0.09, 1.15, 7, lx, ly + 0.09, lz, { rz: HPI, ry: 0.5, c: true })
+  blob(lx, lz, 0.65, 0.25, 0.28, 0.5)
 }
 
 // ===========================================================================
-// 10. DRESSING — signposts, milestones, the pier and its rowboat
+// 10. DRESSING — the fork signpost and the coastal pier
 // ===========================================================================
 
-function buildSignposts(ctx) {
+function buildSignpost(ctx) {
   const { B, T, rnd, blob } = ctx
-  const posts = [
-    { x: -45.9, z: 3.6, arms: [{ d: [7, 4.5], h: 1.12 }, { d: [-6, -6], h: 0.92 }, { d: [-2, -10], h: 0.72 }] },
-    { x: -63.4, z: -21.2, arms: [{ d: [-0.5, -1], h: 1.02 }] },
-    { x: -31.4, z: 86.2, arms: [{ d: [1, 0.05], h: 1.0 }, { d: [-0.2, -1], h: 0.78 }] },
-    { x: -67.6, z: -119.0, arms: [{ d: [-0.25, -1], h: 1.0 }] },
+  // FRAMING §4: road-fork signpost at (−49.5, +8.5), 1.3 m (§5 unchanged)
+  const sx = -49.5
+  const sz = 8.5
+  const put = makePut(B, null)
+  const y = T.height(sx, sz)
+  put.box('woodDark', 0.09, 1.32, 0.09, sx, y - 0.05, sz, { ry: rnd() * TAU, rz: (rnd() - 0.5) * 0.05, uv: 0.6 })
+  put.cone('woodDark', 0.085, 0.12, 4, sx, y + 1.27, sz, { ry: 0.4 })
+  const arms = [
+    { d: [25, 7.5], h: 1.12 }, // → castle (E)
+    { d: [-1, -25], h: 0.92 }, // → village / north bridge
+    { d: [-9.5, 1], h: 0.72 }, // → inlet bridge (W)
   ]
-  const put = makePut(B, null)
-  for (const sp of posts) {
-    const y = T.height(sp.x, sp.z)
-    put.box('woodDark', 0.09, 1.32, 0.09, sp.x, y - 0.05, sp.z, { ry: rnd() * TAU, rz: (rnd() - 0.5) * 0.05, uv: 0.6 })
-    put.cone('woodDark', 0.085, 0.12, 4, sp.x, y + 1.27, sp.z, { ry: 0.4 })
-    for (const arm of sp.arms) {
-      const L = Math.hypot(arm.d[0], arm.d[1])
-      const ux = arm.d[0] / L
-      const uz = arm.d[1] / L
-      const ry = yawX(ux, uz)
-      const axc = sp.x + ux * 0.26
-      const azc = sp.z + uz * 0.26
-      put.box('woodMid', 0.56, 0.14, 0.045, axc, y + arm.h, azc, { ry, c: true, uv: 0.6 })
-      put.cone('woodMid', 0.07, 0.11, 4, sp.x + ux * 0.56, y + arm.h, sp.z + uz * 0.56, { rz: -HPI, ry, c: true })
-      // carved text suggestion
-      put.box('dark', 0.15, 0.024, 0.055, axc, y + arm.h + 0.025, azc, { ry, c: true })
-      put.box('dark', 0.11, 0.02, 0.055, axc + ux * 0.02, y + arm.h - 0.025, azc + uz * 0.02, { ry, c: true })
-    }
-    blob(sp.x, sp.z, 0.28, 0.22, 0.3, 0)
+  for (const arm of arms) {
+    const L = Math.hypot(arm.d[0], arm.d[1])
+    const ux = arm.d[0] / L
+    const uz = arm.d[1] / L
+    const ry = yawX(ux, uz)
+    const axc = sx + ux * 0.26
+    const azc = sz + uz * 0.26
+    put.box('woodMid', 0.56, 0.14, 0.045, axc, y + arm.h, azc, { ry, c: true, uv: 0.6 })
+    put.cone('woodMid', 0.07, 0.11, 4, sx + ux * 0.56, y + arm.h, sz + uz * 0.56, { rz: -HPI, ry, c: true })
+    put.box('dark', 0.15, 0.024, 0.055, axc, y + arm.h + 0.025, azc, { ry, c: true })
+    put.box('dark', 0.11, 0.02, 0.055, axc + ux * 0.02, y + arm.h - 0.025, azc + uz * 0.02, { ry, c: true })
   }
-}
-
-function buildMilestones(ctx) {
-  const { B, T, meta, rnd, blob } = ctx
-  const put = makePut(B, null)
-  const pois = meta.poi || []
-  let side = 1
-  for (const name of ['south', 'west', 'castle', 'shrine']) {
-    const road = (meta.roads || []).find((r) => r.name === name)
-    if (!road) continue
-    for (let i = 9; i < road.points.length - 6; i += 18) {
-      const p = road.points[i]
-      const q = road.points[i + 1]
-      let dx = q.x - p.x
-      let dz = q.z - p.z
-      const L = Math.hypot(dx, dz) || 1
-      dx /= L
-      dz /= L
-      side = -side
-      const mx = p.x - dz * 2.15 * side
-      const mz = p.z + dx * 2.15 * side
-      if (Math.hypot(mx + 44, mz - 2) < 12) continue
-      let nearPoi = false
-      for (const pp of pois) if (Math.hypot(mx - pp.x, mz - pp.z) < 13) nearPoi = true
-      if (nearPoi) continue
-      if (T.slope(mx, mz) > 0.42 || T.isWater(mx, mz) || T.onRoad(mx, mz) > 0.55) continue
-      const y = T.height(mx, mz)
-      const ry = yawX(dx, dz)
-      const lean = (rnd() - 0.5) * 0.12
-      put.box('stoneBase', 0.24, 0.36, 0.15, mx, y - 0.06, mz, { ry, rz: lean, uv: 0.5 })
-      put.box('stoneBase', 0.18, 0.13, 0.12, mx, y + 0.29, mz, { ry, rz: lean, uv: 0.5 })
-      blob(mx, mz, 0.2, 0.16, 0.25, ry)
-    }
-  }
+  blob(sx, sz, 0.28, 0.22, 0.3, 0)
 }
 
 function buildPier(ctx) {
-  const { B, T, meta, rnd, blob } = ctx
-  // ART_BIBLE §1: small wooden pier at (-76, -8) pointing WSW, deck +0.4,
-  // 5 m long — built even when terrain.meta publishes no pier extra
-  // (frame01 has it and it matters to the coastal silhouette).
-  const pier = (meta.extras && meta.extras.pier) ||
-    { x: -76, z: -8, angle: 2.75, y: 0.4, length: 5 }
-  if (T.height(pier.x, pier.z) > 3.2) return // no cove/beach carved here — skip
+  const { B, T, rnd, blob } = ctx
+  // FRAMING §4: pier at (−64, −16), pointing WSW, deck +0.4, 5 m long —
+  // haze-veiled, it barely reads, but the coastal silhouette needs it.
+  const angle = 2.75 // WSW
+  const dx = Math.cos(angle)
+  const dz = Math.sin(angle)
+  let sx = -64
+  let sz = -16
+  // walk the root seaward until it clears the cliff base (terrain lands the
+  // exact shoreline; the pier must start at the water, never inside rock)
+  for (let i = 0; i < 10 && T.height(sx, sz) > 1.4; i++) {
+    sx += dx * 1.1
+    sz += dz * 1.1
+  }
   const put = makePut(B, null)
-  const dx = Math.cos(pier.angle)
-  const dz = Math.sin(pier.angle)
-  const px2 = -dz
-  const pz2 = dx
-  const deck = pier.y
-  const len = pier.length || 5
-  const yawP = yawX(px2, pz2)
+  const px = -dz
+  const pz = dx
+  const deck = 0.4
+  const len = 5
+  const yawP = yawX(px, pz)
   const yawD = yawX(dx, dz)
-  // planks + stringers
   const n = Math.floor(len / 0.3)
   for (let i = 0; i <= n; i++) {
     const t = i * 0.3
-    put.box('woodMid', 1.15, 0.05, 0.235, pier.x + dx * t, deck + (rnd() - 0.5) * 0.012, pier.z + dz * t,
+    put.box('woodMid', 1.15, 0.05, 0.235, sx + dx * t, deck + (rnd() - 0.5) * 0.012, sz + dz * t,
       { ry: yawP + (rnd() - 0.5) * 0.04, c: true, uv: 0.9 })
   }
   for (const s of [-1, 1]) {
     put.box('woodDark', len + 0.5, 0.1, 0.12,
-      pier.x + dx * len * 0.5 + px2 * s * 0.4, deck - 0.1, pier.z + dz * len * 0.5 + pz2 * s * 0.4,
+      sx + dx * len * 0.5 + px * s * 0.4, deck - 0.1, sz + dz * len * 0.5 + pz * s * 0.4,
       { ry: yawD, c: true, uv: 0.9 })
   }
   // piles down into the shallows, X-braced where tall enough
   for (let t = 0.3; t < len + 0.3; t += 1.25) {
     for (const s of [-1, 1]) {
-      const qx = pier.x + dx * t + px2 * s * 0.52
-      const qz = pier.z + dz * t + pz2 * s * 0.52
-      const gy = T.height(qx, qz)
+      const qx = sx + dx * t + px * s * 0.52
+      const qz = sz + dz * t + pz * s * 0.52
+      const gy = Math.min(T.height(qx, qz), deck - 0.35)
       const h = Math.max(0.3, deck + 0.14 - (gy - 0.3))
       put.cyl('woodDark', 0.05, 0.065, h, 6, qx, gy - 0.3, qz, {})
     }
-    const mxp = pier.x + dx * t
-    const mzp = pier.z + dz * t
-    const gym = T.height(mxp, mzp)
-    if (deck - gym > 0.75) {
-      put.box('woodDark', 1.15, 0.05, 0.045, mxp, (deck + gym) * 0.5, mzp, { ry: yawP, rz: 0.5, c: true })
-      put.box('woodDark', 1.15, 0.05, 0.045, mxp, (deck + gym) * 0.5, mzp, { ry: yawP, rz: -0.5, c: true })
-    }
   }
-  // mooring posts, rope coil, crate
-  const ex = pier.x + dx * len
-  const ez = pier.z + dz * len
-  put.cyl('woodDark', 0.055, 0.07, 0.5, 6, ex + px2 * 0.45, deck, ez + pz2 * 0.45, { rz: 0.08 })
-  put.cyl('woodDark', 0.055, 0.07, 0.42, 6, ex - px2 * 0.45, deck, ez - pz2 * 0.45, { rz: -0.06 })
-  put.torus('rope', 0.13, 0.028, pier.x + dx * 1.1 + px2 * 0.3, deck + 0.05, pier.z + dz * 1.1 + pz2 * 0.3,
-    { rx: HPI, c: true })
-  put.box('woodMid', 0.42, 0.42, 0.42, pier.x + dx * 0.55 - px2 * 0.3, deck + 0.02, pier.z + dz * 0.55 - pz2 * 0.3,
-    { ry: 0.5, uv: 0.55 })
-
-  // the moored rowboat
-  const bx2 = ex + dx * 1.7 + px2 * 1.35
-  const bz2 = ez + dz * 1.7 + pz2 * 1.35
-  const byaw = pier.angle + 0.35
+  // mooring posts + the rowboat
+  const ex = sx + dx * len
+  const ez = sz + dz * len
+  put.cyl('woodDark', 0.055, 0.07, 0.5, 6, ex + px * 0.45, deck, ez + pz * 0.45, { rz: 0.08 })
+  put.cyl('woodDark', 0.055, 0.07, 0.42, 6, ex - px * 0.45, deck, ez - pz * 0.45, { rz: -0.06 })
+  const bx = ex + dx * 1.7 + px * 1.35
+  const bz = ez + dz * 1.7 + pz * 1.35
+  const byaw = angle + 0.35
   const fb = new THREE.Matrix4().makeRotationY(yawX(Math.cos(byaw), Math.sin(byaw)))
-  fb.setPosition(bx2, 0, bz2)
+  fb.setPosition(bx, 0, bz)
   const putB = makePut(B, fb)
   putB.box('woodMid', 1.55, 0.3, 0.62, 0, 0.04, 0, { c: true, uv: 0.8 })
   putB.prism('woodMid', 0.62, 0.62, 0.3, 0.95, 0.04, 0, { rx: -HPI, ry: -HPI, uv: 0.8 })
@@ -1810,9 +1280,7 @@ function buildPier(ctx) {
   putB.box('dark', 1.3, 0.05, 0.44, 0, 0.1, 0, { c: true })
   putB.box('woodDark', 1.6, 0.05, 0.07, 0, 0.17, 0.29, { c: true })
   putB.box('woodDark', 1.6, 0.05, 0.07, 0, 0.17, -0.29, { c: true })
-  putB.box('woodDark', 0.12, 0.04, 0.56, 0.25, 0.14, 0, { c: true })
-  putB.box('woodDark', 0.12, 0.04, 0.56, -0.35, 0.14, 0, { c: true })
-  addG(B.rope, gTube(catPts(ex + px2 * 0.45, deck + 0.45, ez + pz2 * 0.45, bx2 + dx * 0.6, 0.2, bz2 + dz * 0.6, 0.35, 8), 0.018, {}), null)
+  addG(B.rope, gTube(catPts(ex + px * 0.45, deck + 0.45, ez + pz * 0.45, bx + dx * 0.6, 0.2, bz + dz * 0.6, 0.35, 8), 0.018, {}), null)
 }
 
 // ===========================================================================
@@ -1820,8 +1288,8 @@ function buildPier(ctx) {
 // ===========================================================================
 
 const BUCKET_KEYS = [
-  'keep', 'curtain', 'pave', 'roofCobalt', 'roofSlate', 'roofShingle', 'woodDark', 'woodMid',
-  'barnWood', 'plaster', 'timber', 'stoneBase', 'hay', 'canvas', 'red', 'gold', 'dark', 'lit', 'rope',
+  'keep', 'pave', 'roofCobalt', 'roofSlate', 'woodDark', 'woodMid',
+  'plaster', 'timber', 'stoneBase', 'canvas', 'red', 'gold', 'dark', 'lit', 'rope',
 ]
 
 export function createProps({ terrain, atlas, renderer } = {}) {
@@ -1838,11 +1306,7 @@ export function createProps({ terrain, atlas, renderer } = {}) {
   // ---- procedural material set -------------------------------------------
   const tKeep = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
     lit: PAL.KEEP_LIT, mid: PAL.KEEP_MID, dark: PAL.KEEP_DARK, mortar: PAL.KEEP_MORTAR,
-    courseH: 16, blockW: 30, chip: 0.26, grime: 0.1, moss: null, darkP: 0.05,
-  }))
-  const tCurtain = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
-    lit: PAL.CURT_LIT, mid: PAL.CURT_MID, dark: PAL.CURT_DARK, mortar: PAL.CURT_MORTAR,
-    courseH: 20, blockW: 40, chip: 0.22, grime: 0.14, moss: null, darkP: 0.06,
+    courseH: 16, blockW: 30, chip: 0.26, grime: 0.08, moss: null, darkP: 0.05,
   }))
   const tPave = canvasTex(256, aniso, (g, S) => paintMasonry(g, S, rnd, {
     lit: PAL.PAVE_LIT, mid: PAL.PAVE_MID, dark: PAL.PAVE_DARK, mortar: PAL.PAVE_MORTAR,
@@ -1857,16 +1321,10 @@ export function createProps({ terrain, atlas, renderer } = {}) {
     lit: shade(PAL.SLATE, 1.28), dark: PAL.SLATE, gap: PAL.SLATE_DARK, chip: PAL.SLATE_CHIP,
     rowH: 18, tileW: 24, moss: true,
   }))
-  const tShingle = canvasTex(256, aniso, (g, S) => paintTiles(g, S, rnd, {
-    lit: shade(PAL.SHINGLE, 1.18), dark: PAL.SHINGLE, gap: PAL.SHINGLE_DARK, chip: PAL.SHINGLE_CHIP,
-    rowH: 14, tileW: 20, moss: false,
-  }))
   const tWoodD = canvasTex(256, aniso, (g, S) => paintWood(g, S, rnd, PAL.WOOD_DARK, 0.36))
   const tWoodM = canvasTex(256, aniso, (g, S) => paintWood(g, S, rnd, PAL.WOOD_MID, 0.42))
-  const tBarn = canvasTex(256, aniso, (g, S) => paintWood(g, S, rnd, PAL.BARN_WOOD, 0.3))
   const tPlaster = canvasTex(256, aniso, (g, S) => paintPlaster(g, S, rnd))
   const tTimber = canvasTex(256, aniso, (g, S) => paintTimber(g, S, rnd))
-  const tHay = canvasTex(128, aniso, (g, S) => paintHay(g, S, rnd))
   const tCanvas = canvasTex(128, aniso, (g, S) => paintCanvas(g, S, rnd))
   const tRed = canvasTex(128, aniso, (g, S) => paintRed(g, S, rnd))
   const tBlob = canvasTex(64, 1, (g, S) => paintBlob(g, S))
@@ -1876,19 +1334,14 @@ export function createProps({ terrain, atlas, renderer } = {}) {
     Object.assign({ map, roughness, metalness: 0 }, extra || {}))
   const MAT = {
     keep: std(tKeep, 0.92),
-    curtain: std(tCurtain, 0.95),
     pave: std(tPave, 0.95),
     roofCobalt: std(tCobalt, 0.45),
     roofSlate: std(tSlate, 0.85),
-    roofShingle: std(tShingle, 0.9),
     woodDark: std(tWoodD, 0.9),
     woodMid: std(tWoodM, 0.88),
-    // teal emissive floor = ART_BIBLE shadow rule: shade never crushes black
-    barnWood: std(tBarn, 0.9, { emissive: 0x16241c }),
     plaster: std(tPlaster, 0.96),
     timber: std(tTimber, 0.96),
     stoneBase: std(tStone, 0.95),
-    hay: std(tHay, 1.0),
     canvas: std(tCanvas, 0.92, { side: THREE.DoubleSide }),
     red: std(tRed, 0.8),
     // bright enough that sun glints push past the 0.72 bloom threshold
@@ -1908,50 +1361,44 @@ export function createProps({ terrain, atlas, renderer } = {}) {
   for (const k of BUCKET_KEYS) B[k] = []
   const blobs = []
   const pennants = []
-  const roadPts = []
-  for (const road of meta.roads || []) {
-    for (let i = 0; i < road.points.length; i += 2) {
-      roadPts.push(road.points[i].x, road.points[i].z)
-    }
-  }
   const ctx = {
     B,
     T,
     meta,
     rnd,
-    roadPts,
     firePos: null,
     blob: (x, z, rx, rz, a, yaw) => blobs.push({ x, z, rx, rz, a, yaw }),
     pennant: (v, yaw, color) => pennants.push({ x: v.x, y: v.y, z: v.z, yaw, color }),
   }
 
   // ---- landmarks from terrain.meta.poi -----------------------------------
-  let builtTrestle = false
-  let builtRope = false
+  // FRAMING §8: bridge POIs are (−41, −1) north gorge (deck 13.5, span 9,
+  // ~N–S) and (−59, +9.5) inlet (deck 12, span 10, NW–SE). Distinguish by z.
+  let builtNorth = false
+  let builtInlet = false
+  const bridgeAt = (poi) => {
+    if (poi.z < 4) {
+      buildTrestle(ctx, { x: poi.x, z: poi.z + 4.5 }, { x: poi.x, z: poi.z - 4.5 }, 13.5)
+      builtNorth = true
+    } else {
+      const u = Math.SQRT1_2 * 5 // half-span along the NW–SE axis
+      buildTrestle(ctx, { x: poi.x + u, z: poi.z + u }, { x: poi.x - u, z: poi.z - u }, 12)
+      builtInlet = true
+    }
+  }
   for (const poi of meta.poi || []) {
     if (poi.kind === 'castle') buildCastle(ctx, poi)
     else if (poi.kind === 'village') buildVillage(ctx, poi)
     else if (poi.kind === 'shrine') buildShrine(ctx, poi)
     else if (poi.kind === 'farm') buildFarm(ctx, poi)
     else if (poi.kind === 'camp') buildCamp(ctx, poi)
-    else if (poi.kind === 'bridge') {
-      if (poi.name && poi.name.indexOf('Trestle') >= 0) {
-        buildPlankBridge(ctx, { x: -84, z: -59.8 }, { x: -85, z: -73.2 }, poi.y || 18, 'trestle')
-        builtTrestle = true
-      } else {
-        buildPlankBridge(ctx, { x: -34.3, z: -117.9 }, { x: -25.7, z: -118.3 }, poi.y || 26, 'rope')
-        builtRope = true
-      }
-    }
+    else if (poi.kind === 'bridge') bridgeAt(poi)
   }
-  // ART_BIBLE §1 lists both crossings in frame01 — build them even when the
-  // terrain publishes no bridge POIs (west trestle upper-left at (-84,-66),
-  // north gorge bridge nearly dissolved in fog).
-  if (!builtTrestle) buildPlankBridge(ctx, { x: -84, z: -59.8 }, { x: -85, z: -73.2 }, 18, 'trestle')
-  if (!builtRope) buildPlankBridge(ctx, { x: -34.3, z: -117.9 }, { x: -25.7, z: -118.3 }, 26, 'rope')
-  buildArchBridge(ctx)
-  buildSignposts(ctx)
-  buildMilestones(ctx)
+  // Both crossings are in frame01 — build them even if terrain publishes no
+  // bridge POIs (north at 0.44 fw / 0.145 fh is plainly visible).
+  if (!builtNorth) bridgeAt({ x: -41, z: -1, kind: 'bridge' })
+  if (!builtInlet) bridgeAt({ x: -59, z: 9.5, kind: 'bridge' })
+  buildSignpost(ctx)
   buildPier(ctx)
 
   // ---- merge one mesh per material ---------------------------------------
