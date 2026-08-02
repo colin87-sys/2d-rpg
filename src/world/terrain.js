@@ -200,7 +200,6 @@ function resampleSpline(pts, spacing, extraKeys = []) {
   if (pts.length < 2) return pts.slice()
   const P = (i) => pts[clamp(i, 0, pts.length - 1)]
   const out = []
-  const tmp = {}
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = P(i - 1)
     const p1 = P(i)
@@ -1051,7 +1050,6 @@ function buildGeometry(grid) {
     }
   }
   // smooth normals via central differences on the height grid
-  const inv2s = 1 / (2 * step)
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const iw = i > 0 ? i - 1 : i
