@@ -6,12 +6,15 @@
 // terraced northern plateaus, a castle plateau at the right third, ochre
 // roads, wheat paddocks and a river that runs from the highland to the sea.
 //
-// The heightfield is AUTHORED, not raw fBm: distance-field landforms,
-// terraced cliff bands, spline-carved river/inlet, graded road corridors,
-// with noise only as surface detail. All queries (height / normal / slope /
-// biome / isWater / onRoad / waterHeight) read precomputed grids and are
-// allocation-free; height() reproduces the rendered triangulation exactly,
-// so anything snapped to it sits on the visible surface.
+// The heightfield is AUTHORED, not raw fBm: distance-field landforms
+// QUANTISED into hard 4–11 m terrace benches (flat lit shelf tops,
+// near-vertical shadowed risers — the strata are geometry, not a stripe
+// texture), a hard-lipped near-vertical coast, spline-carved river/inlet
+// with low hugging lowland banks, graded road corridors, with noise only as
+// surface detail. All queries (height / normal / slope / biome / isWater /
+// onRoad / waterHeight) read precomputed grids and are allocation-free;
+// height() reproduces the rendered triangulation exactly, so anything
+// snapped to it sits on the visible surface.
 //
 // Contract: export function createTerrain({ size, seed, renderer }) : Terrain
 // ---------------------------------------------------------------------------
@@ -336,15 +339,19 @@ const ROAD_DEFS = [
   },
   {
     name: 'castle', // fork → SW ramp switchback → castle gate (gate faces SW)
+    // first leg leaves due ENE so the mouth clears the south road's arrival
+    // by ~45° — branch mouths meet at road width, never as a merged pad
     pts: [
-      { x: -44, z: 2 }, { x: -37, z: 6.5 }, { x: -31.5, z: 11.5 }, { x: -27.5, z: 15 },
+      { x: -44, z: 2 }, { x: -36, z: 4.5 }, { x: -31.5, z: 11.5 }, { x: -27.5, z: 15 },
       { x: -24.5, z: 13.8 }, { x: -23.2, z: 11 }, { x: -23.5, z: 8 }, { x: -22, z: 5.5 },
     ],
   },
   {
     name: 'west', // fork → coastal rise → trestle bridge south abutment
+    // first leg leaves due W (was WSW) — keeps ≥60° from the north branch so
+    // the two corridors never run side-by-side out of the junction
     pts: [
-      { x: -44, z: 2 }, { x: -50, z: -4 }, { x: -56, z: -12 }, { x: -61, z: -22 },
+      { x: -44, z: 2 }, { x: -52, z: 0 }, { x: -58, z: -6 }, { x: -62, z: -15 },
       { x: -64, z: -32 }, { x: -69, z: -40 }, { x: -75, z: -47 }, { x: -80, z: -54 },
       { x: -83, z: -59.5 },
     ],
@@ -628,7 +635,11 @@ function buildRoadFields(fs, roads) {
         (idx, d, p, q, t) => {
           const y = lerp(p.y, q.y, t)
           const w = sstep(ROAD_GRADE_R, ROAD_CORE * 0.6, d)
-          const m = sstep(ROAD_CORE + ROAD_FEATHER, ROAD_CORE * 0.72, d)
+          // §5: full-opacity core only inside ~1.4 m total, then a long soft
+          // feather out to core+feather. The old 0.72→edge curve was nearly a
+          // stencil (feather <15 % of width); this ramp is close to linear so
+          // the shader can pass it through and the edges dissolve into grass.
+          const m = sstep(ROAD_CORE + ROAD_FEATHER, ROAD_CORE * 0.55, d)
           if (m > fs.roadMask[idx]) fs.roadMask[idx] = m
           fs.roadHSum[idx] += y * (w + 1e-4)
           fs.roadWSum[idx] += w + 1e-4
@@ -694,15 +705,16 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
   if (neM > 0) h += neM * (4.5 + 8.0 * ridged(x * 0.021, z * 0.021, 3))
   h += 1.55 * fbm(x * 0.021 + 5.1, z * 0.021, 3, 2.1, 0.5)
 
-  // ---- B. terracing: crisp cliff-banded steps in the highland ------------
-  const terrW = sstep(12.5, 17.5, h) * clamp01(Math.max(northT * 1.25, eastT, neM))
+  // ---- B. terracing: quantised cliff-banded steps in the highland --------
+  // ART_BIBLE §5: terraces of 4–11 m per step, and frame01 makes them hard
+  // GEOMETRY — flat shelf tops, near-vertical risers — never a rounded ramp
+  // wearing a stripe texture. terrW saturates fast so the north/east
+  // highland is fully quantised, not half-melted.
+  const terrW = sstep(13.0, 15.5, h) * clamp01(Math.max(northT * 2.0, eastT * 1.6, neM * 1.5))
   if (terrW > 0.001) {
-    const wob = 1.8 * fbm(x * 0.043 + 2.2, z * 0.043, 2, 2.2, 0.5)
-    const step = 6.4 + 2.1 * vnoise(x * 0.0085 + 5.5, z * 0.0085)
-    const t = (h + wob - 12) / step
-    const f = Math.floor(t)
-    const terr = 12 + (f + terraceFrac(t - f)) * step - 0.62 * wob
-    h = lerp(h, terr, terrW)
+    const wob = 2.2 * fbm(x * 0.03 + 2.2, z * 0.03, 3, 2.1, 0.5)
+    const step = 5.4 + 2.4 * (0.5 + 0.5 * vnoise(x * 0.0085 + 5.5, z * 0.0085)) // 5.4–7.8 m
+    h = lerp(h, benchify(h, 12, step, wob, 0.85), terrW)
   }
   // soft ceiling: the far-NE crests top out ~+42 (art bible ridge band)
   if (h > 38) h = 38 + (h - 38) * 0.35
@@ -742,11 +754,19 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
       if (dAng > Math.PI) dAng = 2 * Math.PI - dAng
       const sector = sstep(1.05, 0.35, dAng) // 1 in the SW ramp wedge
       const rimMetres = (1 - Math.min(er, 1)) * 16.5 // ≈ metres inside the rim
-      const edgeW = lerp(3.1, 12.0, sector)
+      const edgeW = lerp(2.6, 12.0, sector)
       const eT = clamp01(rimMetres / edgeW)
-      const prof = Math.pow(sstep(0, 1, eT), lerp(0.42, 1.35, sector))
       const top = 14.05 + 0.16 * vnoise(x * 0.24 + 3.3, z * 0.24)
-      const target = lerp(h, top, prof)
+      let target = lerp(h, top, sstep(0, 1, eT))
+      // cliff sectors: quantise the escarpment into hard strata benches —
+      // lit shelf tops, shadowed near-vertical risers, a crisp top lip
+      // (frame01's castle plateau is a stepped cake, not a ramp). The SW
+      // wedge keeps its smooth ramp so the road can climb it.
+      if (sector < 0.98) {
+        const wobc = 1.1 * fbm(x * 0.07 + 4.1, z * 0.07, 2, 2.2, 0.5)
+        const q = Math.min(benchify(target, 14.05, 4.6, wobc, 0.8), top)
+        target = lerp(q, target, Math.max(sector, sstep(0.93, 1.0, eT)))
+      }
       if (target > h) h = target
       // hard-flat courtyard core: the keep must sit dead level
       const dcx = x + 20
@@ -759,28 +779,48 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
     }
   }
 
-  // ---- F. central limestone massif (+20…+24 band, waterfall host) --------
+  // ---- F. central limestone massif — terraced plateau, waterfall host ----
+  // Footprint pulled north (z −56…−24 core) so the pool and the river reach
+  // east of it sit at its SOUTH TOE, open to the camera — frame01 shows the
+  // falls column and blue water in front of the massif, never hidden behind
+  // a wall of it.
   {
-    let d = sdRoundBox(x, z, -18, -35, 16.5, 17.5, 0.10, 9)
+    let d = sdRoundBox(x, z, -18, -40, 16.5, 16.0, 0.10, 9)
     d += 1.6 * fbm(x * 0.075 + 9.2, z * 0.075, 2, 2.2, 0.5) // ragged silhouette
     const faceW = 7.0 + 2.0 * vnoise(x * 0.05 + 1.9, z * 0.05)
     if (d < faceW) {
       const u = clamp01(1 - d / faceW) // 0 at outer toe → 1 on the plateau
-      // two-ledge terraced face; the ledge line wanders so the bands never
-      // read as concentric rings
-      const split = clamp(0.5 + 0.15 * fbm(x * 0.052 + 3.7, z * 0.052, 2, 2.2, 0.5), 0.3, 0.7)
-      const prof =
-        u < split
-          ? terraceFrac(u / split) * split
-          : split + terraceFrac((u - split) / (1 - split)) * (1 - split)
       const crown = 3.3 * sstep(-24, -50, z) // band climbs upstage: 20.6 → 23.9
       const top = 20.6 + crown + 0.7 * fbm(x * 0.055 + 4.4, z * 0.055, 2, 2.2, 0.5)
-      const surf = lerp(9.6, top, prof)
-      h = smax(h, surf, 1.4)
+      // eased core profile, then quantised into two hard benches anchored at
+      // the plateau top: the face reads as stacked shelves with lit tops and
+      // shadowed near-vertical risers, never a rounded striped ramp
+      let surf = lerp(9.6, top, sstep(0, 1, u))
+      const wob = 1.5 * fbm(x * 0.06 + 8.8, z * 0.06, 2, 2.2, 0.5)
+      surf = Math.min(benchify(surf, top, (top - 9.6) * 0.5, wob, 0.8), top + 0.6)
+      // river-corridor clip: the channel and a low apron stay OPEN where the
+      // river skirts the massif toe (frame01: water at the cliff base with a
+      // low grassy near bank — never buried in a slot canyon). The apron
+      // power curve keeps everything within ~5 m of the bank under ~1 m of
+      // rise so the 28°-pitch camera still sees the water surface.
+      const rs = sampleField(fs, fs.riverDist, x, z)
+      const rw = sampleField(fs, fs.riverHalfW, x, z)
+      if (rs < rw + 9) {
+        const lv = sampleField(fs, fs.riverLevel, x, z)
+        const a = clamp01((rs - rw) / 9)
+        const rim = lv + 0.9 + 13 * Math.pow(a, 4.5)
+        if (surf > rim) surf = rim
+      }
+      // SW view-lane saddle: the massif's SW corner sweeps back into a low
+      // re-entrant so the falls column and plunge pool are open to the boot
+      // camera (frame01 stages the falls inside exactly this kind of notch)
+      const lane = Math.exp(-((x + 31.5) * (x + 31.5) + (z + 24) * (z + 24)) / 30)
+      if (lane > 0.03) surf = lerp(surf, Math.min(surf, 11.6), sstep(0.06, 0.5, lane))
+      h = smax(h, surf, 0.9)
     }
   }
 
-  // ---- G. west coast: ocean floor, banded sea cliffs, pier cove ----------
+  // ---- G. west coast: hard-lipped near-vertical cliffs into the sea ------
   {
     const cw0 = 4.4 + 1.5 * vnoise(z * 0.07 + 6.6, 3.3)
     const d = x - coastX(z)
@@ -791,13 +831,24 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
       if (cove > 0.02) h = lerp(h, 1.15, cove * 0.92)
       const cw = lerp(cw0, 11.0, cove)
       const t = clamp01(d / cw)
-      let shaped = sstep(0, 1, Math.pow(t, 0.68))
-      // mid-face bench ledge, noise-gated so it comes and goes along shore
-      const ledge = Math.exp(-Math.pow((t - 0.45) / 0.16, 2)) * (0.5 + 0.5 * vnoise(z * 0.11 + 8.2, 2.7))
-      shaped = clamp01(shaped - 0.15 * ledge * (1 - cove))
+      // the shelf holds level to a hard lip at ~0.6·cw, then the face drops
+      // near-vertically to the waterline (frame01's coast is a sheer banded
+      // wall, not a mossy ramp). The cove keeps a soft walkable beach.
+      let shaped = sstep(0.04, 0.62, t)
+      shaped = lerp(shaped, sstep(0, 1, Math.pow(t, 0.68)), cove)
       const floor =
         -0.35 - 5.9 * sstep(0, 26, -d) + 0.3 * fbm(x * 0.05 + 2.8, z * 0.05, 2, 2.2, 0.5)
-      h = lerp(floor, h, shaped)
+      const hh = lerp(floor, h, shaped)
+      let out = hh
+      const bw = 1 - sstep(0.12, 0.45, cove)
+      if (bw > 0.01 && hh > 1.2 && hh < h - 0.4) {
+        // quantise the face into strata benches, step size wandering along
+        // the shore so the wall reads as layered rock, not an extrusion
+        const lgate = 0.5 + 0.5 * vnoise(z * 0.11 + 8.2, 2.7)
+        const wobg = 1.0 * fbm(z * 0.09 + 3.3, x * 0.09, 2, 2.2, 0.5)
+        out = lerp(hh, clamp(benchify(hh, h, 4.2 + 3.2 * lgate, wobg, 0.7), floor, h), bw)
+      }
+      h = out
     }
   }
 
@@ -816,7 +867,7 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
   {
     const s = sampleField(fs, fs.riverDist, x, z)
     const hw = sampleField(fs, fs.riverHalfW, x, z)
-    const bankW = 3.0
+    const bankW = 3.2
     if (s < hw + bankW) {
       const lv = sampleField(fs, fs.riverLevel, x, z)
       if (s < hw) {
@@ -824,8 +875,14 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
         if (bed < h) h = bed
       } else {
         const u = (s - hw) / bankW
-        const floor = lv + 0.36 + 2.8 * u * u
-        if (h < floor) h = lerp(floor, h, sstep(0.7, 1.0, u))
+        const bankY = lv + 0.3 + 2.4 * u * u
+        const w = 1 - sstep(0.62, 1.0, u)
+        if (h < bankY) h = lerp(h, bankY, w) // fill low ground up to the lip
+        // CUT lowland banks down to a hugging grass lip (≤0.3 m over the
+        // water at the edge) so the channel is open water in the hero shot,
+        // not a hidden slot. The highland course (lv > 14) keeps its raised
+        // rims — the perched gorge below handles that read.
+        else h = lerp(h, bankY, w * sstep(14, 11, lv))
       }
     }
     // upstream gorge shoulders: the highland course is perched above the
@@ -834,7 +891,7 @@ function authorHeight(x, z, fs, useRoads, useMicro) {
     // natural ground by ~9 m out.
     if (s > hw + 1.2 && s < hw + 9) {
       const lv2 = sampleField(fs, fs.riverLevel, x, z)
-      if (lv2 > 12.5) {
+      if (lv2 > 14) {
         const wIn = sstep(hw + 1.2, hw + 2.6, s)
         const wOut = 1 - sstep(hw + 5.5, hw + 9, s)
         const shoulder = lv2 + 0.42
@@ -961,7 +1018,7 @@ function buildBiomeAndControl(size, fs, height) {
   const inv = size / (FRES - 1)
   const biomes = new Uint8Array(FRES * FRES)
   const ctrlA = new Uint8Array(FRES * FRES * 4) // road, rock, field, wet
-  const ctrlB = new Uint8Array(FRES * FRES * 4) // AO, riverbed, sand, forest floor
+  const ctrlB = new Uint8Array(FRES * FRES * 4) // curvature (0.5-neutral), riverbed, sand, forest floor
   const e = 0.8 // slope probe half-step (m)
 
   for (let gz = 0; gz < FRES; gz++) {
@@ -977,7 +1034,8 @@ function buildBiomeAndControl(size, fs, height) {
       const dhz = (height(x, z + e) - height(x, z - e)) / (2 * e)
       const ny = 1 / Math.sqrt(dhx * dhx + dhz * dhz + 1)
 
-      // curvature AO: two-ring average vs centre (concavities darken)
+      // bipolar curvature: concavities darken (AO), convex ridge breaks get
+      // worn dry earth in the splat. Encoded 0.5-neutral in ctrlB.r.
       const r1 = 2.2
       const r2 = 5.0
       const avg1 =
@@ -985,6 +1043,7 @@ function buildBiomeAndControl(size, fs, height) {
       const avg2 =
         (height(x + r2, z) + height(x - r2, z) + height(x, z + r2) + height(x, z - r2)) * 0.25
       const cav = clamp01((avg1 - h) * 0.42 + (avg2 - h) * 0.16)
+      const ridge = clamp01((h - avg1) * 0.34 + (h - avg2) * 0.12)
 
       const roadM = sampleField(fs, fs.roadMask, x, z)
       const fieldM = fieldMaskAt(x, z)
@@ -1034,7 +1093,7 @@ function buildBiomeAndControl(size, fs, height) {
       ctrlA[i4 + 1] = (rockF * 255) | 0
       ctrlA[i4 + 2] = (clamp01(fieldM) * 255) | 0
       ctrlA[i4 + 3] = (clamp01(wet) * 255) | 0
-      ctrlB[i4] = (cav * 255) | 0
+      ctrlB[i4] = (clamp01(0.5 + cav * 0.5 - ridge * 0.5) * 255) | 0
       ctrlB[i4 + 1] = (clamp01(bedM) * 255) | 0
       ctrlB[i4 + 2] = (clamp01(sandM) * 255) | 0
       ctrlB[i4 + 3] = (clamp01(forestM * 0.85) * 255) | 0
@@ -1324,6 +1383,9 @@ function paintDirt(rnd, renderer) {
 }
 
 // --- Rock: HORIZONTAL strata bands — layered limestone, not noise ----------
+// Band count is tuned to the terrace geometry: ~15 chunky strata per tile at
+// the shader's /14 wall scale ≈ 0.9–1 m per stratum → 6–8 visible bands per
+// 5.4–7.8 m terrace riser (frame01's banding), not high-frequency corduroy.
 function paintRock(rnd, renderer) {
   const S = 256
   const c = document.createElement('canvas')
@@ -1335,10 +1397,10 @@ function paintRock(rnd, renderer) {
   // band list summing to S so the texture tiles vertically
   const bands = []
   let acc = 0
-  const cycle = [PAL.CLIFF_LIT, PAL.CLIFF_MID, PAL.CLIFF_SHADOW, PAL.CLIFF_MID]
+  const cycle = [PAL.CLIFF_LIT, PAL.CLIFF_MID, PAL.CLIFF_LIT, PAL.CLIFF_SHADOW, PAL.CLIFF_MID]
   let ci = 0
   while (acc < S) {
-    const t = 7 + (rnd() * 10) | 0
+    const t = 10 + (rnd() * 14) | 0
     bands.push({ y: acc, t: Math.min(t, S - acc), col: cycle[ci % cycle.length], f: 0.94 + rnd() * 0.12 })
     acc += t
     ci++
@@ -1402,6 +1464,78 @@ function paintRock(rnd, renderer) {
       wrapped(g, S, x, y, 2, (px, py) => g.fillRect(px | 0, py | 0, 1, 1))
       y = (y + 1) % S
       if (rnd() < 0.3) x = (x + (rnd() < 0.5 ? 1 : -1) + S) % S
+    }
+  }
+  return finishTexture(c, renderer, true)
+}
+
+// --- Rock TOP: weathered flat limestone for shelf tops. NO strata bands —
+// --- horizontal bands projected top-down are what read as contour rings.
+function paintRockTop(rnd, renderer) {
+  const S = 256
+  const c = document.createElement('canvas')
+  c.width = c.height = S
+  const g = c.getContext('2d')
+  g.fillStyle = cssHex(PAL.CLIFF_MID)
+  g.fillRect(0, 0, S, S)
+
+  // broad tonal blotches
+  for (let i = 0; i < 58; i++) {
+    const x = rnd() * S
+    const y = rnd() * S
+    const r = 10 + rnd() * 30
+    g.globalAlpha = 0.1 + rnd() * 0.1
+    g.fillStyle = cssHex(rnd() < 0.55 ? PAL.CLIFF_LIT : PAL.CLIFF_SHADOW)
+    wrapped(g, S, x, y, r, (px, py) => {
+      g.beginPath()
+      g.arc(px, py, r, 0, Math.PI * 2)
+      g.fill()
+    })
+  }
+  g.globalAlpha = 1
+
+  // flat fracture slabs: lit top-left edges, dark bottom-right edges
+  for (let i = 0; i < 90; i++) {
+    const x = (rnd() * S) | 0
+    const y = (rnd() * S) | 0
+    const w = 6 + (rnd() * 14) | 0
+    const hh = 5 + (rnd() * 10) | 0
+    wrapped(g, S, x, y, 26, (px, py) => {
+      g.fillStyle = cssShade(PAL.CLIFF_MID, 0.94 + hash2(px | 0, py | 0) * 0.12)
+      g.fillRect(px, py, w, hh)
+      g.fillStyle = cssShade(PAL.CLIFF_LIT, 1.04)
+      g.fillRect(px, py, w, 1)
+      g.fillRect(px, py, 1, hh)
+      g.fillStyle = cssHex(PAL.CLIFF_SHADOW)
+      g.fillRect(px, py + hh - 1, w, 1)
+      g.fillRect(px + w - 1, py, 1, hh)
+    })
+  }
+
+  // grain
+  for (let i = 0; i < 1900; i++) {
+    const x = rnd() * S
+    const y = rnd() * S
+    const pick = rnd()
+    g.fillStyle =
+      pick < 0.4 ? cssShade(PAL.CLIFF_MID, 0.9) : pick < 0.75 ? cssShade(PAL.CLIFF_LIT, 0.97) : cssHex(PAL.CLIFF_SHADOW)
+    wrapped(g, S, x, y, 2, (px, py) => g.fillRect(px | 0, py | 0, 1, 1))
+  }
+
+  // meandering crevice cracks
+  g.fillStyle = cssHex(PAL.CLIFF_CREVICE)
+  for (let i = 0; i < 30; i++) {
+    let x = (rnd() * S) | 0
+    let y = (rnd() * S) | 0
+    const len = 8 + (rnd() * 22) | 0
+    let dx = rnd() < 0.5 ? 1 : -1
+    let dy = rnd() < 0.5 ? 1 : 0
+    for (let j = 0; j < len; j++) {
+      wrapped(g, S, x, y, 2, (px, py) => g.fillRect(px | 0, py | 0, 1, 1))
+      x = (x + dx + S) % S
+      y = (y + dy + S) % S
+      if (rnd() < 0.25) dy = ((rnd() * 3) | 0) - 1
+      if (rnd() < 0.15) dx = rnd() < 0.5 ? 1 : -1
     }
   }
   return finishTexture(c, renderer, true)
@@ -1552,6 +1686,7 @@ function makeTerrainMaterial(renderer, size, ctrlA, ctrlB, seed) {
     uGrass: { value: paintGrass(rnd, renderer) },
     uDirt: { value: paintDirt(rnd, renderer) },
     uRock: { value: paintRock(rnd, renderer) },
+    uRockTop: { value: paintRockTop(rnd, renderer) },
     uField: { value: paintField(rnd, renderer) },
     uSand: { value: paintSand(rnd, renderer) },
     uMacro: { value: paintMacro(renderer) },
@@ -1587,6 +1722,7 @@ varying vec3 vWNormal;
 uniform sampler2D uGrass;
 uniform sampler2D uDirt;
 uniform sampler2D uRock;
+uniform sampler2D uRockTop;
 uniform sampler2D uField;
 uniform sampler2D uSand;
 uniform sampler2D uMacro;
@@ -1610,41 +1746,48 @@ uniform vec3 uOceanFloor;`
   vec4 mac  = texture2D(uMacro, wxz / 91.0);
   vec4 mac2 = texture2D(uMacro, wxz / 23.0);
 
-  // ---- grass: two detail frequencies + macro patchiness ----
+  // ---- grass: two detail frequencies + layered macro mottle ----
+  // frame01's pasture is never one flat green: ±18 % value swing at ~30–90 m,
+  // a second mid-frequency swing at ~10 m, warm dry patches, deep cool
+  // patches, and pale worn earth showing through on convex ridge breaks.
   vec3 g1 = texture2D(uGrass, wxz / 7.3).rgb;
   vec3 g2 = texture2D(uGrass, wxz / 1.87).rgb;
   vec3 grass = mix(g1, g2, 0.45);
-  // Macro value swing widened from ±9 % to ±18 % about the same midpoint: at
-  // the shipped camera the open shelf covers ~40 % of the frame and ±9 % read
-  // as flat billiard baize (measured frame stddev 45 vs frame01's 49, almost
-  // all of the deficit in the greens). Forest-floor shade deepened to match
-  // frame01's sampled under-clump green (#172410-class).
-  grass *= mix(vec3(0.83, 0.86, 0.75), vec3(1.18, 1.16, 1.05), mac.r);
-  grass  = mix(grass, grass * vec3(1.10, 1.02, 0.74), smoothstep(0.60, 0.86, mac2.g) * 0.45);
+  grass *= mix(vec3(0.82, 0.87, 0.74), vec3(1.17, 1.14, 1.02), mac.r);
+  grass *= mix(0.93, 1.06, mac.b);
+  grass  = mix(grass, grass * vec3(1.16, 1.06, 0.70), smoothstep(0.58, 0.85, mac2.g) * 0.5);
+  grass  = mix(grass, grass * vec3(0.70, 0.82, 0.73), smoothstep(0.60, 0.88, mac.g) * 0.45);
+  float ridgeQ = max(1.0 - cB.r * 2.0, 0.0); // ctrlB.r is bipolar, 0.5 = flat
+  vec3 earth = texture2D(uDirt, wxz / 6.1).rgb * vec3(0.95, 0.89, 0.80);
+  float wear = ridgeQ * smoothstep(0.78, 0.93, nrm.y) * (0.25 + 0.75 * smoothstep(0.45, 0.80, mac2.r));
+  grass  = mix(grass, earth, clamp(wear, 0.0, 1.0) * 0.5);
   grass  = mix(grass, grass * vec3(0.55, 0.68, 0.56), cB.a * 0.70); // forest floor
 
   // ---- wheat field ----
   vec3 fld = texture2D(uField, wxz / 4.6).rgb;
   fld *= mix(0.90, 1.10, mac2.r);
 
-  // ---- road: pale packed core, darker feathered shoulders ----
+  // ---- road: pale packed core, darker feathered shoulders. The mask field
+  // ---- is now a near-linear 2.6 m-core + 1.2 m-feather ramp (§5) ----
   vec3 road = mix(texture2D(uDirt, wxz / 5.3).rgb, texture2D(uDirt, wxz / 1.43).rgb, 0.40);
-  float rCore = smoothstep(0.12, 0.85, cA.r);
-  road *= mix(vec3(0.80, 0.76, 0.72), vec3(1.06), rCore);
+  float rCore = smoothstep(0.55, 0.95, cA.r);
+  road *= mix(vec3(0.82, 0.78, 0.73), vec3(1.06), rCore);
   road *= mix(0.94, 1.06, mac.g);
 
-  // ---- rock: wall projections keep strata horizontal on cliffs ----
+  // ---- rock: wall projections keep strata horizontal on RISERS only ----
+  // Strata frequency is tied to the terrace geometry: ~15 bands per 14 m
+  // tile ≈ 0.95 m per stratum → 6–8 bands on a 5.4–7.8 m riser, exactly the
+  // banding frame01 shows. A slow vertical phase wander (uMacro at ~90 m)
+  // breaks the "same stripe everywhere" tiling, and shelf TOPS switch to a
+  // flat weathered texture — bands projected top-down read as contour rings.
   float axf = smoothstep(0.35, 0.65, abs(nrm.x) / (abs(nrm.x) + abs(nrm.z) + 1e-4));
-  // paintRock lays ~21 strata per tile, so a 6.2 m tile made each stratum 30 cm
-  // thick — at the shipped camera's 100–160 m that is a 2–6 px hairline and the
-  // whole massif read as printed topographic contours. Scaled to the bible's
-  // 4–11 m terrace regime (~0.7 m per stratum) and the fine octave pulled back.
-  vec3 wallC = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 14.0).rgb,
-                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 14.0).rgb, axf);
-  vec3 wallF = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 4.6).rgb,
-                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 4.6).rgb, axf);
-  vec3 rock = mix(wallC, wallF, 0.22);
-  rock = mix(rock, texture2D(uRock, wxz / 8.5).rgb, smoothstep(0.55, 0.82, nrm.y));
+  float sph = (mac.g - 0.5) * 4.0;
+  vec3 wallC = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y + sph) / 14.0).rgb,
+                   texture2D(uRock, vec2(vWPos.z, -vWPos.y + sph) / 14.0).rgb, axf);
+  vec3 wallF = mix(texture2D(uRock, vec2(vWPos.x, -vWPos.y) / 6.8).rgb,
+                   texture2D(uRock, vec2(vWPos.z, -vWPos.y) / 6.8).rgb, axf);
+  vec3 rock = mix(wallC, wallF, 0.12);
+  rock = mix(rock, texture2D(uRockTop, wxz / 9.5).rgb, smoothstep(0.55, 0.82, nrm.y));
   rock *= mix(0.90, 1.10, mac.r);
 
   vec3 sand = texture2D(uSand, wxz / 3.1).rgb;
@@ -1662,7 +1805,7 @@ uniform vec3 uOceanFloor;`
   vec3 col = grass;
   col = mix(col, sand, cB.b * (1.0 - rockM));
   col = mix(col, fld, cA.b * (1.0 - rockM));
-  float roadM = smoothstep(0.06, 0.92, cA.r + (mac2.g - 0.5) * 0.18) * (1.0 - rockM * 0.85);
+  float roadM = smoothstep(0.03, 0.97, cA.r + (mac2.g - 0.5) * 0.12) * (1.0 - rockM * 0.85);
   col = mix(col, road, roadM);
   col = mix(col, rock, rockM);
 
@@ -1679,14 +1822,15 @@ uniform vec3 uOceanFloor;`
   float uw = 1.0 - smoothstep(-5.5, -0.05, vWPos.y);
   col = mix(col, uOceanFloor, uw * 0.85);
 
-  // ---- cavity AO: grounds cliff bases, channels, clump hollows ----
-  col *= mix(1.0, 0.70, cB.r * (1.0 - rockM * 0.35));
+  // ---- cavity AO (ctrlB.r bipolar: >0.5 concave): grounds cliff bases ----
+  float cavQ = max(cB.r * 2.0 - 1.0, 0.0);
+  col *= mix(1.0, 0.70, cavQ * (1.0 - rockM * 0.35));
 
   diffuseColor.rgb = col;
 }`
       )
   }
-  mat.customProgramCacheKey = () => 'aetherbound-terrain-splat-v1'
+  mat.customProgramCacheKey = () => 'aetherbound-terrain-splat-v2'
   return mat
 }
 
@@ -1812,6 +1956,10 @@ export function createTerrain(opts = {}) {
   }
 
   // --- meta ---------------------------------------------------------------
+  // meta.river keeps the FULL course (the minimap draws it); meta.rivers
+  // splits it at the falls so water.js (which prefers meta.rivers) never
+  // builds a ribbon draped down the cliff face — the falls sheets own the
+  // lip → pool drop.
   const riverMeta = resampleSpline(RIVER_PTS, 2.5, ['w', 'lv']).map((p) => ({
     x: p.x,
     z: p.z,
@@ -1821,6 +1969,8 @@ export function createTerrain(opts = {}) {
   }))
   let waterfallIndex = 0
   let bestD = Infinity
+  let baseIndex = 0
+  let bestBaseD = Infinity
   for (let i = 0; i < riverMeta.length; i++) {
     const dx = riverMeta[i].x - WFALL_LIP.x
     const dz = riverMeta[i].z - WFALL_LIP.z
@@ -1829,7 +1979,16 @@ export function createTerrain(opts = {}) {
       bestD = d2
       waterfallIndex = i
     }
+    const bx = riverMeta[i].x - WFALL_BASE.x
+    const bz = riverMeta[i].z - WFALL_BASE.z
+    const b2 = bx * bx + bz * bz
+    if (b2 < bestBaseD) {
+      bestBaseD = b2
+      baseIndex = i
+    }
   }
+  const riverUpper = riverMeta.slice(0, waterfallIndex + 1)
+  const riverLower = riverMeta.slice(Math.max(baseIndex, waterfallIndex + 1))
   const fallDx = WFALL_BASE.x - WFALL_LIP.x
   const fallDz = WFALL_BASE.z - WFALL_LIP.z
   const fallLen = Math.hypot(fallDx, fallDz) || 1
@@ -1848,7 +2007,15 @@ export function createTerrain(opts = {}) {
     minHeight: grid.minH,
     poi,
     river: { points: riverMeta, waterfallIndex },
+    rivers: [
+      { name: 'headwater', points: riverUpper }, // ends exactly on the lip
+      { name: 'lowland', points: riverLower }, // starts at the falls base/pool
+    ],
+    // lip/pool objects are the shape water.js's resolver consumes; the flat
+    // x/z/lipY/baseY/drop/dir fields stay for the HUD + older readers.
     waterfall: {
+      lip: { x: WFALL_LIP.x, y: WFALL_LIP.y, z: WFALL_LIP.z },
+      pool: { x: WFALL_BASE.x, y: WFALL_BASE.y, z: WFALL_BASE.z },
       x: WFALL_LIP.x,
       z: WFALL_LIP.z,
       lipY: WFALL_LIP.y,

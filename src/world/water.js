@@ -88,7 +88,8 @@ const PAL = {
   river: '#2f9ec9',
   riverShallow: '#6cc3de',
   riverDeep: '#1e6e96', // dark rim just inside the bank foam
-  pool: '#2e7fc0', // plunge pool cobalt (sampled off f1 falls pool)
+  pool: '#1565a2', // plunge pool cobalt — f1 pool pixels sample #06578f–#0e5b85
+                   // (deep vivid blue), lifted a step for our brighter pipeline
   rapids: '#dceef5',
   fallsBody: '#dceef5',
   fallsShade: '#bcdbe7', // was #9fcfdd — striations must stay in the light range
@@ -403,6 +404,11 @@ const OCEAN_FRAG = /* glsl */ `
 
     float breathe = 0.35 * sin(uTime * 0.6 + sd * 0.5 + bandNoise * 3.0);
     float edgeFoam = smoothstep(1.7 + 1.0 * bandNoise + breathe, 0.3, sd);
+    // f1 shows a WIDE soft wash on the shallow sandy shelf (the inlet beach)
+    // but only the thin line at the cliff base — widen foam where the shelf
+    // is gentle, keyed off local depth, never off plain shore distance
+    float shelf = smoothstep(1.4, 0.2, depth);
+    edgeFoam = max(edgeFoam, shelf * smoothstep(6.5, 1.0, sd) * 0.75);
     float lineFoam = smoothstep(0.05, 0.45, land) * (1.0 - smoothstep(0.45, 0.95, land));
 
     float foamAmt = clamp(edgeFoam + pulse * 0.7 + lineFoam * 1.3 + caps, 0.0, 1.0);
@@ -743,9 +749,10 @@ const RIVER_FRAG = /* glsl */ `
     vec3 c = mix(uRiver, uRiverShallow, smoothstep(0.48, 0.80, streak) * 0.75);
     c = mix(c, uRiverDeep, smoothstep(0.44, 0.18, streak) * 0.35);
 
-    // cobalt plunge pool near the falls impact
+    // cobalt plunge pool near the falls impact — f1 shows the vivid deep-blue
+    // holding over the whole visible pool before handing off to the cyan run
     float rd = distance(vWorld.xz, uImpact.xy);
-    c = mix(uPool, c, smoothstep(2.0, 7.5, rd));
+    c = mix(uPool, c, smoothstep(5.0, 14.0, rd));
 
     // white rapids where the channel is steep: broken streaks along the flow
     float thr = 0.78 - 0.34 * vFlow;
@@ -778,11 +785,17 @@ const RIVER_FRAG = /* glsl */ `
     float spec = pow(max(dot(reflect(-uSunDir, N), V), 0.0), 120.0);
     c += uSunColor * spec * 0.5 * (1.0 - white);
 
+    // chroma finisher — the river is the frame's saturation accent (§10.5):
+    // a small sat + value push so #2f9ec9 survives ACES with its chroma
+    // intact and stays visibly MORE saturated than the slate-teal sea
+    float lum = dot(c, vec3(0.299, 0.587, 0.114));
+    c = clamp(mix(vec3(lum), c, 1.16) * 1.05, 0.0, 1.5);
+
     gl_FragColor = vec4(applyFog(c, vWorld), 1.0);
   }
 `
 
-function buildRiver(shared, terrain, spec, impact, params, seaLevel) {
+function buildRiver(shared, terrain, spec, impact, params, seaLevel, guards) {
   const pts = spec.pts
   const n = pts.length
 
@@ -811,7 +824,12 @@ function buildRiver(shared, terrain, spec, impact, params, seaLevel) {
   const curvePts = pts.map((p) => new THREE.Vector3(p.x, levelOf(p), p.z))
   const curve = new THREE.CatmullRomCurve3(curvePts, false, 'centripetal', 0.5)
 
-  const ROWS = 170
+  // resolution scales with the reach: round-2 meta runs the full ~500 m course
+  let approxLen = 0
+  for (let i = 1; i < n; i++) {
+    approxLen += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z)
+  }
+  const ROWS = Math.max(24, Math.min(240, Math.round(approxLen / 2.2)))
   const COLS = 9
   const stations = []
   const tmpT = new THREE.Vector3()
@@ -835,10 +853,43 @@ function buildRiver(shared, terrain, spec, impact, params, seaLevel) {
     prev = P
   }
 
-  // keep the surface just above whatever bed the terrain actually carved
+  // water never flows uphill — clamp the AUTHORED levels first…
+  for (let i = 1; i < stations.length; i++) {
+    stations[i].level = Math.min(stations[i].level, stations[i - 1].level)
+  }
+  // …gentle smoothing (keeps the monotonic clamp)…
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 1; i < stations.length - 1; i++) {
+      stations[i].level = Math.min(
+        stations[i - 1].level,
+        (stations[i - 1].level + stations[i].level * 2 + stations[i + 1].level) / 4
+      )
+    }
+  }
+  // …then keep the surface just above whatever bed the terrain actually
+  // carved. THIS RUNS LAST AND WINS. Round 1 ran the monotonic clamp after the
+  // bed lift, so a single uncarved bump on the course dragged every downstream
+  // station underground — the river never appeared in the frame at all. A
+  // ribbon riding over an uncarved bump is imperfect hydrology; an invisible
+  // river is a blind-A/B fail.
+  // (…except inside a guard zone around a falls impact: there the terrain's
+  // riverLevel carve follows the DROP down the cliff, so the sampled "bed"
+  // is the chute wall — lifting onto it would send a cyan ramp climbing the
+  // cliff face behind the sheet. Under the falls the authored pool level is
+  // the truth; any clipping is hidden by the solid sheet + churn + mist.)
   const canH = typeof terrain?.height === 'function'
   for (const s of stations) {
     if (!canH) break
+    let guarded = false
+    if (guards) {
+      for (const g of guards) {
+        if (Math.hypot(s.x - g.x, s.z - g.z) < g.r) {
+          guarded = true
+          break
+        }
+      }
+    }
+    if (guarded) continue
     let bed = Infinity
     for (const uu of [-0.32, 0, 0.32]) {
       try {
@@ -849,20 +900,7 @@ function buildRiver(shared, terrain, spec, impact, params, seaLevel) {
         break
       }
     }
-    if (bed !== Infinity && bed > -50) s.level = Math.max(s.level, bed + 0.1)
-  }
-  // water never flows uphill
-  for (let i = 1; i < stations.length; i++) {
-    stations[i].level = Math.min(stations[i].level, stations[i - 1].level)
-  }
-  // gentle smoothing (keeps the monotonic clamp)
-  for (let pass = 0; pass < 2; pass++) {
-    for (let i = 1; i < stations.length - 1; i++) {
-      stations[i].level = Math.min(
-        stations[i - 1].level,
-        (stations[i - 1].level + stations[i].level * 2 + stations[i + 1].level) / 4
-      )
-    }
+    if (bed !== Infinity && bed > -50) s.level = Math.max(s.level, bed + 0.08)
   }
 
   // rapids factor from downstream gradient + bendiness
@@ -898,10 +936,13 @@ function buildRiver(shared, terrain, spec, impact, params, seaLevel) {
   for (let i = 0; i < ROWS; i++) {
     const s = stations[i]
     const u01 = i / (ROWS - 1)
-    // rounded pool cap at the head, sink + taper at the tail
+    // rounded pool cap at the head (falls-fed reaches start wide, under the
+    // sheet), sink + taper at the tail — EXCEPT a tail that pours over a falls
+    // lip, which must hold full width and level right to the edge
     const headCap = smooth(0, 0.05, u01)
-    const cap = 0.22 + 0.78 * Math.sqrt(Math.max(headCap, 1e-4))
-    const tail = smooth(0.92, 1.0, u01)
+    const capBase = spec.headFalls ? 0.78 : 0.22
+    const cap = capBase + (1 - capBase) * Math.sqrt(Math.max(headCap, 1e-4))
+    const tail = spec.tailFalls ? 0 : smooth(0.92, 1.0, u01)
     const w = s.w * cap * (1 - tail * 0.65)
     const ySink = tail * tail * 1.6
     for (let j = 0; j < COLS; j++) {
@@ -947,6 +988,9 @@ function buildRiver(shared, terrain, spec, impact, params, seaLevel) {
       uImpact: {
         value: new THREE.Vector4(impact?.x ?? 9999, impact?.z ?? 9999, 4.6, impact ? 1 : 0),
       },
+      // the river is EXCLUDED from full fog — it keeps its chroma at depth so
+      // it stays the frame's most saturated element (grade-pass hook, header)
+      uFogMul: { value: 0.55 },
       uRiver: { value: col(PAL.river) },
       uRiverShallow: { value: col(PAL.riverShallow) },
       uRiverDeep: { value: col(PAL.riverDeep) },
@@ -1027,15 +1071,20 @@ const FALLS_FRAG = /* glsl */ `
     // aeration whitening toward the base
     float aer = smoothstep(0.62, 0.95, vUv.y) * (0.35 + 0.65 * n2);
     c = mix(c, uFoam, aer * 0.9);
-    c *= 1.0 + capM * 0.35; // the cap feeds the bloom pass
+    // run the whole column hot: the RAPIDS-white sheet must clear the 0.72
+    // bloom threshold along its full length, not just at the cap (in round 1
+    // only the cap bloomed and the body read as a grey smudge)
+    c *= 1.10 + capM * 0.35;
 
-    // alpha: feathered sides, ragged eroded base, streaky variation
-    float eA = smoothstep(0.0, 0.10 + 0.06 * n1, vUv.x)
-             * (1.0 - smoothstep(0.90 - 0.06 * n1, 1.0, vUv.x));
-    float bA = 1.0 - smoothstep(0.78, 1.0, vUv.y) * (0.75 * (1.0 - n2));
-    float sA = 0.86 + 0.14 * n1;
+    // alpha: a SOLID column — tight side feather, light ragged erosion kept to
+    // the last ~12 % above the base. Round 1's broad feathering + streak alpha
+    // let the hazed cliff bleed through and dissolved the falls entirely.
+    float eA = smoothstep(0.0, 0.07 + 0.04 * n1, vUv.x)
+             * (1.0 - smoothstep(0.93 - 0.04 * n1, 1.0, vUv.x));
+    float bA = 1.0 - smoothstep(0.88, 1.0, vUv.y) * (0.55 * (1.0 - n2));
+    float sA = 0.94 + 0.06 * n1;
     float alpha = clamp(eA * bA * sA, 0.0, 1.0) * uAlphaMul;
-    alpha = max(alpha, capM * 0.96 * uAlphaMul);
+    alpha = max(alpha, capM * 0.97 * uAlphaMul);
 
     gl_FragColor = vec4(applyFog(c, vWorld), alpha);
   }
@@ -1122,6 +1171,7 @@ function buildFallsSheet(shared, falls, opts) {
       uAlphaMul: { value: alphaMul },
       uTintMul: { value: tintMul },
       uSeed: { value: seed },
+      uFogMul: { value: 0.5 }, // the white column stays crisp through the haze
       uBody: { value: col(PAL.fallsBody) },
       uShade: { value: col(PAL.fallsShade) },
       uLipCyan: { value: col(PAL.lipCyan) },
@@ -1200,7 +1250,7 @@ const MIST_FRAG = /* glsl */ `
     if (a < 0.004) discard;
     // sit into the scene's haze: mist tints toward sage, spray dims out
     float d = distance(vWorldM, cameraPosition);
-    float dens = uFogDensity * exp(-max(vWorldM.y - uFogHRef, 0.0) / uFogHFall);
+    float dens = uFogDensity * uFogMul * exp(-max(vWorldM.y - uFogHRef, 0.0) / uFogHFall);
     float f = clamp(1.0 - exp(-dens * dens * d * d), 0.0, 1.0);
     vec3 c = mix(uColor, uFogColor, f * uFogMix);
     c *= 1.0 - f * uFogDim;
@@ -1210,7 +1260,11 @@ const MIST_FRAG = /* glsl */ `
 
 function buildMist(shared, falls, kind, rng) {
   const isSpray = kind === 'spray'
-  const count = isSpray ? 42 : 64
+  // Round 1 stacked 64 mist pads up to 3.6 m wide over the column — at ~100 m
+  // they became 60-px haze blobs that dissolved the falls. Fewer, smaller,
+  // lower: mist HUGS the base and rolls forward off the impact, never up the
+  // sheet (bible §4: mist lives below y 12, local to the falls base).
+  const count = isSpray ? 36 : 44
   const seeds = new Float32Array(count * 4)
   const posA = new Float32Array(count * 3) // dummy; real position from uniforms
   for (let i = 0; i < count; i++) {
@@ -1224,11 +1278,12 @@ function buildMist(shared, falls, kind, rng) {
   geo.setAttribute('position', new THREE.BufferAttribute(posA, 3))
   geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 4))
 
-  // emit from the true splash-down point at the cliff base
+  // emit from the true splash-down point, pushed forward OFF the sheet so the
+  // pads roll out over the pool instead of climbing the white column
   const center = new THREE.Vector3(
-    falls.impact.x + falls.out.x * 0.3,
+    falls.impact.x + falls.out.x * (isSpray ? 0.3 : 0.9),
     falls.pool.y + (isSpray ? 0.25 : 0.1),
-    falls.impact.z + falls.out.y * 0.3
+    falls.impact.z + falls.out.y * (isSpray ? 0.3 : 0.9)
   )
   geo.boundingSphere = new THREE.Sphere(center.clone(), 16)
 
@@ -1241,16 +1296,17 @@ function buildMist(shared, falls, kind, rng) {
       uCenter: { value: center },
       uDirOut: { value: falls.out.clone() },
       uPxScale: { value: 800 },
-      uRadius: { value: isSpray ? 2.2 : 4.6 },
+      uRadius: { value: isSpray ? 2.2 : 3.4 },
       uLifeMin: { value: isSpray ? 0.7 : 2.6 },
       uLifeMax: { value: isSpray ? 1.3 : 4.6 },
-      uRise: { value: isSpray ? 2.4 : 2.0 },
-      uSizeMin: { value: isSpray ? 0.28 : 1.1 },
-      uSizeMax: { value: isSpray ? 0.55 : 3.6 },
+      uRise: { value: isSpray ? 2.2 : 1.5 },
+      uSizeMin: { value: isSpray ? 0.28 : 0.9 },
+      uSizeMax: { value: isSpray ? 0.55 : 2.4 },
       uColor: { value: col(isSpray ? PAL.spray : PAL.mist) },
-      uAlpha: { value: isSpray ? 0.5 : 0.16 },
+      uAlpha: { value: isSpray ? 0.42 : 0.13 },
       uFogMix: { value: isSpray ? 0.0 : 1.0 },
       uFogDim: { value: isSpray ? 0.85 : 0.0 },
+      uFogMul: { value: 1.0 }, // grade-pass hook (see header)
     },
     transparent: true,
     depthWrite: false,
@@ -1304,18 +1360,39 @@ export function createWater({ terrain, renderer, sky } = {}) {
   group.add(ocean)
 
   // ---- rivers + waterfalls -------------------------------------------------
-  const riverSpecs = resolveRiverSpecs(terrain)
-  const fallsSpecs = resolveFallsSpecs(terrain, riverSpecs)
+  // Resolve the raw course first (falls-pool snapping wants the full
+  // polyline), then split it at near-vertical drops — the sheets own those.
+  const rawRiverSpecs = resolveRiverSpecs(terrain)
+  const fallsSpecs = resolveFallsSpecs(terrain, rawRiverSpecs)
+  const riverSpecs = []
+  for (const raw of rawRiverSpecs) riverSpecs.push(...splitReachesAtFalls(raw))
 
-  // Extend each river's head under its falls sheet: without this the column
-  // plunges onto bare terrain ~7 m short of the pool centre (found against
-  // the f1 falls crop — the water must be there to catch the column).
   for (const spec of riverSpecs) {
+    // A reach that pours over a lip gets a short overhang past the edge so
+    // the cyan surface visibly feeds the white sheet (the cap hides the seam).
+    if (spec.tailFalls) {
+      const tail = spec.pts[spec.pts.length - 1]
+      const nearLip = fallsSpecs.find(
+        (f) => Math.hypot(f.lip.x - tail.x, f.lip.z - tail.z) < 4
+      )
+      if (nearLip) {
+        spec.pts.push({
+          x: tail.x + nearLip.out.x * 0.8,
+          z: tail.z + nearLip.out.y * 0.8,
+          level: tail.level,
+          width: Number.isFinite(tail.width) ? tail.width : undefined,
+        })
+      }
+    }
+    // Extend each falls-fed head under its sheet: without this the column
+    // plunges onto bare terrain ~7 m short of the pool centre (found against
+    // the f1 falls crop — the water must be there to catch the column).
     const head = spec.pts[0]
     const falls = fallsSpecs.find(
       (f) => Math.hypot(f.pool.x - head.x, f.pool.z - head.z) < 8
     )
     if (!falls) continue
+    spec.headFalls = true // wide pool cap even when the extension is skipped
     const dx = falls.lip.x - head.x
     const dz = falls.lip.z - head.z
     const dl = Math.hypot(dx, dz) || 1
@@ -1333,47 +1410,51 @@ export function createWater({ terrain, renderer, sky } = {}) {
   const f0 = fallsSpecs[0]
   const impact = f0 ? { x: f0.impact.x, z: f0.impact.z } : null
 
+  // no-bed-lift guard zones under each falls (see buildRiver)
+  const guards = []
+  for (const f of fallsSpecs) {
+    guards.push({ x: f.impact.x, z: f.impact.z, r: 4.5 })
+    guards.push({ x: f.pool.x, z: f.pool.z, r: 3.5 })
+  }
+
   const rivers = []
   for (const spec of riverSpecs) {
-    const r = buildRiver(shared, terrain, spec, impact, params, seaLevel)
+    const r = buildRiver(shared, terrain, spec, impact, params, seaLevel, guards)
     group.add(r.mesh)
     rivers.push(r)
   }
 
   const mistMats = []
+  const fallsMats = []
   for (const falls of fallsSpecs) {
-    // back sheet (recessed, dim) → main → narrow fast streamer
-    group.add(
-      buildFallsSheet(shared, falls, {
-        recess: -0.3,
-        widthMul: 1.06,
-        speedMul: 0.8,
-        alphaMul: 0.5,
-        tintMul: 0.82,
-        seed: 3.1,
-        renderOrder: 3,
-      })
-    )
-    group.add(
-      buildFallsSheet(shared, falls, {
-        speedMul: 1.0,
-        alphaMul: 0.94,
-        tintMul: 1.0,
-        seed: 0,
-        renderOrder: 4,
-      })
-    )
-    group.add(
-      buildFallsSheet(shared, falls, {
-        widthMul: 0.34,
-        sideOffset: falls.width * 0.22,
-        speedMul: 1.28,
-        alphaMul: 0.85,
-        tintMul: 1.06,
-        seed: 9.4,
-        renderOrder: 5,
-      })
-    )
+    // back sheet (recessed, dim) → main SOLID column → narrow fast streamer
+    const back = buildFallsSheet(shared, falls, {
+      recess: -0.3,
+      widthMul: 1.06,
+      speedMul: 0.8,
+      alphaMul: 0.62,
+      tintMul: 0.85,
+      seed: 3.1,
+      renderOrder: 3,
+    })
+    const main = buildFallsSheet(shared, falls, {
+      speedMul: 1.0,
+      alphaMul: 0.98,
+      tintMul: 1.0,
+      seed: 0,
+      renderOrder: 4,
+    })
+    const streamer = buildFallsSheet(shared, falls, {
+      widthMul: 0.34,
+      sideOffset: falls.width * 0.22,
+      speedMul: 1.28,
+      alphaMul: 0.9,
+      tintMul: 1.06,
+      seed: 9.4,
+      renderOrder: 5,
+    })
+    group.add(back, main, streamer)
+    fallsMats.push(back.material, main.material, streamer.material)
     const mist = buildMist(shared, falls, 'mist', rng)
     const spray = buildMist(shared, falls, 'spray', rng)
     group.add(mist, spray)
@@ -1393,6 +1474,19 @@ export function createWater({ terrain, renderer, sky } = {}) {
       }
       params.flowBase = base
       params.flowRapid = rapid
+    },
+    // Per-surface fog attenuation hooks for the grade pass. Each multiplies
+    // the already water-attenuated sky.params.fogDensity (defaults: ocean 1.0,
+    // river 0.55, falls 0.5, mist 1.0).
+    oceanFog: (v) => (oceanU.uFogMul.value = v),
+    riverFog: (v) => {
+      for (const r of rivers) r.mesh.material.uniforms.uFogMul.value = v
+    },
+    fallsFog: (v) => {
+      for (const m of fallsMats) m.uniforms.uFogMul.value = v
+    },
+    mistFog: (v) => {
+      for (const m of mistMats) m.uniforms.uFogMul.value = v
     },
   }
 
