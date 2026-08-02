@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// src/game/player.js — the hero unit + the diorama camera rig.  ROUND 2.
+// src/game/player.js — the hero unit + the diorama camera rig.  ROUND 3.
 //
 // Contract (docs/CONTRACT.md — frozen):
 //   export function createPlayer({ terrain, sheet, renderer }): Player
@@ -9,13 +9,23 @@
 //   CameraRig = { update(dt, input), params }
 //   input     = { x: -1..1, y: -1..1, run: boolean, zoom: -1..1, rotate: -1..1 }
 //
-// ROUND-2 REPAIRS (the R1 critic's hero-anchor findings, frame01-verified):
+// ROUND 3 (docs/FRAMING.md — the binding camera/layout solve):
+//   * RIG. vFOV 26° / pitch 28° / distance 46 m, boot camera (−38, 33.60,
+//     58.62) aimed at (−38, 12.0, 18.0). ART_BIBLE §2's 53 m ignored the
+//     cos(pitch) foreshortening of a vertical body — at 53 m the hero reads
+//     0.057 fh, not the plate's 0.065; 46 m restores it (FRAMING.md §3). R2's
+//     vFOV-44 rescue is reverted: the world is being rebuilt to the FRAMING.md
+//     §4 layout so frame01's content fits under the 26° lens.
+//   * CONTACT SHADOW. The decal basis was left-handed (only drew via the
+//     DoubleSide escape hatch) — now right-handed; blob sizes re-anchored to
+//     the plate (standing 1.1×0.5 m α .55, mounted 1.34×0.60 m α .58); the
+//     world matrix refresh runs every frame, not just frame 1.
+//
+// ROUND-2 REPAIRS (kept where still true):
 //   1. SCALE. The sprite plane was always right (1.6 m body → 1.829 m plane);
-//      the RIG was wrong: R1 dollied to 82 m / pitch 22°, shrinking the hero to
-//      0.042 fh (~42 px @1080p). Restored ART_BIBLE §2 exactly: vFOV 26°,
-//      pitch 28° (clamp 24–34), distance 53 m (dolly 38–70, never FOV zoom),
-//      boot yaw 0 → camera (−38, 36.3, 64.8), look-at (−38, 11.4, 18.0).
-//      1.6 m at 53 m / 26° = 0.0654 fh ≈ 71 px @1080p — the contracted 0.065.
+//      the R1 RIG was wrong: 82 m / pitch 22° shrank the hero to 0.042 fh
+//      (~42 px @1080p). The hero-anchor rule stands (hero ≈ 0.065 fh standing,
+//      dolly-only zoom); the exact transform now comes from FRAMING.md §3.
 //   2. MOUNTED BOOT. frame01's unit is the hero ON the golden mount, facing
 //      south — red coat + gold bird toward camera. The rider (hero idle cells)
 //      is composited onto makeMountSheet()'s `ride_*` cells at meta.saddle,
@@ -198,14 +208,15 @@ export function createPlayer({ terrain, sheet, renderer }) {
     slopeSlowRate: 1.8,
     slopeLimit: 0.45,     // ≈ 40° — steeper is a wall
     stepMax: 1.15,        // max instantaneous height gain per metre stepped
-    // Contact blobs (bible §8): hero 1.1 × 0.5 m α .55; the ridden unit gets
-    // one SHARED blob sized for the mount (frame01's measured ~29×10 px).
-    // INTEGRATION (round 2): with the decal finally drawing (see the DoubleSide
-    // note below) it measured thinner than frame01's, whose blob is a hard dark
-    // ellipse about 1.2× the mount's width. Widened to match the plate; the
-    // standing blob keeps the bible's 1.1 × 0.5 m.
-    blob: { rx: 0.55, rz: 0.27, alpha: 0.58 },
-    blobMounted: { rx: 0.68, rz: 0.40, alpha: 0.62 },
+    // Contact blobs (bible §8, critic defect 10): hero 1.1 × 0.5 m ellipse,
+    // #241611, α .55, 40 % feather, biased toward the sun-opposite side (ENE —
+    // see the ·0.16 offset along _t1 in update()). The ridden unit gets one
+    // SHARED blob sized for the mount: frame01's shadow measures ~29×10 px →
+    // 29/1630 of the 38.1 m frame width at the hero = 1.35 m long; 10 px of
+    // screen height un-foreshortened by sin(~29°) = 0.56 m deep → rx .67 /
+    // rz .30 in plan. R2's rz .40 was set against the never-drawn decal.
+    blob: { rx: 0.55, rz: 0.25, alpha: 0.55 },
+    blobMounted: { rx: 0.67, rz: 0.30, alpha: 0.58 },
     dustPeakAlpha: 0.4,
     splashPeakAlpha: 0.52,
   }
@@ -310,7 +321,7 @@ export function createPlayer({ terrain, sheet, renderer }) {
   // +z points at the camera): from the SOUTH the bird's body/neck pass in
   // front of the rider (his legs sit in it, torso above); from N/E/W the
   // rider reads over the rump/flank. 7 cm of depth does it — invisible
-  // parallax at 53 m, decisive for the depth test.
+  // parallax at 46 m, decisive for the depth test.
   const RIDER_Z = { s: -0.07, n: 0.07, e: 0.07, w: 0.07 }
 
   /** Place the hero quad so his hip row rides the mount's saddle row. */
@@ -369,10 +380,11 @@ export function createPlayer({ terrain, sheet, renderer }) {
     `,
     transparent: true,
     depthWrite: false,
-    // INTEGRATION (round 2): the blob basis (t1·rx, n, (n×t1)·rz) is
-    // left-handed, so the quad mirrors and culls as a back face — the repair's
-    // contact shadow was never actually drawn under the unit. Same fix as
-    // scatter.js's decal pass.
+    // ROUND 3: the R2 basis (t1·rx, n, (n×t1)·rz) was LEFT-handed (det −1) —
+    // the quad mirrored and rasterised as a back face, so the blob only drew
+    // because of this DoubleSide escape hatch. update() now builds the
+    // right-handed (t1·rx, n, (t1×n)·rz), which fronts the quad upward;
+    // DoubleSide stays only as a slope safety net, no longer load-bearing.
     side: THREE.DoubleSide,
     polygonOffset: true,
     polygonOffsetFactor: -1,
@@ -792,7 +804,8 @@ export function createPlayer({ terrain, sheet, renderer }) {
     T.normal(px, pz, _n)
     if (_n.y < 0.2) _n.set(0, 1, 0)
     _t1.copy(_shadowDir).addScaledVector(_n, -_shadowDir.dot(_n)).normalize()
-    _t2.crossVectors(_n, _t1)
+    _t2.crossVectors(_t1, _n) // t1×n, NOT n×t1 — keeps the basis right-handed
+                              // so the decal is a front face seen from above
     const grounded = clamp(1 - (unit.position.y - ground) * 1.2, 0.35, 1) // proximity scale
     const rx = bp.rx * grounded
     const rz = bp.rz * grounded
@@ -838,38 +851,37 @@ export function createPlayer({ terrain, sheet, renderer }) {
 export function createCameraRig({ camera, player, terrain }) {
   const T = terrain
 
-  // INTEGRATION (round 2, measured against frame01 — see the block comment in
-  // solve()/boot below). The hero anchor from the repair is preserved EXACTLY:
-  // what fixes the hero at 0.065 fh is the product dist·tan(vFOV/2) = 12.31 m,
-  // not either number alone. 53 m × tan13° = 12.31; 30.5 m × tan22° = 12.32.
-  // The pair is chosen to also satisfy frame01's *content*: at vFOV 26° the top
-  // ray is 15° below horizontal, so nothing above y = 36.3 − 0.268·L is in
-  // frame — the massif (y 22 at L≈105 m), the falls, the far coast and the
-  // castle spires ALL fall above the top edge, at every dolly (the limit and
-  // the distance grow together; there is no d that admits them). Widening to
-  // 44° with the matching short dolly keeps the hero, the wheat, the fences and
-  // the road at *identical* near-field scale (same 24.6 m frame height at the
-  // hero) while the top ray rises to 3°, which is what lets the ocean strip,
-  // the terraced massif, the waterfall and the castle back into the frame —
-  // frame01's actual composition, and its measured depth ratios (a ground point
-  // at 0.15 fh is 2.5× the hero's range; that ratio needs vFOV ≈ 40–46°).
+  // ROUND 3 — docs/FRAMING.md is the authority for every number here.
+  // Round 2's vFOV-44 rescue treated the WORLD layout as fixed and bent the
+  // lens; the framing solve went the other way: frame01's parallel road edges
+  // demand the long 26° lens, and the terrain (massif/falls/castle/coast) is
+  // being rebuilt closer and lower so it fits under the 15°-below-horizontal
+  // top ray (FRAMING.md §1 has the impossibility proof, §4 the new layout).
+  // The 26° / 53 m pair in ART_BIBLE §2 also had a bug: a vertical body
+  // foreshortens by cos(pitch) on screen, so standing span = 1.6·cos28° /
+  // (2·d·tan13°). Solving for the plate-measured 0.065 fh gives d = 46 m
+  // (53 m yields 0.057). At 46 m the composited mounted unit reads 0.089 fh
+  // vs the plate's 0.090. Aim point is the standing head-top (feet + 1.6 m),
+  // which parks the unit centre at the plate's 0.515 fh (chest-aim sat it
+  // 0.02 too high). Boot transform, exact (FRAMING.md §3):
+  //   camera (−38.0, 33.60, 58.62), look-at (−38.0, 12.0, 18.0),
+  //   pitch 28°, yaw 0, vFOV 26°, near 4, far 700.
   const params = {
     // projection (dolly-only zoom is still enforced: fovDeg is never animated)
-    fovDeg: 44,
+    fovDeg: 26,
     near: 4,
     far: 700,
     // orbit geometry. R1 shipped dist 82 / pitch 22 and shrank the hero to
-    // 0.042 fh — the critic's #1 blind-test fail. The hero anchor wins and is
-    // kept: 1.6 m at 30.5 m / 44° = 0.0653 fh (≈71 px @1080p, the contracted
-    // 0.065); the mounted unit lands on frame01's measured 0.094 fh.
-    pitchDeg: 25,       // bible-measured band (mount shadow / wheat ellipse)
-    pitchMinDeg: 22,
+    // 0.042 fh; R2 shipped 30.5 / 44° and pulled the wheat into the lens.
+    // FRAMING.md §3: 46 m / 26° / pitch 28 — hero 0.0654 fh standing.
+    pitchDeg: 28,       // bible-measured band (mount shadow / wheat ellipse)
+    pitchMinDeg: 24,
     pitchMaxDeg: 34,
-    distance: 30.5,     // camera → hero chest
-    distMin: 24,
-    distMax: 44,
+    distance: 46.0,     // camera → aim point (FRAMING.md §3)
+    distMin: 38,
+    distMax: 62,        // past 62 the mounted unit drops under 0.07 fh
     yawDeg: 0,          // boot due north: ocean left, castle right, massif up
-    chestHeight: 1.0,   // look-at = feet + chest (ground 10.4 → 11.4)
+    chestHeight: 1.6,   // aim = feet + standing head-top (ground 10.4 → 12.0)
     // feel
     followTime: 0.25,   // critically-damped settle (bible: ≈0.25 s)
     yawTime: 0.22,
@@ -950,10 +962,11 @@ export function createCameraRig({ camera, player, terrain }) {
   }
 
   // ---- boot: frame 1 IS the deliverable ----------------------------------
-  // Hero (−38, ~10.4, 18), chest ~11.1 → camera = chest + (0, 30.5·sin25°,
-  // 30.5·cos25°) ≈ (−38, 24.0, 45.6) at yaw 0. Road under the unit, wheat at
-  // his east shoulder, terraced massif + waterfall upstage, castle right third,
-  // ocean strip frame-left — frame01's read, with the hero still 0.065 fh.
+  // Hero (−38, 10.4, 18), aim (−38, 12.0, 18) → camera = aim + (0, 46·sin28°,
+  // 46·cos28°) = (−38.0, 33.60, 58.62) at yaw 0. Road under the unit, wheat at
+  // both shoulders, stepped massif + waterfall upstage centre, castle right
+  // third, ocean strip frame-left — frame01's read (FRAMING.md §6 verifies all
+  // 27 landmarks within 1 % through this exact transform).
   // No smoothing may pollute the first rendered frame, so every damper starts
   // converged.
   applyProjection()
