@@ -652,12 +652,27 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
     root.add(mesh)
 
     // §5.2 contact blob — planted on the stage surface under the feet, biased
-    // 0.06 m toward camera so a sliver always reads below the soles on screen.
+    // 0.14 m toward camera. The old 0.06 m bias left only the ellipse's
+    // FEATHERED RIM visible below the boots (the α-0.55 core sat entirely
+    // behind the sprite's own dark pixels), so the on-screen decal never
+    // carried more than ~0.3 effective alpha; at 0.14 m the solid core clears
+    // the soles by ~4 px and the §5.2 alpha actually reaches the framebuffer.
     const blob = makeBlob({
       color: BLOB_COLOR, alpha: blobAlpha,
       rx: BLOB_RX, rz: BLOB_RZ,
     })
-    blob.position.set(0, 0.02, 0.06)
+    blob.position.set(0, 0.02, 0.14)
+    // Above the arena's ground overlays (highland seam-blend strip rides at
+    // renderOrder 4 across z −12…−9.2 and was normal-blending the back-rank
+    // blobs away), still under the ground mist (14) / motes (15).
+    blob.renderOrder = 6
+    // Draw-order decal, not a depth participant: the enemy quad's soft
+    // painterly haze (alpha ≥ the 0.02 cut) WRITES depth across its whole
+    // rect at the enemy plane, which depth-killed the back-rank blobs drawn
+    // after it. The blob lies flat on the stage inside the acting area where
+    // nothing opaque ever fronts it, so depth-testing buys nothing and loses
+    // everything — order (6) is its occlusion contract.
+    blob.material.depthTest = false
     root.add(blob)
     group.add(root)
 
@@ -783,7 +798,7 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
     eRoot.add(pool)
     eBlobs.push(pool)
     const feet = makeBlob({ color: BLOB_COLOR, alpha: 0.55, rx: 0.85, rz: 0.32 })
-    feet.position.set(0, 0.025, 0.05)
+    feet.position.set(0, 0.025, 0.12) // camera-side bias: core clears the claws
     eRoot.add(feet)
     eBlobs.push(feet)
   } else {
