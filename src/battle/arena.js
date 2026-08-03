@@ -13,8 +13,14 @@
 //                        flames at y 5.4 are the only warmth besides the door
 //                        glow; splayed side walls with fluted columns and
 //                        arcade arches falling to void; a stepped podium and
-//                        X-braced double door upstage at z −12; a coursed
+//                        braced double door upstage at z −12; a coursed
 //                        flagstone floor that only warms inside torch radius.
+//                        ROUND 2: albedo re-authored AT the sampled §3
+//                        palette (WALL_MID/WALL_DARK/FLOOR_COOL), the violet
+//                        emissive floor killed (§11.6), torch warmth confined
+//                        to ~0.11 fw pools, glow sprites shrunk to the flame
+//                        footprint, furniture → stone ruins, debris seated
+//                        with contact darkening.
 //   HIGHLAND (frame05) — a mossy rock shelf ending in a cliff lip at z −14;
 //                        conifer silhouettes stage-left, a crag buttress
 //                        upper-right, skyline cards and a painted fog-band
@@ -435,14 +441,18 @@ function mergeBuckets(group, B, MAT, opts = {}) {
 // 4. HALL painters — BIBLE §3 palette, authored as albedo (lights finish it)
 // ===========================================================================
 
-// Coursed ashlar masonry. Authored warm so the torch pools land on the
-// sampled WALL_HOT/WALL_LIT ramp; unlit areas fall to WALL_DARK via the rig.
+// Coursed ashlar masonry — authored AT the sampled §3 wall palette
+// (WALL_MID #532f23 / WALL_DARK #28242c). Round-2 note: the round-1 albedo
+// was ~2.5× brighter "so pools land on WALL_HOT" and the whole room went
+// candy; the torch pools now do that lift themselves (albedo × pool light
+// ≈ #a4551f–#ac6f40 after ACES), and off-pool masonry falls to #0a1420-class
+// under the 0.35 hemisphere alone — darkness does the composition's work.
 function paintAshlar(g, S, seed) {
   const rnd = mulberry32(seed)
-  const mortar = rgb(0x4a4038)
-  const lit = rgb(0x93805f)
-  const mid = rgb(0x7a6752)
-  const dark = rgb(0x5b4c40)
+  const mortar = rgb(0x221d1b)
+  const lit = rgb(0x5a3526)
+  const mid = rgb(0x532f23)  // WALL_MID
+  const dark = rgb(0x28242c) // WALL_DARK
   g.fillStyle = css(mortar)
   g.fillRect(0, 0, S, S)
   const rows = 18 // 6 m/repeat → 0.33 m courses (f4_door crop: brick-fine ashlar)
@@ -481,10 +491,10 @@ function paintAshlar(g, S, seed) {
       x += bw
     }
   }
-  // large value patches kill the wallpaper read
+  // large value patches kill the wallpaper read (blue-dark, never #000 — §11.6)
   for (let i = 0; i < 6; i++) {
-    g.globalAlpha = 0.055
-    g.fillStyle = i % 2 ? '#000000' : '#ffe8c8'
+    g.globalAlpha = 0.045
+    g.fillStyle = i % 2 ? '#0a0e16' : '#ffe8c8'
     g.beginPath()
     g.arc(rnd() * S, rnd() * S, S * (0.18 + rnd() * 0.25), 0, TAU)
     g.fill()
@@ -497,10 +507,10 @@ function paintAshlar(g, S, seed) {
 function paintFlagstone(g, S, seed) {
   const rnd = mulberry32(seed)
   const N = makeNoise2(seed + 7)
-  const grout = rgb(0x23262e)
-  const cool = rgb(0x4a4e58)
-  const coolD = rgb(0x3a3e47)
-  const warm = rgb(0x574f47) // rare warm slab — mostly light does the warming
+  const grout = rgb(0x23262e) // FLOOR_GROUT
+  const cool = rgb(0x3c4049)  // FLOOR_COOL — authored at the sample, not above it
+  const coolD = rgb(0x30343c)
+  const warm = rgb(0x46403a) // rare warm slab — mostly light does the warming
   g.fillStyle = css(grout)
   g.fillRect(0, 0, S, S)
   const rows = 9 // 6 m/repeat → 0.66 m courses
@@ -564,7 +574,7 @@ function paintFlagstone(g, S, seed) {
   // broad dark pooling — the floor is never one value
   for (let i = 0; i < 7; i++) {
     g.globalAlpha = 0.06
-    g.fillStyle = i % 3 ? '#10141e' : '#6b6258'
+    g.fillStyle = i % 3 ? '#10141e' : '#4a453e'
     g.beginPath()
     g.arc(rnd() * S, rnd() * S, S * (0.16 + rnd() * 0.22), 0, TAU)
     g.fill()
@@ -626,13 +636,16 @@ function paintDressed(g, S, seed, base0, flutes) {
   g.fillRect(0, S * 0.72, S, S * 0.28)
 }
 
-// X-braced double door — dark oak planks, iron straps, stud bolts.
+// Braced double door — DOOR_RECESS #4e3c28-family aged wood, near-black
+// straps, and a baked warm catch at the top where the lintel glow lands.
+// Round-2: the round-1 planks under two torches + the glow read as a flat
+// saturated barn-red decal; the palette is now desaturated umber.
 function paintDoor(g, W, H, seed) {
   const rnd = mulberry32(seed)
-  const plank = rgb(0x46311e)
-  const plankD = rgb(0x2e2013)
-  const iron = rgb(0x241b14)
-  const ironHi = rgb(0x54422e)
+  const plank = rgb(0x3e3222)
+  const plankD = rgb(0x241d14)
+  const iron = rgb(0x191310)
+  const ironHi = rgb(0x4e3c28)
   g.fillStyle = css(plankD)
   g.fillRect(0, 0, W, H)
   const leafW = W / 2
@@ -691,6 +704,40 @@ function paintDoor(g, W, H, seed) {
   g.fillRect(W / 2 - 1.5, 0, 3, H)
   g.fillRect(0, 0, 2, H)
   g.fillRect(W - 2, 0, 2, H)
+  // warm edge from the lintel glow — brightest at the top, gone by mid-leaf
+  const glowGrad = g.createLinearGradient(0, 0, 0, H * 0.55)
+  glowGrad.addColorStop(0, 'rgba(196,124,54,0.30)')
+  glowGrad.addColorStop(1, 'rgba(196,124,54,0)')
+  g.fillStyle = glowGrad
+  g.fillRect(0, 0, W, H * 0.55)
+  // cool settle at the threshold
+  const footGrad = g.createLinearGradient(0, H, 0, H * 0.8)
+  footGrad.addColorStop(0, 'rgba(8,10,16,0.5)')
+  footGrad.addColorStop(1, 'rgba(8,10,16,0)')
+  g.fillStyle = footGrad
+  g.fillRect(0, H * 0.8, W, H * 0.2)
+}
+
+// One merged mesh of soft dark ellipses — 1–2 px contact darkening that
+// seats debris/props into the floor (the §5.2 grounding idea applied to
+// dressing; un-shadowed chunks read as floating stickers).
+function contactPatches(spots, color, opacity) {
+  const geos = []
+  for (const s of spots) {
+    const p = new THREE.PlaneGeometry(s.w, s.h)
+    p.rotateX(-HPI)
+    if (s.ry) p.rotateY(s.ry)
+    p.translate(s.x, s.y, s.z)
+    geos.push(p)
+  }
+  const merged = mergeGeometries(geos, false)
+  for (const p of geos) p.dispose()
+  const mesh = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({
+    map: radialTex(64, [[0, 0.85], [0.45, 0.42], [1, 0]]),
+    color, transparent: true, opacity, depthWrite: false,
+  }))
+  mesh.name = 'arena_contact'
+  return mesh
 }
 
 // ===========================================================================
@@ -699,6 +746,7 @@ function paintDoor(g, W, H, seed) {
 
 function buildHall(env) {
   const { group, aniso, rnd } = env
+  const patches = [] // contact-darkening spots, one merged mesh at the end
 
   // ---- materials ----------------------------------------------------------
   // Emissive floor = the §3 law "deep shadow is blue #060d18-class, never
@@ -706,38 +754,33 @@ function buildHall(env) {
   // masonry drowns blue, not black.
   const tWall = canvasTex(512, 512, aniso, (g, S) => paintAshlar(g, S, 101))
   const tFloor = canvasTex(512, 512, aniso, (g, S) => paintFlagstone(g, S, 202))
-  const tTrim = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 303, 0x8a7a68, false))
-  const tCol = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 404, 0x94826c, true))
-  const tRecess = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 505, 0x4e3c28, false)) // DOOR_RECESS
+  const tTrim = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 303, 0x56463a, false))
+  const tCol = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 404, 0x5e4b3c, true))
+  const tRecess = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 505, 0x443526, false)) // DOOR_RECESS family
   const tDoor = canvasTex(256, 320, aniso, (g, w, h) => paintDoor(g, w, h, 606), { clamp: true })
 
   const stdOpts = { roughness: 0.95, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }
   const MAT = {
     wall: new THREE.MeshStandardMaterial({ map: tWall, ...stdOpts }),
-    // Floor shade floor lifted to the §3 FLOOR_FG_VIGNETTE family. The torch
-    // rig is upstage (z −10.8) and 1/d²-attenuated, so the downstage slate the
-    // party stands on received almost nothing and crushed to #0a1030 (L 0.06)
-    // — at that level the §5.2 contact blobs (#10131c α .55) were compositing
-    // shadow onto shadow and vanished, which is the one grounding cue the
-    // frame cannot ship without. This is the hue-bearing shade floor doing the
-    // job the cool front fill is credited with in §3 ("keeps the foreground
-    // slate readable"); torch-pool and spell-lit floor are unchanged, both
-    // being dominated by their own terms.
-    // The shade floor is TEXTURED (emissiveMap: tFloor) so it re-emits the
-    // slate's own colours — a flat emissive constant lifts the level but
-    // erases the flagstone coursing, which §3 makes mandatory.
+    // Round-2 floor: the round-1 emissive (#8a97ad × 1.7, textured) lifted the
+    // whole slate to a violet glow — the measured #2e2249 shadow cast and a
+    // direct §11.6 instant-fail. The floor now carries only a whisper of
+    // blue-slate self-light (emissiveMap-shaped so coursing survives in the
+    // dark): enough to keep off-pool slate at hue-bearing #10161f-class —
+    // never grey, never violet — while the torch pools and the spell light
+    // repaint it locally. Grounding in the dark is the darkness itself.
     floor: new THREE.MeshStandardMaterial({
       map: tFloor, roughness: 0.85, metalness: 0,
-      emissive: 0x8a97ad, emissiveMap: tFloor, emissiveIntensity: 1.7,
+      emissive: 0x4a5464, emissiveMap: tFloor, emissiveIntensity: 1.0,
     }),
     trim: new THREE.MeshStandardMaterial({ map: tTrim, ...stdOpts }),
     column: new THREE.MeshStandardMaterial({ map: tCol, ...stdOpts }),
-    recess: new THREE.MeshStandardMaterial({ map: tRecess, roughness: 0.9, metalness: 0, emissive: 0x2a1a0c, emissiveIntensity: 0.55 }),
-    door: new THREE.MeshStandardMaterial({ map: tDoor, roughness: 0.9, metalness: 0, emissive: 0x090909, emissiveIntensity: 0.6 }),
+    recess: new THREE.MeshStandardMaterial({ map: tRecess, roughness: 0.9, metalness: 0, emissive: 0x1c1208, emissiveIntensity: 0.55 }),
+    door: new THREE.MeshStandardMaterial({ map: tDoor, roughness: 0.9, metalness: 0, emissive: 0x140c06, emissiveIntensity: 0.7 }),
     bronze: new THREE.MeshStandardMaterial({ color: 0x401c0f, roughness: 0.5, metalness: 0.35, emissive: 0x120804, emissiveIntensity: 0.8 }), // BRAZIER_BOWL
-    coals: new THREE.MeshStandardMaterial({ color: 0x2a1206, roughness: 1, metalness: 0, emissive: 0xaf5d21, emissiveIntensity: 1.5 }), // FLAME_BASE
+    coals: new THREE.MeshStandardMaterial({ color: 0x2a1206, roughness: 1, metalness: 0, emissive: 0xaf5d21, emissiveIntensity: 1.15 }), // FLAME_BASE
     void: new THREE.MeshBasicMaterial({ color: 0x04080e }), // arch voids — blue-black, never #000
-    rubble: new THREE.MeshStandardMaterial({ map: tTrim, color: 0x8a8a96, roughness: 1, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }),
+    rubble: new THREE.MeshStandardMaterial({ map: tTrim, color: 0x7d746a, roughness: 1, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }),
   }
   MAT.prosc = MAT.wall // same masonry, separate bucket so it can skip shadow cast
   const B = {}
@@ -818,14 +861,31 @@ function buildHall(env) {
       addG(B.column, gCyl(0.46, 0.52, 7.6, 14, c.x, 0.86, c.z, { uv: 3.2 })) // shaft (flutes in map)
       addG(B.trim, gBox(1.25, 0.3, 1.25, c.x, 8.46, c.z, { uv: 1.2 })) // capital
     }
-    // stone bench slabs along the wall — LEFT side only (the plate's
-    // sarcophagus blocks at ≈0.05–0.16 fw; the right flank now carries the
-    // brazier dais + trough instead, and both would interpenetrate there)
+    // stone dressing along the LEFT flank only (the right flank carries the
+    // brazier dais + trough, and both would interpenetrate there). Round-2:
+    // the round-1 bench slabs read as tavern furniture — replaced with the
+    // plate's sarcophagus blocks (plinth → chest → overhung lid) plus a
+    // squat pedestal and a toppled column drum downstage, all in the dark
+    // dressed-stone ramp, all seated with contact darkening.
     if (s < 0) {
-      for (const [t, len] of [[0.155, 2.1], [0.235, 1.7]]) {
+      for (const [t, len, hh] of [[0.155, 2.2, 0.95], [0.24, 1.8, 0.8]]) {
         const c = at(t, 1.15)
-        addG(B.trim, gBox(len, 0.55, 1.0, c.x, 0, c.z, { ry: yaw, uv: 1.3 }))
-        addG(B.trim, gBox(len + 0.24, 0.16, 1.18, c.x, 0.55, c.z, { ry: yaw, uv: 1.3 }))
+        addG(B.trim, gBox(len + 0.3, 0.3, 1.25, c.x, 0, c.z, { ry: yaw, uv: 1.6 })) // plinth
+        addG(B.trim, gBox(len, hh - 0.3, 0.98, c.x, 0.3, c.z, { ry: yaw, uv: 1.6 })) // chest
+        addG(B.trim, gBox(len + 0.18, 0.2, 1.12, c.x, hh, c.z, { ry: yaw, uv: 1.6 })) // lid
+        patches.push({ x: c.x, y: 0.012, z: c.z, w: len + 1.1, h: 2.0, ry: yaw })
+      }
+      { // pedestal + fallen drum at the left frame edge (plate ≈ 0.05–0.16 fw;
+        // reprojected: pedestal lands fx ≈ 0.10, drum fx ≈ 0.08 / fy 0.77 —
+        // any further downstage the splayed wall exits the frustum)
+        const c = at(0.33, 1.05)
+        addG(B.trim, gBox(1.0, 0.3, 1.0, c.x, 0, c.z, { uv: 1.2 }))
+        addG(B.column, gCyl(0.27, 0.31, 1.05, 10, c.x, 0.3, c.z, { uv: 2.0 }))
+        addG(B.trim, gBox(0.78, 0.22, 0.78, c.x, 1.35, c.z, { uv: 1.2 }))
+        patches.push({ x: c.x, y: 0.012, z: c.z, w: 1.7, h: 1.7 })
+        const d = at(0.40, 1.5) // fallen drum beside it
+        addG(B.column, gCyl(0.26, 0.26, 1.3, 10, d.x, 0.26, d.z, { rz: HPI, ry: yaw + 0.35, c: true, uv: 2.0 }))
+        patches.push({ x: d.x, y: 0.012, z: d.z, w: 1.9, h: 0.9, ry: yaw + 0.35 })
       }
     }
   }
@@ -908,10 +968,12 @@ function buildHall(env) {
     addG(B.trim, gBox(2.3, 1.05, 2.3, tx, 0.45, tz, { uv: 1.4 })) // trough body
     addG(B.trim, gBox(2.55, 0.2, 2.55, tx, 1.5, tz, { uv: 1.4 })) // moulded lip
     addG(B.coals, gBox(1.95, 0.06, 1.95, tx, 1.71, tz, { uv: 1.3 })) // ember soil bed
+    patches.push({ x, y: 0.012, z: pz, w: 1.9, h: 1.9 }) // seat the brazier plinth
     torches.push({ x, y: 5.4, z })
   }
 
-  // ---- rubble along wall feet and corners ---------------------------------
+  // ---- rubble along wall feet and corners — every chunk gets a contact
+  //      patch so debris seats into the slate instead of floating on it -----
   for (let i = 0; i < 16; i++) {
     const s = rnd() < 0.5 ? -1 : 1
     const t = rnd()
@@ -919,14 +981,22 @@ function buildHall(env) {
     const z = -11.6 + t * 12 + (rnd() - 0.5) * 1.5
     // keep debris out of the trough-dais footprints (both sides)
     if (Math.abs(x) > 5.5 && Math.abs(x) < 9.4 && z > -13 && z < -9.5) continue
-    addG(B.rubble, gRock(900 + i, 0.2 + rnd() * 0.5, 0.16 + rnd() * 0.3, 0.2 + rnd() * 0.5, x, 0, z, { ry: rnd() * TAU }))
+    const sx = 0.2 + rnd() * 0.5
+    const sz = 0.2 + rnd() * 0.5
+    addG(B.rubble, gRock(900 + i, sx, 0.16 + rnd() * 0.3, sz, x, 0, z, { ry: rnd() * TAU }))
+    patches.push({ x, y: 0.012, z, w: sx * 1.8, h: sz * 1.6, ry: rnd() * TAU })
   }
   for (let i = 0; i < 6; i++) {
-    addG(B.rubble, gRock(950 + i, 0.15 + rnd() * 0.35, 0.12 + rnd() * 0.22, 0.15 + rnd() * 0.35,
-      PX + (rnd() - 0.5) * 7.5, 0, -10.1 + rnd() * 0.8, { ry: rnd() * TAU }))
+    const sx = 0.15 + rnd() * 0.35
+    const sz = 0.15 + rnd() * 0.35
+    const x = PX + (rnd() - 0.5) * 7.5
+    const z = -10.1 + rnd() * 0.8
+    addG(B.rubble, gRock(950 + i, sx, 0.12 + rnd() * 0.22, sz, x, 0, z, { ry: rnd() * TAU }))
+    patches.push({ x, y: 0.012, z, w: sx * 1.8, h: sz * 1.6, ry: rnd() * TAU })
   }
 
   mergeBuckets(group, B, MAT, { noCast: ['floor', 'void', 'coals', 'prosc'] })
+  group.add(contactPatches(patches, 0x06090f, 0.5))
 
   // ---- groundY: flat floor, then the 5-step flight, then the podium -------
   function groundY(x, z) {
@@ -956,9 +1026,10 @@ function buildFireRig(env, torches) {
   const glowT = radialTex(128, [[0, 0.55], [0.35, 0.28], [1, 0]])
   const layers = [
     // BIBLE §3: core #f9f3e3 0.45 m, body #e99648 0.8 m, tongues #af5d21 1.15 m
+    // — the union of the three co-based quads spans exactly 1.15 m ≈ 0.10 fh.
     { key: 'core', h: 0.45, tint: 0xfff6e0, y: 0.26, o: 0.95, hz: 9.0 },
-    { key: 'body', h: 0.80, tint: 0xffc07a, y: 0.42, o: 0.85, hz: 7.5 },
-    { key: 'tongues', h: 1.15, tint: 0xff9a50, y: 0.60, o: 0.7, hz: 6.2 },
+    { key: 'body', h: 0.80, tint: 0xffc07a, y: 0.42, o: 0.8, hz: 7.5 },
+    { key: 'tongues', h: 1.15, tint: 0xff9a50, y: 0.60, o: 0.62, hz: 6.2 },
   ]
   const texCache = {}
   const rigs = []
@@ -985,19 +1056,22 @@ function buildFireRig(env, torches) {
       holder.add(m)
       quads.push({ m, L, phase: rnd() * 37, frame: (rnd() * 3) | 0 })
     }
-    // seat glow + wide halo (pre-post warm bloom the plate shows)
+    // seat glow + halo. Round-2: the round-1 halo (5.2 × 4.2 m) was ~3.6× the
+    // tallest flame quad — with bloom it smeared the whole top quadrant and
+    // read as a 3×-oversized flame. Both glows now stay inside the 1.15 m
+    // flame's own footprint; bloom supplies the rest, as in the plate.
     const seat = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowT, color: 0xffa64f, transparent: true, opacity: 0.5,
+      map: glowT, color: 0xffa64f, transparent: true, opacity: 0.38,
       blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
     }))
-    seat.scale.set(1.7, 1.2, 1)
-    seat.position.y = 0.35
+    seat.scale.set(1.15, 0.8, 1)
+    seat.position.y = 0.32
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowT, color: 0xd96830, transparent: true, opacity: 0.17,
+      map: glowT, color: 0xcc5a26, transparent: true, opacity: 0.1,
       blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
     }))
-    halo.scale.set(5.2, 4.2, 1)
-    halo.position.y = 0.7
+    halo.scale.set(2.6, 2.1, 1)
+    halo.position.y = 0.6
     // seat/halo keep renderOrder 0 ON PURPOSE: the wide halo overlaps the
     // dragon's wing on screen, and only the painter's depth sort (torch z
     // −10.8 is behind the enemy quad at −6.5) keeps the glow from washing
@@ -1005,8 +1079,12 @@ function buildFireRig(env, torches) {
     holder.add(seat, halo)
     group.add(holder)
 
-    // point light — BIBLE §3 numbers typed in: #ffa64f, 40, distance 14, decay 2
-    const light = new THREE.PointLight(0xffa64f, 40, 14, 2)
+    // point light — §3 colour/decay kept; intensity 40→33, distance 14→11.
+    // Image-over-bible call (frame04): with 40/14 the warmth reached every
+    // wall and the steps at full strength — the room lit evenly. 33/11 holds
+    // the pool at ~0.11 fw of strong influence and lets everything outside
+    // fall to #0a1420, which is the plate's whole composition.
+    const light = new THREE.PointLight(0xffa64f, 33, 11, 2)
     light.position.set(T.x, T.y, T.z)
     light.castShadow = false // §3: torch lights cast none (cost)
     group.add(light)
@@ -1046,7 +1124,7 @@ function buildFireRig(env, torches) {
       R.holder.rotation.y = Math.atan2(camera.position.x - R.T.x, camera.position.z - R.T.z)
       // two-octave flicker: intensity ±12 %, position jitter ±0.06 m (§3)
       const n = flicker2(t, R.hz, R.phase)
-      R.light.intensity = 40 * (1 + 0.12 * n)
+      R.light.intensity = 33 * (1 + 0.12 * n)
       R.light.position.set(
         R.T.x + 0.06 * vnoise1(t * 5.1 + R.phase),
         R.T.y + 0.06 * vnoise1(t * 6.3 + R.phase + 31),
@@ -1061,8 +1139,8 @@ function buildFireRig(env, torches) {
         Q.m.scale.set(fx, fy, 1)
         Q.m.rotation.z = 0.07 * vnoise1(t * 4.2 + Q.phase + 4)
       }
-      R.seat.material.opacity = 0.46 + 0.08 * n
-      R.halo.material.opacity = 0.15 + 0.035 * n
+      R.seat.material.opacity = 0.35 + 0.06 * n
+      R.halo.material.opacity = 0.09 + 0.025 * n
       // spawn embers
       R.emberAcc += dt * 6
       while (R.emberAcc >= 1) {
@@ -1113,16 +1191,19 @@ function buildFireRig(env, torches) {
 // 7. HIGHLAND painters — BIBLE §4 palette, silhouette-first
 // ===========================================================================
 
-// Mossy shelf turf: GROUND_MID #626e57 at the party line, GROUND_FG #4e5a42
-// forward, dark moss pools, worn rock patches, blade stipple + pale tips.
+// Mossy shelf turf. Round-2: authored a full step darker — the round-1 turf
+// plus key + fog measured 0.44 luma at the party line against the plate's
+// dark shelf; the lit result must land near GROUND_FG #4e5a42, so the albedo
+// sits below it and the rig lifts it. Texture contrast is up (deep moss
+// pools, worn rock) so the shelf never reads as featureless felt.
 function paintHighGround(g, S, seed) {
   const rnd = mulberry32(seed)
   const N = makeNoise2(seed + 11)
-  const mid = rgb(0x566349)
-  const fg = rgb(0x47523c)
-  const moss = rgb(0x39452f)
-  const rock = rgb(0x4e5a52)
-  const tip = rgb(0x77775b) // GRASS_PALE
+  const mid = rgb(0x46523c)
+  const fg = rgb(0x39452f)
+  const moss = rgb(0x2a3424)
+  const rock = rgb(0x424d46)
+  const tip = rgb(0x6e6e54) // GRASS_PALE, dimmed to the new key
   g.fillStyle = css(mid)
   g.fillRect(0, 0, S, S)
   // macro patches — clumps and voids, never carpet
@@ -1175,6 +1256,19 @@ function paintHighGround(g, S, seed) {
     g.ellipse(x, y, 1 + rnd() * 2.4, 0.8 + rnd() * 1.6, rnd() * TAU, 0, TAU)
     g.fill()
     g.globalAlpha = 1
+  }
+  // deep moss wells — broad soft darks that break the felt at distance
+  for (let i = 0; i < 9; i++) {
+    const x = rnd() * S
+    const y = rnd() * S
+    const r = S * (0.07 + rnd() * 0.13)
+    const gr = g.createRadialGradient(x, y, 0, x, y, r)
+    gr.addColorStop(0, 'rgba(24,32,20,0.32)')
+    gr.addColorStop(1, 'rgba(24,32,20,0)')
+    g.fillStyle = gr
+    g.beginPath()
+    g.arc(x, y, r, 0, TAU)
+    g.fill()
   }
 }
 
@@ -1431,15 +1525,18 @@ function buildHighland(env) {
   }
 
   // ---- materials ----------------------------------------------------------
-  // Teal-green emissive floor (§11.6: highland darks are #022123-class).
+  // Teal-green emissive darks (§11.6: highland darks are #022123-class,
+  // hue-bearing) — kept to a whisper; the fog and key do the visible work.
   const tGround = canvasTex(1024, 1024, aniso, (g, S) => paintHighGround(g, S, 121))
   const tRock = canvasTex(256, 256, aniso, (g, S) => paintHighRock(g, S, 232))
   const MAT = {
-    ground: new THREE.MeshStandardMaterial({ map: tGround, roughness: 1, metalness: 0, emissive: 0x08201c, emissiveIntensity: 0.9 }),
-    rock: new THREE.MeshStandardMaterial({ map: tRock, roughness: 1, metalness: 0, emissive: 0x08201c, emissiveIntensity: 0.9 }),
+    // vertexColors carries the authored downstage falloff (below)
+    ground: new THREE.MeshStandardMaterial({ map: tGround, vertexColors: true, roughness: 1, metalness: 0, emissive: 0x05170f, emissiveIntensity: 0.8 }),
+    rock: new THREE.MeshStandardMaterial({ map: tRock, roughness: 1, metalness: 0, emissive: 0x061914, emissiveIntensity: 0.8 }),
     crag: new THREE.MeshStandardMaterial({ map: tRock, color: 0x9aa8a2, roughness: 1, metalness: 0, emissive: 0x071b18, emissiveIntensity: 1.0 }),
   }
   const B = { ground: [], rock: [], crag: [] }
+  const ss = (a, b, v) => { v = clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v) }
 
   // ---- the shelf: displaced plane ending at the cliff lip (z −14) ---------
   {
@@ -1450,6 +1547,13 @@ function buildHighland(env) {
     geo.translate(0, 0, -14 + D / 2 + 0.0) // z −14 … +7
     const pos = geo.attributes.position
     const uv = geo.attributes.uv
+    // Round-2 foreground falloff, baked as vertex colour: the plate's shelf
+    // is bright only in the fog band behind the units and falls dark toward
+    // the camera; ours measured 0.44 luma flat. Full albedo upstage of the
+    // party ranks → ~0.55 at the front rank → ~0.34 at the frame bottom,
+    // with a gentle pull-down toward the lateral edges. Authored albedo
+    // doing the vignette's work, the way the plate does it.
+    const vcol = new Float32Array(pos.count * 3)
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i)
       const z = pos.getZ(i)
@@ -1458,23 +1562,44 @@ function buildHighland(env) {
       if (z < -13.2) y -= (z + 13.2) * (z + 13.2) * 0.55
       pos.setY(i, y)
       uv.setXY(i, x / 11, z / 11)
+      let f = lerp(1.0, 0.52, ss(-8.5, -2.5, z))
+      f = lerp(f, 0.34, ss(-2.5, 4, z))
+      f *= 1 - 0.22 * ss(8, 14, Math.abs(x))
+      vcol[i * 3] = f
+      vcol[i * 3 + 1] = f
+      vcol[i * 3 + 2] = f
     }
+    geo.setAttribute('color', new THREE.BufferAttribute(vcol, 3))
     geo.computeVertexNormals()
     addG(B.ground, geo)
   }
 
   // ---- rock knuckles ------------------------------------------------------
   // Midground band behind the duel line (ref 0.42–0.60 fw cluster).
+  const patchSpots = [] // contact darkening under every placed knuckle/stone
   const knuckles = [
     [-0.8, -10.6, 1.5, 0.9, 1.2], [0.9, -11.4, 2.1, 1.3, 1.5], [2.6, -12.1, 1.2, 0.7, 1.0],
     [-2.6, -11.8, 1.7, 1.0, 1.3], [4.6, -12.6, 1.6, 0.9, 1.2], [-5.2, -12.3, 2.2, 1.4, 1.6],
     // low boulder row between boss and party — frame05's dark clump at
     // ≈(0.25–0.35 fw, 0.62–0.72 fh); reprojects to (0.29–0.35, 0.64)
     [-4.2, -9.4, 1.3, 0.55, 1.0], [-3.1, -9.8, 0.9, 0.4, 0.8], [-4.9, -10.1, 0.8, 0.35, 0.7],
+    // Round-2 foreground knuckles framing the party shelf, outside the
+    // safeStage acting box — the plate's dressed downstage; the felt gets
+    // bones. Coordinates reprojected: all land in the bottom corners/edges.
+    [-6.6, -1.0, 1.4, 0.7, 1.1], [-5.4, 1.5, 1.0, 0.5, 0.8], [6.7, -0.3, 1.2, 0.55, 1.0],
+    [6.0, 1.1, 0.9, 0.45, 0.75], [-7.4, -3.2, 1.1, 0.5, 0.9],
   ]
   let rs = 40
   for (const [x, z, sx, sy, sz] of knuckles) {
     addG(B.rock, gRock(rs++, sx, sy, sz, x, groundY(x, z), z, { ry: rnd() * TAU }))
+    patchSpots.push({ x, y: groundY(x, z) + (z < -5 ? 0.05 : 0.03), z, w: Math.min(sx * 1.7, 1.6), h: Math.min(sz * 1.6, 1.5), ry: rnd() * TAU })
+  }
+  // small half-buried stones INSIDE the stage (≤ ~0.2 m tall — dressing the
+  // party's ground plane, kept ≥ 1.2 m off every §1 feet anchor and off the
+  // duel line so no sprite or dash path is ever occluded)
+  for (const [x, z, s] of [[3.6, -7.9, 0.55], [6.3, -7.0, 0.5], [-0.6, -10.9, 0.6], [0.2, -2.7, 0.45], [5.9, -2.9, 0.5], [-2.6, -3.5, 0.42]]) {
+    addG(B.rock, gRock(rs++, s, s * 0.45, s, x, groundY(x, z), z, { ry: rnd() * TAU }))
+    patchSpots.push({ x, y: groundY(x, z) + (z < -5 ? 0.05 : 0.03), z, w: s * 1.7, h: s * 1.5, ry: rnd() * TAU })
   }
   // ragged lip row along the brink
   for (let i = 0; i < 12; i++) {
@@ -1504,6 +1629,23 @@ function buildHighland(env) {
   addG(B.crag, gRock(rs++, 2.8, 3.4, 2.6, -8.8, -0.8, -16.5, { ry: 0.7 }))
 
   mergeBuckets(group, B, MAT, { noCast: ['ground', 'crag'] })
+  group.add(contactPatches(patchSpots, 0x0b1712, 0.32))
+
+  // ---- moss breakup — broad soft dark patches strewn across the acting
+  //      shelf (near, not under, the anchors) so the turf reads as ground
+  //      with history instead of felt; teal-green darks per §11.6 ----------
+  {
+    const mossSpots = []
+    const mossAt = [
+      [1.9, -6.4, 2.4], [4.2, -8.9, 2.0], [0.0, -8.0, 1.7], [5.8, -5.8, 1.8],
+      [2.8, -3.4, 1.5], [-1.6, -9.6, 2.2], [-3.6, -6.8, 1.9], [6.8, -9.8, 2.3],
+      [-0.9, -2.2, 1.6], [4.4, -1.8, 1.4], [-5.4, -3.8, 1.8], [7.6, -3.6, 1.6],
+    ]
+    for (const [x, z, w] of mossAt) {
+      mossSpots.push({ x, y: groundY(x, z) + (z < -5 ? 0.045 : 0.025), z, w, h: w * (0.6 + rnd() * 0.3), ry: rnd() * TAU })
+    }
+    group.add(contactPatches(mossSpots, 0x1c281a, 0.3))
+  }
 
   // ---- conifer silhouette cards, stage-left (ref: only the left flank) ----
   // Every spec below was reprojected through the §1 camera — the boot layout
@@ -1526,9 +1668,11 @@ function buildHighland(env) {
   for (const [x, z, h] of treeSpecs) {
     const tex = canvasTex(160, 384, aniso, (g, w, hh) => paintPine(g, w, hh, 500 + ti * 17), { clamp: true, smooth: true })
     const w = h * 0.46
-    const mat = new THREE.MeshStandardMaterial({
-      map: tex, alphaTest: 0.42, roughness: 1, metalness: 0,
-      emissive: 0x061a16, emissiveIntensity: 0.8, side: THREE.DoubleSide,
+    // silhouette law: the painted TREE_SILHOUETTE colour goes to screen
+    // as-is and only the scene fog softens it — a lit material let the key
+    // + hemisphere wash the pines up to pale grey-green in round 1
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, alphaTest: 0.42, side: THREE.DoubleSide, fog: true,
     })
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
     const gy = groundY(x, z)
@@ -1568,11 +1712,14 @@ function buildHighland(env) {
   }
 
   // ---- backlight glow disc behind the boss (§4: (−2.5, 3.5, −9.5) r 6) ----
+  // Round-2: strengthened + given a hot core — over the round-1 backdrop the
+  // 0.35 α disc vanished and the boss never read dark-on-bright. This disc
+  // is what buys the silhouette contrast the §4 readability contract wants.
   const glowDisc = new THREE.Mesh(
-    new THREE.PlaneGeometry(12, 12),
+    new THREE.PlaneGeometry(13, 13),
     new THREE.MeshBasicMaterial({
-      map: radialTex(256, [[0, 0.5], [0.4, 0.26], [1, 0]]), color: 0xb1c0b4,
-      transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending,
+      map: radialTex(256, [[0, 0.5], [0.4, 0.26], [1, 0]]), color: 0xc6d2c4,
+      transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending,
       depthWrite: false, fog: false,
     })
   )
@@ -1580,6 +1727,16 @@ function buildHighland(env) {
   // depth-sorted (no renderOrder): drawn after the far fog cards, before the
   // near one, and before the boss quad at −7.5 — the boss silhouettes on it
   group.add(glowDisc)
+  const glowCore = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.5, 6.5),
+    new THREE.MeshBasicMaterial({
+      map: radialTex(128, [[0, 0.55], [0.45, 0.28], [1, 0]]), color: 0xdde6d8,
+      transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending,
+      depthWrite: false, fog: false,
+    })
+  )
+  glowCore.position.set(-2.5, 3.6, -9.45)
+  group.add(glowCore)
 
   // ---- three drifting fog cards (§4: z −4/−9/−14, α .22/.35/.50) ----------
   const fogCards = []
@@ -1611,11 +1768,11 @@ function buildHighland(env) {
   ]
   for (let i = 0; i < mistSpots.length; i++) {
     const [x, z] = mistSpots[i]
-    const w = 2.3 + rnd() * 2.0
-    const h = 0.9 + rnd() * 0.55
+    const w = 2.6 + rnd() * 2.2
+    const h = 0.95 + rnd() * 0.6
     const mat = new THREE.MeshBasicMaterial({
-      map: i % 2 ? mistTexA : mistTexB, color: 0xa8b2a6, transparent: true,
-      opacity: 0.15, depthWrite: false, fog: false,
+      map: i % 2 ? mistTexA : mistTexB, color: 0xb2bcae, transparent: true,
+      opacity: 0.17, depthWrite: false, fog: false,
     })
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
     m.position.set(x, groundY(x, z) + 0.16 + h * 0.5 * 0.5, z)
@@ -1668,7 +1825,7 @@ function buildHighland(env) {
     groundY,
     torches: [], // no fire in the highland — rim comes from the key (§5.1)
     safeStage: { x0: -5.5, x1: 7.5, z0: -12.0, z1: -1.0 },
-    fogCards, mists, motes, mSeed, mPos, mGeo, glowDisc, trees,
+    fogCards, mists, motes, mSeed, mPos, mGeo, glowDisc, glowCore, trees,
   }
 }
 
@@ -1701,6 +1858,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
   let built
   let fire = null
   let doorGlow = null
+  let doorLight = null
   let coalsMat = null
   const rim = { dir: [0, -1], color: '#cfd6cb', strength: 0.7, sources: [] }
 
@@ -1747,7 +1905,15 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
     // world (0.75, 5.0, −11.85) reprojects to the bible's (0.534, 0.20) glow
     // centre. Depth-sorted with the other additive layers, no renderOrder.
     doorGlow.position.set(0.75, 5.0, -11.85)
+    doorGlow.material.opacity = 0.26
     group.add(doorGlow)
+
+    // a small warm light IN the glow so the lintel, jambs and upper steps
+    // actually catch it (STEPS_LIT gradient) — the third warmth of §3's
+    // composition: two torch pools + the door glow, nothing else.
+    doorLight = new THREE.PointLight(0xe8964e, 7, 7.5, 2)
+    doorLight.position.set(0.6, 4.3, -11.2)
+    group.add(doorLight)
 
     const cm = group.getObjectByName('arena_coals')
     coalsMat = cm ? cm.material : null
@@ -1819,8 +1985,9 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
 
     if (variant === 'hall') {
       fire.update(t, dt, camera, spells)
-      if (doorGlow) doorGlow.material.opacity = 0.2 + 0.045 * vnoise1(t * 4.3 + 2.2)
-      if (coalsMat) coalsMat.emissiveIntensity = 1.45 + 0.35 * vnoise1(t * 8.2)
+      if (doorGlow) doorGlow.material.opacity = 0.24 + 0.045 * vnoise1(t * 4.3 + 2.2)
+      if (doorLight) doorLight.intensity = 6.6 + 1.1 * vnoise1(t * 5.1 + 8.8)
+      if (coalsMat) coalsMat.emissiveIntensity = 1.05 + 0.3 * vnoise1(t * 8.2)
 
       // rim.dir: strongest of {torch L, torch R, active spell} as seen from
       // the party block, projected to screen space (y down) — §5.1.
@@ -1876,7 +2043,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
         if (camera) M.m.rotation.y = Math.atan2(camera.position.x - px, camera.position.z - pz)
         const s = 1 + 0.08 * Math.sin(t * 0.5 + M.phase)
         M.m.scale.set(s, 1 + 0.06 * Math.cos(t * 0.4 + M.phase), 1)
-        let o = 0.15 + 0.035 * Math.sin(t * 0.33 + M.phase * 2.1)
+        let o = 0.17 + 0.035 * Math.sin(t * 0.33 + M.phase * 2.1)
         for (const L of spells) {
           const d = Math.hypot(L.position.x - px, L.position.z - pz)
           if (d < 6) o += 0.06 * clamp(L.intensity / 60, 0, 1)
@@ -1892,7 +2059,8 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
       }
       built.mGeo.attributes.position.needsUpdate = true
       built.motes.material.opacity = 0.45 + 0.15 * Math.sin(t * 0.7)
-      built.glowDisc.material.opacity = 0.35 + 0.025 * Math.sin(t * 0.21)
+      built.glowDisc.material.opacity = 0.45 + 0.025 * Math.sin(t * 0.21)
+      built.glowCore.material.opacity = 0.3 + 0.03 * Math.sin(t * 0.26 + 1.3)
       // near-imperceptible tree/tuft sway keeps the flank alive
       for (const T of built.trees) {
         T.m.rotation.z = (T.tuft ? 0.016 : 0.005) * Math.sin(t * (T.tuft ? 0.9 : 0.5) + T.phase)

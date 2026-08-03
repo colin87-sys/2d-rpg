@@ -311,6 +311,42 @@ function fluffEdge(ctx, rnd, outPts, step, o) {
 }
 
 /**
+ * Planar brush modelling: n overlapping bristle strokes laid along a spine at
+ * ONE stepped ramp value (± small jitter) — visible layered paint with stroke
+ * edges, the anti-airbrush. Used everywhere the round-1 dragon read as a
+ * smooth radial-gradient vector blob.
+ */
+function strokeBand(ctx, rnd, spinePts, w, rampF, t, alpha, n = 4, spread = 1.0) {
+  const nrm = normals(spinePts)
+  for (let k = 0; k < n; k++) {
+    const off = n > 1 ? (k / (n - 1) - 0.5) * w * spread : 0
+    const pts = spinePts.map((p, i) => [
+      p[0] + nrm[i][0] * off + (rnd() - 0.5) * 4,
+      p[1] + nrm[i][1] * off + (rnd() - 0.5) * 4,
+    ])
+    const tv = Math.max(0, Math.min(1, t + (rnd() - 0.5) * 0.09))
+    strand(ctx, pts, (w / n) * (1.5 + rnd() * 0.9), (w / n) * (0.4 + rnd() * 0.5),
+      rampF(tv, alpha * (0.75 + rnd() * 0.5)))
+  }
+}
+
+/**
+ * Rooted spike: a dark socket pool under the base, the horn, then a lap of
+ * hide pulled over the root — the spike grows FROM the body instead of being
+ * glued onto the silhouette (the round-1 "thorn sticker" failure).
+ */
+function rootedHorn(ctx, rnd, x, y, ang, len, w, curl, rampF, hideF, hideT, opts = {}) {
+  puff(ctx, x, y + 2, w * 0.8, hideF(Math.max(0, hideT - 0.3)), 0.5, w * 0.5)
+  horn(ctx, x, y, ang, len, w, curl, rampF, opts)
+  const a = ang + Math.PI / 2
+  strand(ctx, [
+    [x - Math.cos(a) * w * 0.55, y - Math.sin(a) * w * 0.55 + 3],
+    [x + Math.cos(ang) * w * 0.4, y + Math.sin(ang) * w * 0.4 + 2],
+    [x + Math.cos(a) * w * 0.55, y + Math.sin(a) * w * 0.55 + 3],
+  ], w * 0.55, w * 0.3, hideF(hideT, 0.8))
+}
+
+/**
  * A draped bat/demon wing, painted as a pleated curtain: leading edge
  * root→carpal→spike, finger tips fanning off the carpal, trailing edge
  * sagging between tips with per-gap depth + ragged jitter. Inside: broad
@@ -535,20 +571,27 @@ function finishArt(canvas, { name, px, py, anchor, worldHeight, floatOffset, pal
 }
 
 // ===========================================================================
-// THE DRAGON — frame04 hall enemy.
+// THE DRAGON — frame04 hall enemy. Round-2 repaint: anatomy + value.
 //
-// Composition (canvas 1024×896, ground line y = 838, ≈ 130 px/m):
-//   · front-loaded cream furred mass; the skull dome rides the breast with a
-//     huge yellow eye, a green mohawk crest, and big amber flame-blades
-//     raking back along the ridge
-//   · dark aubergine hook-beak snout, maw gaping BELOW it at hero eye-line:
-//     red interior, white fang rows, plum lower-jaw slab, tongue lolling out
-//   · violet sail wings: a draped curtain far-left, a raised pleated sail
-//     over the shoulder with a near-black echo wing melting right
-//   · the tail: thorned cream rise off the rump rolling into a flattened
-//     olive-plated coil framing the top-left, tip flying out with dark fins
-//   · torch key upper-right: warm kiss on breast/skull/blades, plum-blue
-//     pools swallowing the rump, far wing and loop's lower arc.
+// Composition (canvas 1024×896, anchor/feet y = 838, visible ground line
+// ≈ y 792 after the 0.35 m sink, ≈ 139 px/m once the silhouette maps to 6 m):
+//   · a QUADRUPED with a 3.4 m shoulder hump (y ≈ 322); from it an S-curve
+//     NECK dives 1.6 m down-forward to a low WEDGE head held at the 1.4 m
+//     hero eye-line — no beak: the maw gapes red (#a42f28→#f0836f) with two
+//     LAYERED fang rows, a plum muzzle mask, gold slit eye, amber crown
+//     horns and a green mane streaming back along the neck ridge
+//   · sail wings RAISED: the near sail roots on the hump and spikes to the
+//     very top of the silhouette (§1 wing-crest anchor ≈ 6 m, x left of the
+//     feet), a near-black echo sail behind it; the far wing drapes down-left
+//     as a dark curtain
+//   · the olive plated tail coils across the top-left corner (silhouette
+//     0.09 fh) and its tip flies out right — bigger than the frame
+//   · muscular haunches; short heavy forelegs with pale talons under a low
+//     furred belly
+//   · torch key upper-right: a HARD core-shadow terminator claims the belly,
+//     rump and throat (belly-ramp darks, hue-bearing); AO pools between
+//     limbs, at wing roots, jaw and tail base; bristle-band strokes + fur do
+//     the modelling — airbrush pools only for glow and occlusion.
 // ===========================================================================
 
 const DRG = {
@@ -582,39 +625,28 @@ export function makeDragonArt() {
 
   // ---- far wing: a draped curtain falling down-left behind the rump -------
   drapedWing(ctx, rnd, {
-    root: [432, 606],
-    carpal: [252, 468],
-    spike: [180, 418],
-    tips: [[66, 498], [44, 590], [72, 682], [152, 748], [262, 778]],
+    root: [560, 430],
+    carpal: [242, 332],
+    spike: [186, 272],
+    tips: [[84, 330], [44, 434], [74, 564], [162, 664], [278, 726]],
     sag: 0.36, jag: 14,
-    rampF: DRG.wing, brightT: 0.5, darkT: 0.05,
+    rampF: DRG.wing, brightT: 0.46, darkT: 0.04,
     clawRamp: DRG.dark,
   })
   // the curtain drowns toward the hall dark at its low tips
   wash(ctx, () => {
-    puff(ctx, 120, 700, 240, '#171126', 0.5, 190)
-    puff(ctx, 60, 560, 150, '#171126', 0.4)
+    puff(ctx, 120, 660, 240, '#171126', 0.5, 190)
+    puff(ctx, 62, 470, 150, '#171126', 0.42)
   })
-
-  // ---- near-black echo wing melting away to the right ---------------------
-  drapedWing(ctx, rnd, {
-    root: [690, 520],
-    carpal: [828, 382],
-    tips: [[950, 336], [972, 428], [942, 516]],
-    sag: 0.4, jag: 12,
-    rampF: DRG.wing, brightT: 0.3, darkT: 0.03, alpha: 0.95,
-    claws: false,
-  })
-  wash(ctx, () => puff(ctx, 950, 430, 170, '#140d1f', 0.55, 150))
 
   // ---- the tail -----------------------------------------------------------
-  // column off the rump → flattened plated coil top-left → tip flying right
+  // column off the rump → plated coil crowning the top-left → tip flying right
   const TAIL = [
-    [442, 648], [498, 560], [534, 468], [548, 376], [538, 296],
-    [496, 254], [420, 234], [318, 236], [220, 222], [148, 188],
-    [104, 138], [150, 90], [246, 68], [352, 76], [436, 108],
-    [492, 146], [504, 188],
-    [566, 164], [636, 154], [696, 174],
+    [452, 648], [502, 560], [532, 468], [544, 370], [534, 280],
+    [494, 224], [418, 198], [318, 192], [212, 176], [134, 138],
+    [94, 90], [140, 52], [242, 34], [350, 44], [434, 78],
+    [488, 120], [500, 164],
+    [566, 132], [640, 116], [706, 128],
   ]
   const N_TAIL = TAIL.length - 1
   const tailW = (t) => (t < 0.2 ? 74 - 90 * t : t < 0.78 ? 56 - 14 * ((t - 0.2) / 0.58) : 40 - 24 * ((t - 0.78) / 0.22))
@@ -702,7 +734,7 @@ export function makeDragonArt() {
   // tip first (deepest), with the flying fins + dangling streamers
   {
     const tip = TAIL[19]
-    for (const [ang, len, w] of [[-1.5, 66, 26], [-0.85, 84, 34], [-0.2, 96, 40], [0.5, 78, 32]]) {
+    for (const [ang, len, w] of [[-1.35, 62, 24], [-0.7, 82, 32], [-0.1, 94, 38], [0.55, 74, 30]]) {
       const p1 = [tip[0] + Math.cos(ang) * len, tip[1] + Math.sin(ang) * len]
       const mid = [tip[0] + Math.cos(ang + 0.45) * len * 0.6, tip[1] + Math.sin(ang + 0.45) * len * 0.6]
       const fin = spline([[tip[0], tip[1] + 3], [p1[0], p1[1]], [mid[0], mid[1]]], true)
@@ -713,26 +745,26 @@ export function makeDragonArt() {
         puff(ctx, mid[0], mid[1], w, DRG.wing(0.5), 0.3)
       })
     }
-    for (const [sx, sy, ex, ey] of [[684, 202, 656, 372], [712, 206, 728, 326]]) {
+    for (const [sx, sy, ex, ey] of [[694, 156, 668, 320], [722, 160, 736, 272]]) {
       strand(ctx, [[sx, sy], [(sx + ex) / 2 + 14, (sy + ey) / 2], [ex, ey]], 5, 0.6, DRG.wing(0.12, 0.85))
     }
     paintPlatedTube(slice(16, 19), null, false)
   }
   // dark ragged under-fins hanging off the loop's entry stretch
-  for (const [bx, by, ang, len, w] of [[468, 248, 1.65, 70, 30], [414, 244, 1.9, 56, 24]]) {
+  for (const [bx, by, ang, len, w] of [[500, 320, 1.7, 58, 26], [452, 284, 1.95, 48, 22]]) {
     const p1 = [bx + Math.cos(ang) * len, by + Math.sin(ang) * len]
     const fin = spline([[bx - w * 0.4, by], [bx + w * 0.5, by + 6], [p1[0] + 6, p1[1] - 8], [p1[0], p1[1]], [p1[0] - 10, p1[1] - 14]], true)
     ctx.fillStyle = lin(ctx, bx, by, p1[0], p1[1], [[0, DRG.wing(0.26)], [1, DRG.wing(0.05)]])
     ctx.fill(fin)
   }
   // the coil — hooks point out from the loop centre
-  paintPlatedTube(slice(5, 16), [300, 154])
+  paintPlatedTube(slice(5, 16), [300, 118])
 
   // ---- rising tail base over the wing (cream fur → olive plates) ----------
   {
     const C = slice(0, 5)
-    ctx.fillStyle = lin(ctx, 466, 650, 552, 260, [
-      [0, DRG.hide(0.42)], [0.4, DRG.hide(0.52)], [0.72, DRG.olive(0.4)], [1, DRG.olive(0.3)],
+    ctx.fillStyle = lin(ctx, 470, 655, 548, 268, [
+      [0, DRG.hide(0.38)], [0.4, DRG.hide(0.48)], [0.72, DRG.olive(0.4)], [1, DRG.olive(0.3)],
     ])
     ctx.fill(C.shape)
     shadeIn(ctx, C.shape, () => {
@@ -740,13 +772,13 @@ export function makeDragonArt() {
         const w = tailW(tt * C.t1) * 0.5
         const b = lit(n[0], n[1])
         const col = tt < 0.5 ? DRG.hide : DRG.olive
-        puff(ctx, p[0] + n[0] * w * 0.45, p[1] + n[1] * w * 0.45, w * 1.15, col(0.22 + 0.46 * b), 0.32, w * 0.85)
-        puff(ctx, p[0] - n[0] * w * 0.5, p[1] - n[1] * w * 0.5, w, col(0.1), 0.36, w * 0.8)
+        puff(ctx, p[0] + n[0] * w * 0.45, p[1] + n[1] * w * 0.45, w * 1.15, col(0.2 + 0.44 * b), 0.32, w * 0.85)
+        puff(ctx, p[0] - n[0] * w * 0.5, p[1] - n[1] * w * 0.5, w, col(0.08), 0.4, w * 0.8)
       })
-      fur(ctx, rnd, C.shape, [408, 380, 600, 690], {
+      fur(ctx, rnd, C.shape, [410, 340, 600, 690], {
         count: 300,
-        angleAt: (x, y) => Math.atan2(-(x - 470), y - 690) + Math.PI / 2 + 0.3,
-        colAt: () => DRG.hide(0.3 + rnd() * 0.42),
+        angleAt: (x, y) => Math.atan2(-(x - 480), y - 690) + Math.PI / 2 + 0.3,
+        colAt: () => DRG.hide(0.26 + rnd() * 0.4),
         len: [8, 16], width: [1.2, 2.3], alpha: [0.12, 0.24],
       })
     })
@@ -755,117 +787,189 @@ export function makeDragonArt() {
     walk(C.spine, 40, (p, tg, n, tt) => {
       const w = tailW(tt * C.t1) * 0.5
       const ang = Math.atan2(n[1], n[0]) - 0.25
-      horn(ctx, p[0] + n[0] * w * 0.7, p[1] + n[1] * w * 0.7, ang, 30 + rnd() * 26, 13 + rnd() * 6, -0.5, DRG.amber, { tipCss: DRG.gold(0.72) })
+      horn(ctx, p[0] + n[0] * w * 0.7, p[1] + n[1] * w * 0.7, ang, 28 + rnd() * 24, 13 + rnd() * 6, -0.5, DRG.amber, { tipCss: DRG.gold(0.72) })
     })
   }
 
   // ---- legs first (the body drops over their hips) ------------------------
-  // dark raptor limbs, angled back, pale hooked talons (the frame04 read)
-  const leg = (hipX, hipY, kneeX, kneeY, footX, wTh, shade) => {
-    strand(ctx, [[hipX, hipY], [kneeX, kneeY], [kneeX + 8, (kneeY + GY) / 2 + 8], [footX, GY - 8]], wTh, wTh * 0.44, DRG.dark(0.14 + shade))
-    strand(ctx, [[hipX + 8, hipY + 4], [kneeX + 8, kneeY], [footX + 7, GY - 14]], wTh * 0.3, 2.4, DRG.dark(0.45 + shade, 0.75))
-    puff(ctx, kneeX, kneeY, wTh * 0.66, DRG.dark(0.55 + shade), 0.5, wTh * 0.48)
+  // short HEAVY digitigrade limbs: a cream muscle thigh, dark shank kicked
+  // back, pale hooked talons — mass, not sticks (the round-1 failure)
+  const leg = (o) => {
+    const { hip, knee, hock, footX, thighW, shankW, shade } = o
+    // thigh: filled haunch mass hip → knee
+    const thigh = spline([
+      [hip[0] - thighW * 0.52, hip[1] + 8], [hip[0] - thighW * 0.16, hip[1] - thighW * 0.36],
+      [hip[0] + thighW * 0.5, hip[1] - thighW * 0.1], [knee[0] + shankW * 0.7, knee[1] - 12],
+      [knee[0], knee[1] + shankW * 0.6], [hip[0] - thighW * 0.46, hip[1] + thighW * 0.52],
+    ], true)
+    ctx.fillStyle = lin(ctx, hip[0] + thighW * 0.4, hip[1] - 16, knee[0] - 6, knee[1] + 6, [
+      [0, DRG.hide(0.4 + shade)], [0.55, DRG.hide(0.24 + shade)], [1, DRG.belly(0.3)],
+    ])
+    ctx.fill(thigh)
+    shadeIn(ctx, thigh, () => {
+      strokeBand(ctx, rnd, [[hip[0] + thighW * 0.28, hip[1] - thighW * 0.08], [knee[0] + 10, knee[1] - 10]],
+        thighW * 0.5, DRG.hide, 0.42 + shade, 0.5, 3, 0.9)
+      strand(ctx, [[hip[0] - thighW * 0.3, hip[1] + 12], [knee[0] - shankW * 0.4, knee[1] - 4]],
+        thighW * 0.4, shankW, DRG.belly(0.2, 0.65))
+      puff(ctx, knee[0], knee[1] - 4, shankW * 1.1, DRG.hide(0.46 + shade), 0.4, shankW * 0.8)
+    })
+    // shank: dark, kicked back, then down to the toes
+    strand(ctx, [[knee[0], knee[1]], [hock[0], hock[1]], [footX - 2, GY - 16]], shankW, shankW * 0.5, DRG.dark(0.18 + shade))
+    strand(ctx, [[knee[0] + shankW * 0.28, knee[1] + 4], [hock[0] + shankW * 0.3, hock[1]], [footX + 5, GY - 18]],
+      shankW * 0.32, 2.4, DRG.dark(0.48 + shade, 0.78))
+    puff(ctx, hock[0], hock[1], shankW * 0.8, DRG.dark(0.55 + shade), 0.5, shankW * 0.55)
     // feathered cuff where the cream thigh meets the dark shank
-    for (let i = 0; i < 5; i++) {
-      const a = 1.9 + i * 0.22 + (rnd() - 0.5) * 0.15
-      strand(ctx, [[hipX + 6, hipY + 8], [hipX + 6 + Math.cos(a) * 20, hipY + 8 + Math.sin(a) * 20], [hipX + 4 + Math.cos(a + 0.3) * 36, hipY + 10 + Math.sin(a + 0.3) * 36]],
-        9, 0.8, DRG.hide(0.3 + shade * 1.2 + rnd() * 0.25, 0.9))
+    for (let i = 0; i < 6; i++) {
+      const a = 1.85 + i * 0.2 + (rnd() - 0.5) * 0.15
+      strand(ctx, [[knee[0] + 2, knee[1] - 6], [knee[0] + Math.cos(a) * 18, knee[1] - 4 + Math.sin(a) * 18],
+        [knee[0] + Math.cos(a + 0.3) * 34, knee[1] - 2 + Math.sin(a + 0.3) * 34]],
+        9, 0.8, DRG.hide(0.26 + shade + rnd() * 0.22, 0.9))
     }
     // foot pad
-    strand(ctx, [[footX - 12, GY - 10], [footX + 6, GY - 6], [footX + 24, GY - 6]], wTh * 0.62, wTh * 0.42, DRG.dark(0.2 + shade))
+    strand(ctx, [[footX - 14, GY - 11], [footX + 4, GY - 7], [footX + 22, GY - 7]], shankW * 0.66, shankW * 0.5, DRG.dark(0.22 + shade))
     // pale talons — the bright accent that reads at distance
-    for (const [dx, l, aa] of [[26, 25, 0.62], [11, 28, 0.8], [-4, 24, 1.0]]) {
-      horn(ctx, footX + dx, GY - 9, aa, l, 9.5, 0.55, DRG.tooth, { rootT: 0.3, midT: 0.6, tipT: 0.95 })
+    for (const [dx, l, aa] of [[24, 26, 0.6], [9, 30, 0.82], [-6, 26, 1.05]]) {
+      horn(ctx, footX + dx, GY - 10, aa, l, 10, 0.55, DRG.tooth, { rootT: 0.28, midT: 0.58, tipT: 0.95 })
     }
-    horn(ctx, footX - 17, GY - 12, 2.5, 16, 7, 0.3, DRG.tooth, { rootT: 0.25, midT: 0.5, tipT: 0.8 })
+    horn(ctx, footX - 19, GY - 13, 2.5, 16, 7, 0.3, DRG.tooth, { rootT: 0.25, midT: 0.5, tipT: 0.8 })
     // warm torch kiss down the shin front
-    strand(ctx, [[kneeX + 10, kneeY + 6], [kneeX + 12, (kneeY + GY) / 2], [footX + 12, GY - 12]], 3.5, 1.2, 'rgba(231,160,106,0.4)')
+    strand(ctx, [[knee[0] + shankW * 0.3, knee[1] + 8], [hock[0] + shankW * 0.34, hock[1] + 4], [footX + 10, GY - 14]],
+      3.5, 1.2, 'rgba(231,160,106,0.42)')
   }
-  leg(520, 700, 496, 766, 484, 27, -0.04)          // hind leg, deep shadow
-  leg(676, 704, 646, 770, 632, 30, 0)              // far foreleg
+  leg({ hip: [500, 650], knee: [478, 726], hock: [500, 766], footX: 490, thighW: 64, shankW: 30, shade: -0.06 }) // hind
+  leg({ hip: [646, 600], knee: [620, 716], hock: [640, 778], footX: 632, thighW: 54, shankW: 28, shade: -0.02 }) // far fore
   // near foreleg painted after the body
 
-  // ---- the body: one front-loaded cream mass ------------------------------
+  // ---- near-black echo sail melting behind the shoulder (painted BEFORE
+  // the body so the body's right flank stays in front of it) ---------------
+  drapedWing(ctx, rnd, {
+    root: [716, 360],
+    carpal: [796, 240],
+    tips: [[874, 282], [900, 388], [864, 486]],
+    sag: 0.4, jag: 12,
+    rampF: DRG.wing, brightT: 0.26, darkT: 0.03, alpha: 0.92,
+    claws: false,
+  })
+  wash(ctx, () => puff(ctx, 886, 396, 120, '#140d1f', 0.5, 108))
+
+  // ---- the body: rump low left, back climbing to the 3.4 m shoulder hump --
   const bodyPts = [
-    [770, 552], [822, 585], [850, 630], [854, 678], [832, 722],   // breast front
-    [782, 748], [716, 758], [640, 756], [560, 742], [492, 716],   // belly line
-    [444, 678], [420, 634], [424, 592], [458, 560], [520, 538],   // rump → back
-    [600, 524], [684, 524], [736, 534],
+    [788, 462], [836, 514], [864, 580], [874, 646], [858, 698], [820, 726],  // breast front
+    [760, 742], [686, 746], [606, 740], [532, 722], [480, 694],              // belly line
+    [440, 650], [422, 602], [426, 550], [452, 500], [492, 452],              // rump
+    [540, 408], [594, 366], [650, 336], [706, 322], [748, 330], [774, 368], [782, 420], // ridge → hump → neck dip
   ]
   const body = spline(bodyPts, true)
+  const bodyLitT = (x, y) => 0.2 + 0.52 * lit((x - 650) / 220, (y - 560) / 160)
   {
-    ctx.fillStyle = lin(ctx, 810, 560, 440, 740, [
-      [0, DRG.hide(0.74)], [0.4, DRG.hide(0.54)], [0.75, DRG.hide(0.34)], [1, DRG.hide(0.2)],
+    // underpaint: one broad diagonal — everything painterly rides ON this
+    ctx.fillStyle = lin(ctx, 830, 460, 460, 720, [
+      [0, DRG.hide(0.55)], [0.45, DRG.hide(0.38)], [0.75, DRG.hide(0.24)], [1, DRG.hide(0.14)],
     ])
     ctx.fill(body)
     shadeIn(ctx, body, () => {
-      // volumes: bright breast, mid back, dark rump + under-shadow
-      puff(ctx, 792, 626, 128, DRG.hide(0.92), 0.42, 108, -0.35)
-      puff(ctx, 690, 566, 95, DRG.hide(0.76), 0.3, 60, 0.1)
-      puff(ctx, 466, 660, 124, DRG.hide(0.1), 0.55, 98)
-      puff(ctx, 620, 732, 170, DRG.hide(0.07), 0.55, 60)
-      puff(ctx, 540, 580, 70, DRG.hide(0.4), 0.3)
-      puff(ctx, 688, 598, 62, DRG.hide(0.16), 0.32, 46, 0.5)   // wing-root shade
-      // dense fur coat, brighter strokes clustering up-right
-      fur(ctx, rnd, body, [420, 524, 856, 760], {
-        count: 1700,
-        angleAt: (x, y) => Math.atan2(y - 645, x - 640) + Math.PI / 2 + 0.55,
-        colAt: (x, y) => {
-          const nx = (x - 640) / 210, ny = (y - 645) / 118
-          return DRG.hide(0.24 + 0.56 * lit(nx, ny) + (rnd() - 0.5) * 0.3)
-        },
-        len: [8, 19], width: [1.4, 2.9], alpha: [0.1, 0.26], curl: 0.8,
+      // planar bristle bands — stepped values following the form, NOT airbrush
+      strokeBand(ctx, rnd, [[498, 472], [560, 432], [618, 392], [672, 356], [724, 336]], 30, DRG.hide, 0.64, 0.5, 4, 1) // back ridge plane
+      strokeBand(ctx, rnd, [[652, 470], [700, 424], [744, 390]], 58, DRG.hide, 0.54, 0.45, 4, 1)  // shoulder ball
+      strokeBand(ctx, rnd, [[640, 522], [700, 476], [754, 432]], 48, DRG.hide, 0.44, 0.4, 3, 1)
+      strokeBand(ctx, rnd, [[492, 540], [568, 560], [658, 568], [744, 546], [790, 502]], 54, DRG.hide, 0.42, 0.4, 4, 1) // mid flank
+      strokeBand(ctx, rnd, [[470, 630], [558, 674], [658, 698], [758, 690], [828, 660]], 48, DRG.hide, 0.28, 0.4, 4, 1) // lower flank
+      strokeBand(ctx, rnd, [[812, 516], [846, 582], [858, 646]], 44, DRG.hide, 0.6, 0.45, 3, 1)   // breast plane
+      strand(ctx, [[798, 494], [832, 546], [850, 604], [854, 652]], 20, 9, DRG.hide(0.8, 0.5))     // breast lit crest
+      // fur coat over the bands, value keyed to the torch
+      fur(ctx, rnd, body, [420, 322, 878, 750], {
+        count: 1500,
+        angleAt: (x, y) => Math.atan2(y - 520, x - 660) + Math.PI / 2 + 0.55,
+        colAt: (x, y) => DRG.hide(Math.max(0.06, bodyLitT(x, y) + (rnd() - 0.5) * 0.26)),
+        len: [7, 17], width: [1.3, 2.7], alpha: [0.08, 0.2], curl: 0.8,
       })
-      // belly plates: broad low-contrast arcs hugging the underside
-      const arcPts = [[500, 718], [566, 742], [644, 752], [722, 752], [794, 734], [836, 704]]
+      // HARD core shadow — the terminator. Crisp clipped fill, hue-bearing
+      // belly darks; a narrow half-tone seam melts its top edge.
+      const term = [[438, 596], [496, 652], [570, 692], [664, 712], [758, 702], [826, 674], [874, 644]]
+      const shadowPath = spline([...term, [858, 700], [820, 728], [760, 744], [686, 748], [606, 742], [532, 724], [478, 694], [438, 648]], true)
+      ctx.save()
+      ctx.globalAlpha = 0.78
+      ctx.fillStyle = lin(ctx, 650, 596, 610, 760, [
+        [0, DRG.belly(0.5)], [0.45, DRG.belly(0.28)], [1, DRG.belly(0.1)],
+      ])
+      ctx.fill(shadowPath)
+      ctx.restore()
+      strand(ctx, term, 8, 3, DRG.hide(0.3, 0.5))
+      strand(ctx, term.map((p) => [p[0], p[1] + 9]), 6, 2, DRG.belly(0.42, 0.45))
+      // belly plates: broad low-contrast arcs inside the shadow
+      const arcPts = [[492, 700], [556, 724], [634, 738], [712, 738], [786, 722], [832, 688]]
       for (let i = arcPts.length - 2; i >= 0; i--) {
         const a = arcPts[i], b = arcPts[i + 1]
         const cxm = (a[0] + b[0]) / 2, cym = (a[1] + b[1]) / 2
-        const seg = spline([[a[0], a[1] - 14], [cxm, cym - 20], [b[0], b[1] - 14], [cxm, cym + 6]], true)
+        const seg = spline([[a[0], a[1] - 13], [cxm, cym - 19], [b[0], b[1] - 13], [cxm, cym + 6]], true)
         ctx.save()
-        ctx.globalAlpha = 0.45
-        ctx.fillStyle = DRG.belly(0.32 + 0.1 * i)
+        ctx.globalAlpha = 0.5
+        ctx.fillStyle = DRG.belly(0.3 + 0.08 * i)
         ctx.fill(seg)
         ctx.restore()
         shadeIn(ctx, seg, () => {
-          strand(ctx, [[a[0], a[1] - 12], [cxm, cym - 17], [b[0], b[1] - 12]], 3, 2, DRG.belly(0.68, 0.3))
-          puff(ctx, cxm, cym + 2, 18, DRG.belly(0.04), 0.35, 9)
+          strand(ctx, [[a[0], a[1] - 11], [cxm, cym - 16], [b[0], b[1] - 11]], 3, 2, DRG.belly(0.62, 0.35))
+          puff(ctx, cxm, cym + 2, 17, DRG.belly(0.05), 0.35, 8)
         })
       }
-      // warm torch bounce climbing the breast
-      puff(ctx, 832, 636, 95, 'rgba(231,160,106,1)', 0.22, 125, 0.4)
+      // ambient occlusion pools — focused, deep, between the limbs
+      puff(ctx, 504, 648, 44, DRG.belly(0.06), 0.6, 32)    // hind-thigh join
+      puff(ctx, 644, 592, 38, DRG.belly(0.08), 0.55, 28)   // far-fore join
+      puff(ctx, 700, 736, 84, DRG.belly(0.05), 0.5, 26)    // under-chest trench
+      puff(ctx, 462, 630, 38, DRG.belly(0.08), 0.5)        // tail-base pocket
+      puff(ctx, 452, 522, 60, DRG.hide(0.08), 0.4)         // rump falls to hall dark
+      // lit back-ridge crest + warm torch bounce climbing the breast
+      strand(ctx, [[500, 466], [566, 424], [634, 384], [696, 348], [740, 334]], 6, 2.5, DRG.hide(0.88, 0.7))
+      puff(ctx, 836, 620, 88, 'rgba(231,160,106,1)', 0.2, 120, 0.4)
     })
     // fluffy rim so the silhouette reads furred, not vector-smooth
     fluffEdge(ctx, rnd, [...bodyPts, bodyPts[0]], 17, {
-      size: [7, 16],
+      size: [7, 15],
       leanFn: (p, n) => Math.atan2(n[1], n[0]) + 0.5,
-      colFn: (p) => DRG.hide(0.18 + 0.58 * lit((p[0] - 640) / 210, (p[1] - 645) / 118) + (rnd() - 0.5) * 0.15, 0.95),
+      colFn: (p) => DRG.hide(Math.max(0.08, bodyLitT(p[0], p[1]) + (rnd() - 0.5) * 0.14), 0.95),
     })
   }
 
-  // ---- near wing: pleated sail raised over the shoulder -------------------
+  // ---- amber back-blades raking off the ridge, each rooted in the hide ----
+  {
+    const blades = [
+      [692, 330, 96, 24], [652, 340, 70, 18], [608, 358, 98, 25],
+      [564, 384, 62, 16], [524, 414, 82, 20], [490, 452, 54, 14],
+    ]
+    for (const [bx, by, l, w] of blades) {
+      rootedHorn(ctx, rnd, bx, by, -2.42 + (rnd() - 0.5) * 0.12, l, w, -0.34, DRG.amber, DRG.hide, 0.5,
+        { rootT: 0.14, midT: 0.55, tipT: 0.92, tipCss: rnd() < 0.5 ? DRG.gold(0.75) : null })
+      if (rnd() < 0.6) horn(ctx, bx + 12, by + 12, -2.15, l * 0.4, w * 0.55, -0.3, DRG.amber, {})
+    }
+  }
+
+  // ---- near wing: the RAISED sail — roots on the hump, crest spikes to the
+  // top of the silhouette (§1 wing-crest anchor, left of the feet) ----------
   drapedWing(ctx, rnd, {
-    root: [648, 552],
-    carpal: [762, 322],
-    spike: [800, 238],
-    tips: [[866, 296], [908, 372], [922, 462], [886, 548]],
+    root: [668, 352],
+    carpal: [700, 150],
+    spike: [662, 52],
+    tips: [[796, 112], [884, 208], [932, 342], [916, 472]],
     sag: 0.42, jag: 12,
-    rampF: DRG.wing, brightT: 0.68, darkT: 0.08,
+    rampF: DRG.wing, brightT: 0.7, darkT: 0.07,
     clawRamp: DRG.dark,
     sheen: () => {
-      puff(ctx, 806, 388, 64, DRG.wing(0.9), 0.4, 44, -0.85)
-      puff(ctx, 768, 472, 50, DRG.wing(0.74), 0.28, 34, -0.6)
-      // hot torch line down the leading fold
-      strand(ctx, [[770, 330], [800, 258], [806, 246]], 4, 1.5, 'rgba(255,190,140,0.5)')
+      puff(ctx, 756, 232, 64, DRG.wing(0.92), 0.4, 44, -1.05)
+      puff(ctx, 798, 330, 56, DRG.wing(0.74), 0.28, 40, -0.85)
+      // hot torch line up the leading fold toward the crest
+      strand(ctx, [[684, 300], [698, 190], [666, 78]], 4.5, 1.5, 'rgba(255,190,140,0.55)')
     },
   })
+  // AO trench where the sail leaves the shoulder — the wing sits IN the body
+  puff(ctx, 672, 366, 42, DRG.belly(0.07), 0.55, 26)
+  puff(ctx, 700, 342, 30, DRG.belly(0.12), 0.4, 20)
 
   // ---- near foreleg over the body -----------------------------------------
-  leg(756, 690, 736, 766, 722, 33, 0.12)
+  leg({ hip: [784, 590], knee: [774, 700], hock: [764, 776], footX: 756, thighW: 60, shankW: 31, shade: 0.08 })
 
   // ---- green rump ruff ----------------------------------------------------
   for (let i = 0; i < 14; i++) {
-    const bx = 424 + rnd() * 62, by = 586 + rnd() * 72
+    const bx = 426 + rnd() * 58, by = 548 + rnd() * 84
     const ang = -2.5 + (rnd() - 0.5) * 0.7
     const l = 26 + rnd() * 30
     strand(ctx, [
@@ -875,192 +979,217 @@ export function makeDragonArt() {
     ], 9, 0.8, DRG.mane(0.12 + rnd() * 0.5, 0.9))
   }
 
-  // ---- THE HEAD -----------------------------------------------------------
+  // ---- THE NECK — the S-curve dive from the hump to the eye-line ----------
   {
-    // big amber flame-blades raking back along the ridge (behind the skull)
-    const blades = [
-      [700, 560, 88, 22], [664, 556, 64, 16], [624, 552, 96, 24],
-      [584, 552, 58, 15], [548, 556, 78, 20],
-    ]
-    for (const [bx, by, l, w] of blades) {
-      horn(ctx, bx, by, -2.42 + (rnd() - 0.5) * 0.12, l, w, -0.34, DRG.amber, { rootT: 0.14, midT: 0.55, tipT: 0.92, tipCss: rnd() < 0.5 ? DRG.gold(0.75) : null })
-      if (rnd() < 0.6) horn(ctx, bx + 14, by + 10, -2.15, l * 0.42, w * 0.55, -0.3, DRG.amber, {})
+    const NK = [[712, 338], [762, 322], [810, 342], [838, 390], [848, 452], [842, 516], [830, 552]]
+    const nW = (t) => 62 - 18 * t
+    const neckShape = ribbon(NK, (t) => nW(t) / 2)
+    const nn = normals(NK)
+    const offPts = (s) => NK.map((p, i) => {
+      const w = nW(i / (NK.length - 1)) * 0.5
+      return [p[0] + nn[i][0] * w * s, p[1] + nn[i][1] * w * s]
+    })
+    ctx.fillStyle = lin(ctx, 880, 400, 750, 520, [[0, DRG.hide(0.62)], [0.5, DRG.hide(0.4)], [1, DRG.hide(0.2)]])
+    ctx.fill(neckShape)
+    shadeIn(ctx, neckShape, () => {
+      strokeBand(ctx, rnd, offPts(-0.55), 22, DRG.hide, 0.62, 0.5, 3, 0.9)   // lit ridge plane
+      strokeBand(ctx, rnd, offPts(0.05), 26, DRG.hide, 0.42, 0.45, 3, 1)     // mid plane
+      strand(ctx, offPts(0.34), 7, 3, DRG.hide(0.3, 0.5))                    // half-tone seam
+      strand(ctx, offPts(0.62), 22, 10, DRG.belly(0.22, 0.8))                // crisp throat core shadow
+      strand(ctx, offPts(0.85), 13, 5, DRG.belly(0.09, 0.7))
+      // overlapping scale rows crossing the mid plane
+      walk(NK, 19, (p, tg, n, tt) => {
+        const w = nW(tt) * 0.5
+        for (const s of [-0.22, 0.16]) {
+          const cxp = p[0] + n[0] * w * s, cyp = p[1] + n[1] * w * s
+          strand(ctx, [
+            [cxp - tg[0] * 9 + n[0] * 4, cyp - tg[1] * 9 + n[1] * 4],
+            [cxp + n[0] * 9, cyp + n[1] * 9],
+            [cxp + tg[0] * 9 + n[0] * 4, cyp + tg[1] * 9 + n[1] * 4],
+          ], 3.5, 1.5, DRG.hide(0.52 - s * 0.9 + (rnd() - 0.5) * 0.12, 0.5))
+        }
+      })
+      strand(ctx, offPts(-0.8), 5, 2, DRG.hide(0.86, 0.7))                   // hot ridge line
+    })
+    // green mane streaming back-up off the ridge — dark blade + bright blade
+    walk(NK, 14, (p, tg, n, tt) => {
+      if (tt > 0.86 || rnd() < 0.12) return
+      const w = nW(tt) * 0.5
+      const bx = p[0] - n[0] * w * 0.92, by = p[1] - n[1] * w * 0.92
+      const ang = Math.atan2(-tg[1], -tg[0]) - 0.38 + (rnd() - 0.5) * 0.3
+      const l = 24 + rnd() * 20
+      strand(ctx, [[bx + 4, by + 4], [bx + Math.cos(ang) * l * 0.55 + 4, by + Math.sin(ang) * l * 0.55 + 3],
+        [bx + Math.cos(ang - 0.4) * l + 3, by + Math.sin(ang - 0.4) * l + 2]], 8, 0.8, DRG.mane(0.16 + rnd() * 0.14, 0.95))
+      strand(ctx, [[bx, by], [bx + Math.cos(ang) * l * 0.55, by + Math.sin(ang) * l * 0.55],
+        [bx + Math.cos(ang - 0.4) * l, by + Math.sin(ang - 0.4) * l]], 5.5, 0.7, DRG.mane(0.5 + rnd() * 0.4, 0.95))
+    })
+    // amber ridge spikes, rooted, shrinking toward the head
+    for (const [tt, l, w] of [[0.16, 46, 15], [0.44, 38, 13], [0.72, 28, 10]]) {
+      const a = along(NK, tt)
+      const wr = nW(tt) * 0.5
+      rootedHorn(ctx, rnd, a.x - a.nx * wr * 0.8, a.y - a.ny * wr * 0.8, -2.5 + tt * 0.5, l, w, -0.35, DRG.amber, DRG.hide, 0.55,
+        { tipCss: rnd() < 0.5 ? DRG.gold(0.72) : null })
     }
-    // small amber under-tufts at the shoulder
-    for (let i = 0; i < 4; i++) {
-      horn(ctx, 596 + i * 26 + (rnd() - 0.5) * 8, 584 + (rnd() - 0.5) * 8, -2.7 + rnd() * 0.3, 22 + rnd() * 14, 9, -0.3, DRG.amber, {})
-    }
+    // AO where the throat drops onto the chest
+    puff(ctx, 800, 474, 36, DRG.belly(0.08), 0.5, 26)
+  }
 
-    // green mohawk crest over the crown
-    for (let i = 0; i < 10; i++) {
-      const t = i / 9
-      const bx = 812 - t * 100 + (rnd() - 0.5) * 6, by = 552 - Math.sin(t * Math.PI) * 8 + (rnd() - 0.5) * 5
-      const ang = -1.95 - t * 0.5 + (rnd() - 0.5) * 0.18
-      const l = 24 + 26 * Math.sin(Math.min(1, t * 1.3) * Math.PI) + rnd() * 8
-      // dark teal back blade + bright green front blade
-      strand(ctx, [
-        [bx + 4, by + 4], [bx + Math.cos(ang) * l * 0.55 + 4, by + Math.sin(ang) * l * 0.55 + 3],
-        [bx + Math.cos(ang - 0.45) * l + 3, by + Math.sin(ang - 0.45) * l + 2],
-      ], 9, 0.8, DRG.mane(0.16 + rnd() * 0.14, 0.95))
-      strand(ctx, [
-        [bx, by], [bx + Math.cos(ang) * l * 0.55, by + Math.sin(ang) * l * 0.55],
-        [bx + Math.cos(ang - 0.45) * l, by + Math.sin(ang - 0.45) * l],
-      ], 6.5, 0.7, DRG.mane(0.55 + rnd() * 0.35, 0.95))
+  // ---- THE HEAD — low wedge at the 1.4 m eye-line, maw gaping red ---------
+  {
+    // green mane roots + amber crown horns BEHIND the skull
+    for (let i = 0; i < 9; i++) {
+      const t = i / 8
+      const bx = 836 - t * 52, by = 556 + t * 12 + (rnd() - 0.5) * 5
+      const ang = -2.35 - t * 0.4 + (rnd() - 0.5) * 0.2
+      const l = 22 + rnd() * 22
+      strand(ctx, [[bx + 4, by + 4], [bx + Math.cos(ang) * l * 0.55 + 4, by + Math.sin(ang) * l * 0.55 + 3],
+        [bx + Math.cos(ang - 0.45) * l + 3, by + Math.sin(ang - 0.45) * l + 2]], 8, 0.8, DRG.mane(0.15 + rnd() * 0.14, 0.95))
+      strand(ctx, [[bx, by], [bx + Math.cos(ang) * l * 0.55, by + Math.sin(ang) * l * 0.55],
+        [bx + Math.cos(ang - 0.45) * l, by + Math.sin(ang - 0.45) * l]], 5.5, 0.7, DRG.mane(0.5 + rnd() * 0.38, 0.95))
     }
+    horn(ctx, 802, 566, -2.55, 78, 20, -0.3, DRG.amber, { rootT: 0.14, midT: 0.55, tipT: 0.92, tipCss: DRG.gold(0.75) })
+    horn(ctx, 834, 554, -2.4, 92, 22, -0.28, DRG.amber, { rootT: 0.14, midT: 0.55, tipT: 0.92 })
+    horn(ctx, 866, 552, -2.28, 44, 13, -0.26, DRG.amber, {})
 
-    // cream skull dome riding the breast
-    const face = spline([
-      [712, 568], [762, 546], [812, 546], [846, 560], [862, 584],
-      [858, 612], [840, 634], [812, 650], [776, 656], [740, 644], [716, 612],
+    // cream skull wedge — brow high over the eye, tapering forward
+    const skull = spline([
+      [770, 594], [796, 564], [840, 550], [890, 554], [928, 572],
+      [950, 594], [956, 616], [944, 632], [906, 640], [860, 642],
+      [814, 634], [784, 616],
     ], true)
-    ctx.fillStyle = lin(ctx, 786, 548, 858, 648, [[0, DRG.hide(0.9)], [0.55, DRG.hide(0.72)], [1, DRG.hide(0.5)]])
-    ctx.fill(face)
-    shadeIn(ctx, face, () => {
-      puff(ctx, 826, 572, 40, DRG.hide(0.98), 0.5, 28, -0.3)
-      puff(ctx, 740, 636, 44, DRG.hide(0.3), 0.44)
-      puff(ctx, 816, 638, 28, DRG.hide(0.4), 0.3)
-      fur(ctx, rnd, face, [710, 544, 864, 658], {
-        count: 220, angleAt: () => 0.3, colAt: () => DRG.hide(0.48 + rnd() * 0.42),
-        len: [5, 11], width: [1, 2], alpha: [0.12, 0.22],
+    ctx.fillStyle = lin(ctx, 900, 560, 790, 640, [[0, DRG.hide(0.78)], [0.55, DRG.hide(0.55)], [1, DRG.hide(0.32)]])
+    ctx.fill(skull)
+    shadeIn(ctx, skull, () => {
+      strokeBand(ctx, rnd, [[800, 578], [846, 562], [898, 564]], 18, DRG.hide, 0.7, 0.5, 3, 0.9)
+      strand(ctx, [[800, 570], [848, 556], [900, 560]], 7, 3, DRG.hide(0.92, 0.75))
+      // crisp cheek core shadow toward the jaw hinge
+      const cheek = spline([[770, 594], [784, 616], [814, 634], [858, 640], [846, 612], [806, 596]], true)
+      ctx.save()
+      ctx.globalAlpha = 0.6
+      ctx.fillStyle = DRG.belly(0.26)
+      ctx.fill(cheek)
+      ctx.restore()
+      fur(ctx, rnd, skull, [768, 548, 958, 644], {
+        count: 170, angleAt: () => 0.25, colAt: () => DRG.hide(0.4 + rnd() * 0.4),
+        len: [5, 10], width: [1, 2], alpha: [0.1, 0.2],
       })
     })
-    fluffEdge(ctx, rnd, [[712, 568], [716, 612], [740, 644], [776, 656]], 13, {
-      size: [6, 11],
-      leanFn: () => 2.6,
-      colFn: () => DRG.hide(0.42 + rnd() * 0.3, 0.9),
-    })
-
-    // ---- aubergine hook-beak — shallow wedge FORWARD of the eye -----------
-    const snout = spline([
-      [830, 574], [884, 564], [930, 574], [960, 594], [972, 618],
-      [966, 644], [948, 668], [934, 670], [928, 654], [900, 642],
-      [864, 634], [838, 622], [824, 598],
+    // plum muzzle mask over the front third — the frame04 dark snout
+    const muzzle = spline([
+      [878, 558], [928, 572], [950, 594], [956, 616], [944, 632],
+      [906, 640], [868, 640], [856, 608], [862, 576],
     ], true)
-    ctx.fillStyle = lin(ctx, 876, 572, 956, 664, [[0, DRG.plum(0.56)], [0.5, DRG.plum(0.38)], [1, DRG.plum(0.15)]])
-    ctx.fill(snout)
-    shadeIn(ctx, snout, () => {
-      // glossy lavender spine along the top curve
-      strand(ctx, [[842, 580], [898, 572], [944, 590], [964, 616]], 7, 2.5, DRG.plum(0.92, 0.8))
-      strand(ctx, [[852, 588], [904, 582], [942, 598]], 3, 1, 'rgba(236,214,232,0.5)')
-      // hook shadow + tip depth
-      puff(ctx, 950, 654, 26, DRG.plum(0.05), 0.6, 20)
-      puff(ctx, 906, 636, 36, DRG.plum(0.1), 0.4)
+    ctx.fillStyle = lin(ctx, 898, 570, 950, 634, [[0, DRG.plum(0.5)], [0.5, DRG.plum(0.3)], [1, DRG.plum(0.12)]])
+    ctx.fill(muzzle)
+    shadeIn(ctx, muzzle, () => {
+      strand(ctx, [[872, 570], [916, 572], [946, 592]], 6, 2.5, DRG.plum(0.85, 0.8))   // glossy bridge
+      strand(ctx, [[866, 590], [906, 596], [938, 612]], 4, 2, DRG.plum(0.6, 0.5))
+      puff(ctx, 946, 626, 20, DRG.plum(0.06), 0.55, 15)
       // nostril slit
       ctx.fillStyle = DRG.plum(0.04, 0.95)
       ctx.beginPath()
-      ctx.ellipse(938, 610, 8, 3.6, 0.5, 0, Math.PI * 2)
+      ctx.ellipse(930, 596, 7.5, 3.4, 0.45, 0, Math.PI * 2)
       ctx.fill()
-      puff(ctx, 934, 606, 7, DRG.plum(0.85), 0.5)
-      // wrinkles where beak meets brow
-      strand(ctx, [[838, 590], [850, 602], [856, 616]], 2.5, 1, DRG.plum(0.14, 0.5))
-      strand(ctx, [[852, 586], [864, 598], [870, 612]], 2.5, 1, DRG.plum(0.14, 0.4))
+      puff(ctx, 926, 592, 6, DRG.plum(0.8), 0.5)
+      strand(ctx, [[864, 580], [874, 596], [878, 612]], 2.5, 1, DRG.plum(0.16, 0.5))
     })
-    // soften the beak→brow seam into the cream
-    puff(ctx, 830, 596, 20, DRG.hide(0.78), 0.3, 15, 0.4)
+    puff(ctx, 862, 586, 15, DRG.hide(0.72), 0.28, 11, 0.4)   // soften the mask seam
 
-    // ---- maw gaping below the beak, corner far back under the eye ---------
+    // ---- the maw — GAPING red, #a42f28 → #f0836f --------------------------
     const maw = spline([
-      [806, 646], [862, 656], [912, 668], [938, 682], [912, 706],
-      [868, 720], [828, 712], [800, 678],
+      [804, 646], [854, 648], [904, 644], [942, 632], [950, 644],
+      [932, 670], [894, 690], [850, 698], [814, 688], [796, 666],
     ], true)
-    ctx.fillStyle = lin(ctx, 862, 656, 856, 722, [[0, DRG.maw(0.1)], [0.5, DRG.maw(0.3)], [1, DRG.maw(0.12)]])
+    ctx.fillStyle = lin(ctx, 870, 638, 860, 700, [[0, DRG.maw(0.78)], [0.45, DRG.maw(0.6)], [1, DRG.maw(0.38)]])
     ctx.fill(maw)
     shadeIn(ctx, maw, () => {
-      puff(ctx, 818, 680, 30, DRG.maw(0.03), 0.7)
-      puff(ctx, 898, 690, 22, DRG.maw(0.45), 0.4)
+      puff(ctx, 812, 670, 26, DRG.maw(0.1), 0.75)                             // throat falls dark
+      strand(ctx, [[808, 650], [868, 648], [930, 638]], 8, 4, DRG.maw(0.3, 0.7))
+      puff(ctx, 900, 668, 16, DRG.maw(0.95), 0.4)                             // wet glisten
     })
+    // upper lip band over the maw's top edge
+    strand(ctx, [[798, 644], [854, 646], [906, 642], [948, 630]], 9, 5, DRG.plum(0.14, 0.95))
+    // LAYERED fang rows: dark back row first, bright front row over it
+    for (const [x, y, l] of [[830, 650, 10], [854, 652, 12], [878, 650, 10], [900, 646, 12]]) {
+      horn(ctx, x, y, 1.66 + (rnd() - 0.5) * 0.12, l, l * 0.42, 0.1, DRG.tooth, { rootT: 0.15, midT: 0.4, tipT: 0.62 })
+    }
+    for (const [x, y, l] of [[818, 650, 13], [842, 653, 17], [866, 653, 12], [888, 650, 20], [910, 646, 14], [930, 640, 24], [944, 634, 18]]) {
+      puff(ctx, x, y + 1, l * 0.22, DRG.maw(0.2), 0.5)                        // gum socket
+      horn(ctx, x, y, 1.6 + (rnd() - 0.5) * 0.14, l, l * 0.44, 0.14, DRG.tooth, { rootT: 0.3, midT: 0.62, tipT: 0.96 })
+    }
 
-    // ---- slim plum lower-jaw jutting forward-down -------------------------
+    // ---- plum lower jaw ---------------------------------------------------
     const jaw = spline([
-      [800, 668], [842, 686], [888, 704], [922, 722], [938, 738],
-      [930, 752], [904, 750], [862, 734], [824, 708], [796, 682],
+      [804, 680], [844, 698], [888, 710], [926, 716], [946, 728],
+      [940, 746], [910, 750], [866, 742], [828, 722], [804, 698],
     ], true)
-    ctx.fillStyle = lin(ctx, 826, 690, 932, 748, [[0, DRG.plum(0.46)], [0.6, DRG.plum(0.26)], [1, DRG.plum(0.1)]])
+    ctx.fillStyle = lin(ctx, 830, 698, 938, 746, [[0, DRG.plum(0.5)], [0.6, DRG.plum(0.28)], [1, DRG.plum(0.1)]])
     ctx.fill(jaw)
     shadeIn(ctx, jaw, () => {
-      strand(ctx, [[806, 678], [868, 704], [930, 740]], 5.5, 2.5, DRG.plum(0.76, 0.6))
-      puff(ctx, 834, 708, 32, DRG.plum(0.05), 0.5)
-      // chin corner highlight
-      puff(ctx, 924, 740, 11, DRG.plum(0.68), 0.4)
+      strand(ctx, [[810, 688], [868, 706], [932, 722]], 6, 2.5, DRG.plum(0.72, 0.6))
+      strand(ctx, [[812, 704], [864, 730], [922, 744]], 12, 6, DRG.plum(0.06, 0.6))   // under-jaw core shadow
+      puff(ctx, 934, 736, 10, DRG.plum(0.62), 0.4)                                    // chin catch-light
     })
-    // lower fangs rising off the jaw's front lip
-    for (const [x, y, ang, l] of [[912, 714, -1.9, 15], [892, 702, -1.8, 12], [872, 692, -1.75, 10], [926, 728, -2.0, 12]]) {
-      horn(ctx, x, y, ang, l, 6.5, 0.12, DRG.tooth, {})
+    // lower fang row rising off the lip
+    for (const [x, y, l] of [[832, 694, 12], [856, 702, 16], [882, 708, 11], [906, 712, 15], [928, 716, 12]]) {
+      horn(ctx, x, y, -1.55 + (rnd() - 0.5) * 0.14, l, l * 0.42, 0.12, DRG.tooth, { rootT: 0.28, midT: 0.58, tipT: 0.94 })
     }
+    // tongue lolling out over the lip, then one fang re-crossing it
+    const tPts = [[824, 678], [862, 692], [898, 704], [920, 718], [930, 734]]
+    strand(ctx, tPts, 14, 5, DRG.tongue(0.4))
+    strand(ctx, tPts.map((p) => [p[0] + 2, p[1] + 3]), 7, 3, DRG.tongue(0.14, 0.7))
+    strand(ctx, [[828, 676], [864, 688], [900, 700], [920, 714]], 4.5, 2, DRG.tongue(0.8, 0.85))
+    puff(ctx, 912, 710, 6, DRG.tongue(0.97), 0.6)
+    horn(ctx, 906, 712, -1.5, 15, 6.5, 0.12, DRG.tooth, { rootT: 0.28, midT: 0.58, tipT: 0.94 })
     // barbels under the chin
-    for (const [x, y, a] of [[916, 746, 1.85], [894, 742, 2.1], [930, 742, 1.55]]) {
+    for (const [x, y, a] of [[920, 744, 1.8], [896, 740, 2.05], [936, 738, 1.5]]) {
       strand(ctx, [[x, y], [x + Math.cos(a) * 10, y + Math.sin(a) * 10], [x + Math.cos(a + 0.4) * 18, y + Math.sin(a + 0.4) * 18]], 4, 0.5, DRG.plum(0.3, 0.9))
     }
+    // AO pocket where the jaw hinge meets the throat
+    puff(ctx, 798, 668, 20, DRG.belly(0.08), 0.6, 15)
 
-    // ---- upper lip band + hanging fang row --------------------------------
-    strand(ctx, [[804, 642], [864, 654], [914, 668], [940, 680]], 8, 5, DRG.plum(0.12, 0.95))
-    for (let i = 0; i < 7; i++) {
-      const t = i / 6
-      const x = 816 + t * 104 + (rnd() - 0.5) * 3
-      const y = 648 + t * 30
-      const big = t > 0.72
-      horn(ctx, x, y, 1.45 + t * 0.15, big ? 18 + t * 9 : 10 + 6 * Math.abs(Math.sin(t * 7.1)), big ? 8.5 : 6, 0.15, DRG.tooth, {})
-    }
-    // the two front hook-fangs under the beak tip
-    horn(ctx, 940, 678, 1.6, 23, 9, 0.25, DRG.tooth, { rootT: 0.25, midT: 0.6, tipT: 0.96 })
-    horn(ctx, 922, 672, 1.5, 18, 8, 0.2, DRG.tooth, { rootT: 0.25, midT: 0.6, tipT: 0.92 })
-
-    // ---- tongue arcing out just past the chin -----------------------------
-    const tPts = [[818, 672], [856, 690], [890, 708], [908, 728], [900, 748], [884, 752]]
-    ctx.save()
-    strand(ctx, tPts, 15, 6, DRG.tongue(0.4))
-    strand(ctx, tPts.map((p) => [p[0] + 2, p[1] + 3]), 7, 3, DRG.tongue(0.12, 0.7))
-    strand(ctx, [[822, 670], [858, 686], [890, 704], [904, 722]], 4.5, 2, DRG.tongue(0.8, 0.85))
-    puff(ctx, 892, 716, 7, DRG.tongue(0.97), 0.6)
-    puff(ctx, 896, 744, 5, DRG.tongue(0.9), 0.5)
-    ctx.restore()
-
-    // ---- the eye — big, hot, fierce, set in the cream ---------------------
-    puff(ctx, 806, 602, 24, DRG.plum(0.18), 0.35, 16, -0.12)
-    const eye = spline([[780, 598], [800, 588], [822, 592], [828, 604], [808, 612], [786, 608]], true)
-    ctx.fillStyle = lin(ctx, 784, 592, 826, 610, [[0, '#c9821c'], [0.45, '#f6de6e'], [1, '#e2b62a']])
+    // ---- the eye — gold, slit, fierce, under a heavy brow -----------------
+    puff(ctx, 854, 602, 22, DRG.plum(0.16), 0.4, 15, -0.1)
+    const eye = spline([[832, 598], [850, 588], [870, 592], [876, 604], [858, 612], [838, 608]], true)
+    ctx.fillStyle = lin(ctx, 836, 592, 874, 610, [[0, '#c9821c'], [0.45, '#f6de6e'], [1, '#e2b62a']])
     ctx.fill(eye)
     shadeIn(ctx, eye, () => {
-      // upper lid shadow across the gold
-      strand(ctx, [[780, 596], [804, 588], [828, 598]], 5, 3, 'rgba(60,30,20,0.45)')
+      strand(ctx, [[832, 596], [854, 588], [876, 598]], 5, 3, 'rgba(60,30,20,0.45)')
       ctx.fillStyle = '#140d05'
       ctx.beginPath()
-      ctx.ellipse(806, 600, 2.6, 6.8, 0.12, 0, Math.PI * 2)
+      ctx.ellipse(855, 600, 2.5, 6.6, 0.1, 0, Math.PI * 2)
       ctx.fill()
       ctx.fillStyle = 'rgba(255,250,235,0.95)'
       ctx.beginPath()
-      ctx.arc(801, 595, 1.7, 0, Math.PI * 2)
+      ctx.arc(850, 595, 1.6, 0, Math.PI * 2)
       ctx.fill()
     })
     ctx.strokeStyle = DRG.plum(0.12, 0.85)
     ctx.lineWidth = 3
     ctx.stroke(eye)
-    // cream brow ridge overhanging the eye
-    strand(ctx, [[772, 586], [800, 576], [830, 584]], 9, 4, DRG.hide(0.9))
-    strand(ctx, [[774, 592], [802, 584], [828, 590]], 4, 2, DRG.plum(0.22, 0.5))
+    // heavy cream brow overhanging the eye
+    strand(ctx, [[820, 588], [848, 578], [880, 582]], 9, 4, DRG.hide(0.88))
+    strand(ctx, [[822, 594], [850, 586], [878, 590]], 4, 2, DRG.plum(0.22, 0.5))
 
-    // amber chin tuft behind the jaw hinge + green cheek wisps
-    for (let i = 0; i < 4; i++) {
-      const ang = 2.3 + i * 0.18
-      horn(ctx, 786 + (rnd() - 0.5) * 6, 692 + i * 6, ang, 22 + rnd() * 14, 9, 0.25, DRG.amber, {})
-    }
-    for (let i = 0; i < 8; i++) {
-      const ang = 1.85 + i * 0.14
-      strand(ctx, [[756, 650], [756 + Math.cos(ang) * 28, 650 + Math.sin(ang) * 28], [750 + Math.cos(ang + 0.35) * 52, 650 + Math.sin(ang + 0.35) * 52]],
-        7, 0.7, DRG.mane(0.22 + rnd() * 0.45, 0.92))
+    // green cheek wisps behind the jaw hinge
+    for (let i = 0; i < 7; i++) {
+      const ang = 1.9 + i * 0.16
+      strand(ctx, [[788, 648], [788 + Math.cos(ang) * 26, 648 + Math.sin(ang) * 26], [782 + Math.cos(ang + 0.35) * 48, 648 + Math.sin(ang + 0.35) * 48]],
+        7, 0.7, DRG.mane(0.22 + rnd() * 0.42, 0.92))
     }
   }
 
-  // soft core shadow pooling beneath the body between the legs
-  puff(ctx, 640, 792, 150, 'rgba(14,10,18,1)', 0.32, 42)
-  puff(ctx, 710, GY - 6, 90, 'rgba(14,10,18,1)', 0.3, 12)
-  puff(ctx, 500, GY - 6, 80, 'rgba(14,10,18,1)', 0.26, 10)
+  // soft occlusion pooling beneath the belly and around the planted feet
+  puff(ctx, 620, 782, 165, 'rgba(14,10,18,1)', 0.34, 44)
+  puff(ctx, 756, GY - 8, 92, 'rgba(14,10,18,1)', 0.3, 13)
+  puff(ctx, 632, GY - 8, 80, 'rgba(14,10,18,1)', 0.28, 11)
+  puff(ctx, 490, GY - 8, 76, 'rgba(14,10,18,1)', 0.26, 10)
 
   // ---- scene-key washes: warm torch air upper-right, hall dark lower-left --
   wash(ctx, () => {
-    puff(ctx, 880, 470, 330, 'rgba(255,166,79,1)', 0.13, 300)
-    puff(ctx, 240, 720, 380, '#161126', 0.34, 300)
-    puff(ctx, 560, 790, 300, '#171126', 0.22, 150)
+    puff(ctx, 900, 430, 330, 'rgba(255,166,79,1)', 0.14, 300)
+    puff(ctx, 230, 700, 380, '#161126', 0.36, 300)
+    puff(ctx, 540, 800, 300, '#171126', 0.24, 140)
     ctx.fillStyle = lin(ctx, 0, 0, 360, 0, [[0, 'rgba(19,14,34,0.4)'], [1, 'rgba(19,14,34,0)']])
     ctx.fillRect(0, 0, 360, H)
   })
@@ -1093,8 +1222,11 @@ export function makeDragonArt() {
 // ===========================================================================
 // THE SORCERER — frame05 highland boss. Levitating, backlit by fog.
 //
-// Composition (canvas 768×1024, mass centre ≈ (384, 500), ≈ 150 px/m):
-//   · vertical near-black robe mass, hem dissolving into fog
+// Composition (canvas 768×1024, mass centre ≈ (384, 500), ≈ 132 px/m):
+//   · vertical near-black robe mass ending in ragged shreds that alpha-
+//     dissolve into the fog band — NOTHING touches the ground (round-2 fix:
+//     the ground-contact tendrils are gone; a global dissolve kills every
+//     painted pixel below y 872 so the silhouette floats 0.6 m clear)
 //   · the beard is the BRIGHTEST shape — a layered white cascade that bulges
 //     right at mid-height then streams down-left in ragged locks
 //   · gaunt sage face with a dark brow-band, swept-back white hair
@@ -1239,44 +1371,38 @@ export function makeSorcererArt() {
       ctx.arc(p[0] - 1.5, p[1] - 1.7, 1.9, 0, Math.PI * 2)
       ctx.fill()
     })
-    // hem dissolve — the robe is eaten by fog below ~0.72 of the figure
+    // hem dissolve — the robe ends in ragged SHREDS that the fog band eats
+    // well above the stage. No tendrils, no ground contact: the levitating
+    // boss floats 0.6 m clear and units adds the fog-pool disc beneath it.
     ctx.save()
     ctx.globalCompositeOperation = 'destination-out'
-    for (let i = 0; i < 60; i++) {
-      const x = 220 + rnd() * 300
-      const y = 810 + rnd() * 190
-      puff(ctx, x, y, 22 + rnd() * 42, 'rgba(0,0,0,1)', 0.14 + ((y - 810) / 190) * 0.55)
+    for (let i = 0; i < 70; i++) {
+      const x = 200 + rnd() * 340
+      const y = 736 + rnd() * 140
+      puff(ctx, x, y, 20 + rnd() * 40, 'rgba(0,0,0,1)', 0.16 + ((y - 736) / 140) * 0.6)
     }
-    for (let i = 0; i < 14; i++) {
-      const x = 240 + rnd() * 260
-      strand(ctx, [[x, 820 + rnd() * 40], [x + (rnd() - 0.5) * 24, 890 + rnd() * 40], [x + (rnd() - 0.5) * 40, 960 + rnd() * 40]],
-        10 + rnd() * 14, 2, 'rgba(0,0,0,0.55)')
+    for (let i = 0; i < 16; i++) {
+      const x = 230 + rnd() * 280
+      strand(ctx, [[x, 740 + rnd() * 40], [x + (rnd() - 0.5) * 26, 790 + rnd() * 40], [x + (rnd() - 0.5) * 44, 838 + rnd() * 30]],
+        11 + rnd() * 15, 2, 'rgba(0,0,0,0.6)')
     }
-    ctx.fillStyle = lin(ctx, 0, 840, 0, 1010, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.97)']])
-    ctx.fillRect(160, 840, 440, 200)
+    ctx.fillStyle = lin(ctx, 0, 744, 0, 866, [[0, 'rgba(0,0,0,0)'], [0.6, 'rgba(0,0,0,0.55)'], [1, 'rgba(0,0,0,1)']])
+    ctx.fillRect(140, 744, 480, 130)
     ctx.restore()
-    // dark streamer ribbons flicking off the hem
+    // short dark shred ribbons flicking INTO the dissolve band (they fade
+    // with it — nothing reaches for the ground)
     for (const [pts, w] of [
-      [[[266, 776], [222, 846], [198, 916]], 14],
-      [[[318, 816], [298, 886], [310, 948]], 12],
-      [[[432, 826], [456, 898], [446, 958]], 12],
-      [[[482, 786], [516, 852], [544, 898]], 10],
-      [[[372, 852], [380, 912], [368, 964]], 10],
+      [[[266, 762], [234, 806], [218, 846]], 13],
+      [[[318, 790], [302, 830], [308, 866]], 11],
+      [[[432, 796], [450, 840], [446, 876]], 11],
+      [[[482, 764], [508, 812], [524, 848]], 10],
+      [[[372, 806], [378, 846], [370, 882]], 9],
     ]) {
       ctx.save()
-      ctx.globalAlpha = 0.75
+      ctx.globalAlpha = 0.7
       strand(ctx, pts, w, 0.5, SRC.robe(0.28))
       ctx.restore()
     }
-    // curling tendril with gold dot trim (bottom-left)
-    const ten = [[260, 756], [212, 810], [174, 862], [156, 902], [166, 932], [192, 938]]
-    strand(ctx, ten, 17, 2, SRC.robe(0.32, 0.95))
-    walk(ten.slice(0, 5), 27, (p, tg, n) => {
-      ctx.fillStyle = SRC.gold(0.62, 0.9)
-      ctx.beginPath()
-      ctx.arc(p[0] + n[0] * 7, p[1] + n[1] * 7, 2.7, 0, Math.PI * 2)
-      ctx.fill()
-    })
   }
 
   // ---- thorn-antler epaulettes rooted in gold filigree --------------------
@@ -1441,17 +1567,18 @@ export function makeSorcererArt() {
     ]
     const wProf = (t) => 30 + 124 * Math.sin(Math.min(1, t * 1.12 + 0.06) * Math.PI) * (1 - t * 0.3)
     const base = ribbon(spinePts, (t) => wProf(t) / 2)
-    // under-layer shadow mass offset right-down
+    // under-layer shadow mass offset right-down — a full value step deeper
     ctx.save()
-    ctx.translate(13, 9)
-    ctx.fillStyle = SRC.beard(0.14, 0.9)
+    ctx.translate(15, 10)
+    ctx.fillStyle = SRC.beard(0.05, 0.92)
     ctx.fill(base)
     ctx.restore()
     ctx.fillStyle = lin(ctx, 380, 240, 560, 840, [
-      [0, SRC.beard(0.66)], [0.4, SRC.beard(0.56)], [0.75, SRC.beard(0.44)], [1, SRC.beard(0.34)],
+      [0, SRC.beard(0.74)], [0.38, SRC.beard(0.6)], [0.72, SRC.beard(0.42)], [1, SRC.beard(0.24)],
     ])
     ctx.fill(base)
-    // ragged edge lobes so the mass reads as hair, not a tusk
+    // ragged edge lobes so the mass reads as hair, not a tusk — lit lobes
+    // hotter, shadow lobes deeper (the dragon-repaint tonal range)
     for (let i = 0; i < 34; i++) {
       const t = 0.06 + rnd() * 0.88
       const a = along(spinePts, t)
@@ -1464,16 +1591,26 @@ export function makeSorcererArt() {
         [bx - a.tx * l * 0.4, by - a.ty * l * 0.4], [bx, by],
         [bx + Math.cos(ang) * l * 0.7, by + Math.sin(ang) * l * 0.7],
         [bx + Math.cos(ang + sgn * 0.4) * l, by + Math.sin(ang + sgn * 0.4) * l],
-      ], l * 0.42, 0.6, SRC.beard(sgn < 0 ? 0.58 + rnd() * 0.3 : 0.22 + rnd() * 0.25, 0.95))
+      ], l * 0.42, 0.6, SRC.beard(sgn < 0 ? 0.62 + rnd() * 0.33 : 0.12 + rnd() * 0.22, 0.95))
     }
     shadeIn(ctx, base, () => {
       walk(spinePts, 26, (p, tg, n, tt) => {
         const w = wProf(tt) * 0.5
-        puff(ctx, p[0] - n[0] * w * 0.55, p[1] - n[1] * w * 0.55, w, SRC.beard(0.9), 0.32, w * 0.75)
-        puff(ctx, p[0] + n[0] * w * 0.55, p[1] + n[1] * w * 0.55, w, SRC.beard(0.1), 0.38, w * 0.75)
+        puff(ctx, p[0] - n[0] * w * 0.55, p[1] - n[1] * w * 0.55, w, SRC.beard(0.95), 0.34, w * 0.75)
+        puff(ctx, p[0] + n[0] * w * 0.55, p[1] + n[1] * w * 0.55, w, SRC.beard(0.04), 0.46, w * 0.75)
       })
-      puff(ctx, 398, 330, 70, SRC.beard(0.98), 0.3, 46, 0.45)
-      puff(ctx, 508, 640, 82, SRC.beard(0.85), 0.24, 60, 0.6)
+      puff(ctx, 398, 330, 70, SRC.beard(0.98), 0.32, 46, 0.45)
+      puff(ctx, 508, 640, 82, SRC.beard(0.88), 0.26, 60, 0.6)
+      // crisp core-shadow seam down the robe-side flank — the beard TURNS
+      const coreS = []
+      for (let k = 0; k <= 6; k++) {
+        const t = 0.06 + (k / 6) * 0.86
+        const a = along(spinePts, t)
+        const w = wProf(t) * 0.5
+        coreS.push([a.x + a.nx * w * 0.66, a.y + a.ny * w * 0.66])
+      }
+      strand(ctx, coreS, 34, 12, SRC.beard(0.08, 0.6))
+      strand(ctx, coreS.map((p) => [p[0] - 9, p[1] - 6]), 13, 5, SRC.beard(0.24, 0.45))
       // rope-locks: FEW wide 3-tone bands that drift across the flow, so the
       // mass reads as heavy crossing locks, not combed fibre
       for (let i = 0; i < 12; i++) {
@@ -1494,10 +1631,10 @@ export function makeSorcererArt() {
           pts.push([a.x + a.nx * (off * w * 0.88 + wob), a.y + a.ny * (off * w * 0.88 + wob)])
         }
         const w0 = 17 + rnd() * 21
-        const bright = 0.32 + 0.5 * Math.max(0, -(off0 + off1) * 0.4) + (rnd() - 0.5) * 0.2
-        strand(ctx, pts.map((p) => [p[0] + 5, p[1] + 4]), w0 * 1.1, w0 * 0.38, SRC.beard(Math.max(0.05, bright - 0.28), 0.92))
-        strand(ctx, pts, w0, w0 * 0.32, SRC.beard(Math.min(0.86, bright), 0.95))
-        strand(ctx, pts.map((p) => [p[0] - 4, p[1] - 3]), w0 * 0.36, w0 * 0.12, SRC.beard(Math.min(0.96, bright + 0.26), 0.85))
+        const bright = 0.24 + 0.66 * Math.max(0, -(off0 + off1) * 0.42) + (rnd() - 0.5) * 0.24
+        strand(ctx, pts.map((p) => [p[0] + 5, p[1] + 4]), w0 * 1.1, w0 * 0.38, SRC.beard(Math.max(0.03, bright - 0.34), 0.94))
+        strand(ctx, pts, w0, w0 * 0.32, SRC.beard(Math.max(0.05, Math.min(0.88, bright)), 0.95))
+        strand(ctx, pts.map((p) => [p[0] - 4, p[1] - 3]), w0 * 0.36, w0 * 0.12, SRC.beard(Math.min(0.98, bright + 0.34), 0.88))
       }
       // fine flyover strands
       for (let i = 0; i < 90; i++) {
@@ -1514,13 +1651,13 @@ export function makeSorcererArt() {
           const wob = Math.sin(t * 10 + phase) * amp
           pts.push([a.x + a.nx * (off * w * 0.92 + wob), a.y + a.ny * (off * w * 0.92 + wob)])
         }
-        const bright = 0.34 + 0.48 * Math.max(0, -off * 0.85) + (rnd() - 0.5) * 0.3
+        const bright = 0.28 + 0.58 * Math.max(0, -off * 0.85) + (rnd() - 0.5) * 0.34
         ctx.globalAlpha = 0.3 + rnd() * 0.35
-        strand(ctx, pts, 2 + rnd() * 3.4, 0.4, SRC.beard(Math.max(0.05, Math.min(0.95, bright))))
+        strand(ctx, pts, 2 + rnd() * 3.4, 0.4, SRC.beard(Math.max(0.03, Math.min(0.97, bright))))
       }
       ctx.globalAlpha = 1
-      // carved dark partings — deep valleys between rope-locks
-      for (let i = 0; i < 10; i++) {
+      // carved dark partings — DEEP valleys between rope-locks
+      for (let i = 0; i < 13; i++) {
         const off = (rnd() - 0.5) * 1.5
         const s0 = 0.06 + rnd() * 0.32
         const s1 = Math.min(1, s0 + 0.4 + rnd() * 0.35)
@@ -1531,7 +1668,8 @@ export function makeSorcererArt() {
           const w = wProf(t) * 0.5
           pts.push([a.x + a.nx * off * w * 0.85 + Math.sin(t * 9 + i) * 5, a.y + a.ny * off * w * 0.85])
         }
-        strand(ctx, pts, 7.5, 0.8, SRC.beard(0.07, 0.6))
+        strand(ctx, pts, 9, 0.8, SRC.beard(0.02, 0.72))
+        strand(ctx, pts.map((p) => [p[0] - 4, p[1] - 3]), 3, 0.5, SRC.beard(0.85, 0.4))
       }
     })
     // breakaway locks whipping off the right bulge
@@ -1550,19 +1688,20 @@ export function makeSorcererArt() {
         [bx + Math.cos(ang + 0.44) * l * 0.9, by + Math.sin(ang + 0.44) * l * 0.9],
       ], w * 0.35, 0.4, SRC.beard(0.74 + rnd() * 0.2, 0.85))
     }
-    // tip cascade: long tapering locks streaming down-left, feathered ends
-    for (const [ang, l, w] of [[2.25, 120, 14], [2.5, 96, 12], [2.05, 140, 15], [2.7, 74, 10], [1.9, 108, 12]]) {
-      const bx = 512 + (rnd() - 0.5) * 40, by = 842 + (rnd() - 0.5) * 30
+    // tip cascade: tapering locks streaming down-left INTO the fog band —
+    // they shred and dissolve there, never reaching for the stage
+    for (const [ang, l, w] of [[2.25, 92, 14], [2.5, 74, 12], [2.05, 106, 15], [2.7, 58, 10], [1.9, 84, 12]]) {
+      const bx = 512 + (rnd() - 0.5) * 40, by = 796 + (rnd() - 0.5) * 26
       strand(ctx, [
         [bx + 30, by - 40], [bx, by],
         [bx + Math.cos(ang) * l * 0.55, by + Math.sin(ang) * l * 0.55],
         [bx + Math.cos(ang + 0.25) * l, by + Math.sin(ang + 0.25) * l],
-      ], w, 0.6, SRC.beard(0.38 + rnd() * 0.3, 0.92))
+      ], w, 0.6, SRC.beard(0.34 + rnd() * 0.34, 0.92))
       strand(ctx, [
         [bx + 24, by - 36], [bx + 2, by - 4],
         [bx + Math.cos(ang - 0.05) * l * 0.5, by + Math.sin(ang - 0.05) * l * 0.5 - 2],
         [bx + Math.cos(ang + 0.2) * l * 0.9, by + Math.sin(ang + 0.2) * l * 0.9],
-      ], w * 0.35, 0.4, SRC.beard(0.7 + rnd() * 0.2, 0.8))
+      ], w * 0.35, 0.4, SRC.beard(0.72 + rnd() * 0.22, 0.8))
     }
     // moustache: face reads 3/4-right — long dominant swoop down-right past
     // the cheek, shorter companion falling left of the chin
@@ -1632,7 +1771,7 @@ export function makeSorcererArt() {
       puff(ctx, p[0] + Math.sin(t * 40) * 2, p[1], 7, SRC.staff(0.5), 0.6, 5)
       puff(ctx, p[0] - 2.5, p[1] - 2, 2.6, SRC.staff(0.9), 0.55)
     }
-    strand(ctx, [[tip[0] + 4, tip[1] - 26], [tip[0] + 1, tip[1] - 8], [tip[0], tip[1]]], 9, 2, SRC.gold(0.42, 0.95))
+    // (no heel ferrule — the staff's lower reach dissolves in the fog band)
     // head: gold collar + one heavy crescent blade, crimson-edged
     const p0 = P(0.05)
     strand(ctx, [[p0[0] - 8, p0[1] + 12], [p0[0], p0[1] + 7], [p0[0] + 8, p0[1] + 3]], 10, 6, SRC.gold(0.55, 0.95))
@@ -1662,6 +1801,23 @@ export function makeSorcererArt() {
     strand(ctx, [[470, 560], [498, 600], [512, 648]], 4, 0.6, SRC.beard(0.78, 0.8))
     strand(ctx, [[452, 470], [474, 520], [480, 566]], 3.5, 0.5, SRC.beard(0.7, 0.75))
   }
+
+  // ---- the fog band eats EVERYTHING below the hem line --------------------
+  // One global ragged alpha-dissolve across beard tips, staff heel and robe
+  // shreds together: total by y 872, so the silhouette bottom floats ~0.6 m
+  // clear of the stage (§1: hem gone by 0.72 fh; §5.2 fog-pool disc belongs
+  // to units). No painted pixel may reach the ground.
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-out'
+  for (let i = 0; i < 26; i++) {
+    const x = 150 + rnd() * 470
+    puff(ctx, x, 742 + rnd() * 96, 16 + rnd() * 30, 'rgba(0,0,0,1)', 0.25 + rnd() * 0.3)
+  }
+  ctx.fillStyle = lin(ctx, 0, 768, 0, 872, [[0, 'rgba(0,0,0,0)'], [0.55, 'rgba(0,0,0,0.5)'], [1, 'rgba(0,0,0,1)']])
+  ctx.fillRect(0, 768, W, 104)
+  ctx.fillStyle = 'rgba(0,0,0,1)'
+  ctx.fillRect(0, 872, W, H - 872)
+  ctx.restore()
 
   // ---- fog compression: milk wash thickening toward the hem ---------------
   wash(ctx, () => {
