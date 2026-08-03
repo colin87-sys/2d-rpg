@@ -43,3 +43,28 @@ texture.generateMipmaps = false;
 
 Keep the procedural terrain and camera. These images are intended for billboarded character
 planes and fixed battle-backdrop planes, as described by the repo's art and battle bibles.
+
+---
+
+## Encoding — use the PNGs, not `raw/*.webp`
+
+Two copies of this batch reached the repo by different routes. The `.webp` set in
+`assets/raw/` is **lossy** and must not be wired up. Measured by decoding both and
+comparing pixel-for-pixel:
+
+| Sheet | Pixels differing | Max channel delta | Other loss |
+| --- | --- | --- | --- |
+| `battler_rain` | 15.28 % | 101 / 255 | — |
+| `overworld_rain` | 21.56 % | 104 / 255 | — |
+| `boss_sorcerer_sheet` | — | — | downscaled 2048² → 1500² |
+
+Alpha survives (0 % of pixels differ by more than 2 in the alpha channel), so the damage
+is purely colour — which is exactly the wrong thing to lose here. This art is authored to a
+4-shade-per-material ramp with a 1 px `#1d1410` outline; a ±100 channel excursion smears
+those hard edges and the ramp steps into mush, and `NearestFilter` then magnifies the
+artefacts instead of hiding them. Lossy encoding is fine for the two backdrop plates and
+wrong for every sprite atlas.
+
+The PNGs under `battlers/`, `enemies/`, `backdrops/` and `overworld/` are the originals as
+generated, verified by `node tools/import-assets.mjs`. Treat them as canonical and delete
+`assets/raw/` once nothing references it.
