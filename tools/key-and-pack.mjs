@@ -53,14 +53,35 @@ const result = await page.evaluate(async ({ d, COLS, ROWS, CELL }) => {
   // so nothing in the subject is at risk.
   const T_KEEP = 24   // at or below → fully opaque
   const T_CUT = 78    // at or above → fully transparent
-  let keyed = 0, despilled = 0
+
+  // Decide whether this sheet needs keying AT ALL before touching a pixel.
+  // A sheet that already carries real alpha and has no green field must be
+  // re-packed only: despilling it would clamp the green channel on genuinely
+  // green-leaning art (slate scales here read slightly green in shadow) and
+  // quietly shift the palette for no reason.
+  let preAlpha = 0, preGreen = 0
   for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0) preAlpha++
+    if (px[i + 1] > 90 && px[i + 1] - Math.max(px[i], px[i + 2]) > 55) preGreen++
+  }
+  const total0 = px.length / 4
+  const needsKey = (preGreen / total0) > 0.02
+  const hadAlpha = (preAlpha / total0) > 0.02
+
+  let keyed = 0, despilled = 0
+  if (!needsKey) {
+    keyed = preAlpha
+  } else for (let i = 0; i < px.length; i += 4) {
     const r = px[i], g = px[i + 1], b = px[i + 2]
     const env = Math.max(r, b)
     const greenness = g - env
     let a = 255
     if (greenness >= T_CUT) a = 0
     else if (greenness > T_KEEP) a = Math.round(255 * (1 - (greenness - T_KEEP) / (T_CUT - T_KEEP)))
+    // Never ADD opacity. A sheet that already carries real alpha must survive
+    // this pass untouched — transparent pixels there are (0,0,0,0), which score
+    // zero greenness and would otherwise be promoted to fully opaque black.
+    a = Math.min(a, px[i + 3])
     if (a === 0) { px[i + 3] = 0; keyed++; continue }
     if (greenness > 0) {
       // Clamp green to the envelope. Keeps hue for anything genuinely green
@@ -116,6 +137,7 @@ const result = await page.evaluate(async ({ d, COLS, ROWS, CELL }) => {
   return {
     srcSize: `${img.width}x${img.height}`,
     outSize: `${COLS * CELL}x${ROWS * CELL}`,
+    needsKey, hadAlpha,
     keyedPct: +(100 * keyed / (px.length / 4)).toFixed(1),
     despilledPct: +(100 * despilled / (px.length / 4)).toFixed(2),
     frames: frames.filter((f) => !f.empty).map((f) => ({ idx: f.idx, w: f.w, h: f.h })),
@@ -131,8 +153,9 @@ writeFileSync(OUT, Buffer.from(result.b64, 'base64'))
 
 console.log(`source        ${result.srcSize}`)
 console.log(`output        ${result.outSize}  → ${OUT}`)
-console.log(`keyed out     ${result.keyedPct}% of pixels`)
-console.log(`despilled     ${result.despilledPct}%`)
+console.log(result.needsKey
+  ? `chroma key     applied — ${result.keyedPct}% keyed out, ${result.despilledPct}% despilled`
+  : `chroma key     SKIPPED — source already has real alpha (${result.keyedPct}% transparent), no green field; repack only`)
 console.log(`frames        ${result.frames.length}  (empty cells: ${result.emptyCells.join(', ') || 'none'})`)
 const hs = result.frames.map((f) => f.h)
 console.log(`content h     ${Math.min(...hs)}–${Math.max(...hs)}px`)

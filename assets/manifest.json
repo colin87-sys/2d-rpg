@@ -259,23 +259,24 @@
       "role": "hall-boss",
       "type": "battle-atlas",
       "path": "enemies/hall-dragon.png",
-      "width": 1280,
-      "height": 1280,
+      "width": 2048,
+      "height": 2048,
       "alpha": true,
       "grid": {
         "columns": 4,
         "rows": 4,
-        "cellWidth": 320,
-        "cellHeight": 320
+        "cellWidth": 512,
+        "cellHeight": 512
       },
-      "frameCount": 14,
+      "frameCount": 13,
       "emptyCells": [
+        13,
         14,
         15
       ],
       "anchor": "bottom-center",
       "facing": "east",
-      "source": "chroma-keyed from a 1254x1254 green-screen sheet by tools/key-and-pack.mjs; frames re-packed at native scale, bottom-centre",
+      "source": "re-packed by tools/key-and-pack.mjs from a 2048x2048 sheet that already carried real alpha; frames trimmed and planted bottom-centre at native scale, no keying applied",
       "animations": {
         "idle": {
           "start": 0,
@@ -291,7 +292,7 @@
         },
         "death": {
           "start": 10,
-          "count": 4,
+          "count": 3,
           "loop": false
         }
       }
