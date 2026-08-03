@@ -148,7 +148,11 @@ for (const a of manifest.assets) {
               // bottom-centre anchor, in cell-local pixels
               footX: +(((minX + maxX) / 2)).toFixed(1),
               footY: maxY + 1,
-              touchesEdge: minX === 0 || minY === 0 || maxX === cellWidth - 1 || maxY === cellHeight - 1,
+              // Bottom contact is the anchor, not a defect, on a bottom-centre
+              // sheet — a correctly packed frame stands ON the cell floor. Only
+              // the other three edges indicate clipping.
+              touchesEdge: minX === 0 || minY === 0 || maxX === cellWidth - 1 ||
+                (maxY === cellHeight - 1 && a.anchor !== 'bottom-center'),
               debris: discarded.map((bd) => ({ y0: bd.a, y1: bd.b, px: bd.px })),
             })
       }

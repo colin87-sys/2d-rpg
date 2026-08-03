@@ -12,19 +12,48 @@
       "width": 1920,
       "height": 1600,
       "alpha": true,
-      "grid": { "columns": 6, "rows": 5, "cellWidth": 320, "cellHeight": 320 },
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
       "frameCount": 29,
-      "emptyCells": [29],
+      "emptyCells": [
+        29
+      ],
       "anchor": "bottom-center",
       "facing": "west-except-victory-front",
       "animations": {
-        "idle": { "start": 0, "count": 4 },
-        "ready": { "start": 4, "count": 4 },
-        "attack": { "start": 8, "count": 6 },
-        "cast": { "start": 14, "count": 6 },
-        "hit": { "start": 20, "count": 2 },
-        "ko": { "start": 22, "count": 3, "loop": false },
-        "victory": { "start": 25, "count": 4 }
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
       }
     },
     {
@@ -35,19 +64,48 @@
       "width": 1920,
       "height": 1600,
       "alpha": true,
-      "grid": { "columns": 6, "rows": 5, "cellWidth": 320, "cellHeight": 320 },
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
       "frameCount": 29,
-      "emptyCells": [29],
+      "emptyCells": [
+        29
+      ],
       "anchor": "bottom-center",
       "facing": "west-except-victory-front",
       "animations": {
-        "idle": { "start": 0, "count": 4 },
-        "ready": { "start": 4, "count": 4 },
-        "attack": { "start": 8, "count": 6 },
-        "cast": { "start": 14, "count": 6 },
-        "hit": { "start": 20, "count": 2 },
-        "ko": { "start": 22, "count": 3, "loop": false },
-        "victory": { "start": 25, "count": 4 }
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
       }
     },
     {
@@ -58,19 +116,48 @@
       "width": 1920,
       "height": 1600,
       "alpha": true,
-      "grid": { "columns": 6, "rows": 5, "cellWidth": 320, "cellHeight": 320 },
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
       "frameCount": 29,
-      "emptyCells": [29],
+      "emptyCells": [
+        29
+      ],
       "anchor": "bottom-center",
       "facing": "west-except-victory-front",
       "animations": {
-        "idle": { "start": 0, "count": 4 },
-        "ready": { "start": 4, "count": 4 },
-        "attack": { "start": 8, "count": 6 },
-        "cast": { "start": 14, "count": 6 },
-        "hit": { "start": 20, "count": 2 },
-        "ko": { "start": 22, "count": 3, "loop": false },
-        "victory": { "start": 25, "count": 4 }
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
       }
     },
     {
@@ -81,19 +168,48 @@
       "width": 1920,
       "height": 1600,
       "alpha": true,
-      "grid": { "columns": 6, "rows": 5, "cellWidth": 320, "cellHeight": 320 },
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
       "frameCount": 29,
-      "emptyCells": [29],
+      "emptyCells": [
+        29
+      ],
       "anchor": "bottom-center",
       "facing": "west-except-victory-front",
       "animations": {
-        "idle": { "start": 0, "count": 4 },
-        "ready": { "start": 4, "count": 4 },
-        "attack": { "start": 8, "count": 6 },
-        "cast": { "start": 14, "count": 6 },
-        "hit": { "start": 20, "count": 2 },
-        "ko": { "start": 22, "count": 3, "loop": false },
-        "victory": { "start": 25, "count": 4 }
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
       }
     },
     {
@@ -104,16 +220,80 @@
       "width": 2048,
       "height": 2048,
       "alpha": true,
-      "grid": { "columns": 4, "rows": 4, "cellWidth": 512, "cellHeight": 512 },
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "cellWidth": 512,
+        "cellHeight": 512
+      },
       "frameCount": 13,
-      "emptyCells": [13, 14, 15],
+      "emptyCells": [
+        13,
+        14,
+        15
+      ],
       "anchor": "bottom-center",
       "facing": "east",
       "animations": {
-        "idle": { "start": 0, "count": 4 },
-        "cast": { "start": 4, "count": 4 },
-        "hit": { "start": 8, "count": 2 },
-        "death": { "start": 10, "count": 3, "loop": false }
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "cast": {
+          "start": 4,
+          "count": 4
+        },
+        "hit": {
+          "start": 8,
+          "count": 2
+        },
+        "death": {
+          "start": 10,
+          "count": 3,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "hall-dragon",
+      "role": "hall-boss",
+      "type": "battle-atlas",
+      "path": "enemies/hall-dragon.png",
+      "width": 1280,
+      "height": 1280,
+      "alpha": true,
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
+      "frameCount": 14,
+      "emptyCells": [
+        14,
+        15
+      ],
+      "anchor": "bottom-center",
+      "facing": "east",
+      "source": "chroma-keyed from a 1254x1254 green-screen sheet by tools/key-and-pack.mjs; frames re-packed at native scale, bottom-centre",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "attack": {
+          "start": 4,
+          "count": 4
+        },
+        "hit": {
+          "start": 8,
+          "count": 2
+        },
+        "death": {
+          "start": 10,
+          "count": 4,
+          "loop": false
+        }
       }
     },
     {
@@ -142,13 +322,27 @@
       "width": 1536,
       "height": 1152,
       "alpha": true,
-      "grid": { "columns": 4, "rows": 3, "cellWidth": 384, "cellHeight": 384 },
+      "grid": {
+        "columns": 4,
+        "rows": 3,
+        "cellWidth": 384,
+        "cellHeight": 384
+      },
       "frameCount": 12,
       "anchor": "bottom-center",
       "animations": {
-        "walk_south": { "start": 0, "count": 4 },
-        "walk_west": { "start": 4, "count": 4 },
-        "walk_north": { "start": 8, "count": 4 }
+        "walk_south": {
+          "start": 0,
+          "count": 4
+        },
+        "walk_west": {
+          "start": 4,
+          "count": 4
+        },
+        "walk_north": {
+          "start": 8,
+          "count": 4
+        }
       },
       "east": "mirror-walk-west"
     },
@@ -160,13 +354,27 @@
       "width": 1536,
       "height": 1152,
       "alpha": true,
-      "grid": { "columns": 4, "rows": 3, "cellWidth": 384, "cellHeight": 384 },
+      "grid": {
+        "columns": 4,
+        "rows": 3,
+        "cellWidth": 384,
+        "cellHeight": 384
+      },
       "frameCount": 12,
       "anchor": "bottom-center",
       "animations": {
-        "walk_south": { "start": 0, "count": 4 },
-        "walk_west": { "start": 4, "count": 4 },
-        "walk_north": { "start": 8, "count": 4 }
+        "walk_south": {
+          "start": 0,
+          "count": 4
+        },
+        "walk_west": {
+          "start": 4,
+          "count": 4
+        },
+        "walk_north": {
+          "start": 8,
+          "count": 4
+        }
       },
       "east": "mirror-walk-west"
     }
