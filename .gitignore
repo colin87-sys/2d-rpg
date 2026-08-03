@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Working captures from the screenshot harness. Frames worth keeping are
+# promoted into docs/ deliberately; everything else is scratch.
+shots/check*.png
+shots/tmp*.png
+shots/smoke.png
+shots/sweep/
+shots/r2_iter*.png
