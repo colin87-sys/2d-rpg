@@ -714,7 +714,22 @@ function buildHall(env) {
   const stdOpts = { roughness: 0.95, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }
   const MAT = {
     wall: new THREE.MeshStandardMaterial({ map: tWall, ...stdOpts }),
-    floor: new THREE.MeshStandardMaterial({ map: tFloor, roughness: 0.85, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }),
+    // Floor shade floor lifted to the §3 FLOOR_FG_VIGNETTE family. The torch
+    // rig is upstage (z −10.8) and 1/d²-attenuated, so the downstage slate the
+    // party stands on received almost nothing and crushed to #0a1030 (L 0.06)
+    // — at that level the §5.2 contact blobs (#10131c α .55) were compositing
+    // shadow onto shadow and vanished, which is the one grounding cue the
+    // frame cannot ship without. This is the hue-bearing shade floor doing the
+    // job the cool front fill is credited with in §3 ("keeps the foreground
+    // slate readable"); torch-pool and spell-lit floor are unchanged, both
+    // being dominated by their own terms.
+    // The shade floor is TEXTURED (emissiveMap: tFloor) so it re-emits the
+    // slate's own colours — a flat emissive constant lifts the level but
+    // erases the flagstone coursing, which §3 makes mandatory.
+    floor: new THREE.MeshStandardMaterial({
+      map: tFloor, roughness: 0.85, metalness: 0,
+      emissive: 0x8a97ad, emissiveMap: tFloor, emissiveIntensity: 1.7,
+    }),
     trim: new THREE.MeshStandardMaterial({ map: tTrim, ...stdOpts }),
     column: new THREE.MeshStandardMaterial({ map: tCol, ...stdOpts }),
     recess: new THREE.MeshStandardMaterial({ map: tRecess, roughness: 0.9, metalness: 0, emissive: 0x2a1a0c, emissiveIntensity: 0.55 }),

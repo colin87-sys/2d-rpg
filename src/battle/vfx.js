@@ -754,10 +754,17 @@ function buildFiragaRig(kit) {
   group.visible = false
   const rnd = mulberry32(0xf19a)
 
+  // The shells are DoubleSide cylinders, so a ray down the column axis picks
+  // up SIX additive layers (front + back wall of each shell), not three. At
+  // the authored 0.46/0.36/0.30 that summed past 2.0 linear before the core
+  // streaks were added at all, and the whole column clipped to flat white —
+  // the sheath/core two-tone of §8 disappeared and so did the victim standing
+  // inside it. Halved, the six-layer stack lands where frame04 measures the
+  // column (core #cfbdb4, sheath #e4bfcc — bright, but nowhere near clipped).
   const shellSpec = [
-    { r: 0.55, h: 2.2, tint: 0xc190b0, op: 0.46, freq: 7, rim: 0.80 },
-    { r: 0.75, h: 2.6, tint: 0xa56f87, op: 0.36, freq: 9, rim: 0.76 },
-    { r: 0.95, h: 3.0, tint: 0x664071, op: 0.30, freq: 12, rim: 0.72 },
+    { r: 0.55, h: 2.2, tint: 0xc190b0, op: 0.36, freq: 7, rim: 0.80 },
+    { r: 0.75, h: 2.6, tint: 0xa56f87, op: 0.28, freq: 9, rim: 0.76 },
+    { r: 0.95, h: 3.0, tint: 0x664071, op: 0.22, freq: 12, rim: 0.72 },
   ]
   const shells = shellSpec.map((s, i) => {
     const mat = makeSheathMaterial(kit.sheathNoise, s.tint, {
@@ -800,7 +807,12 @@ function buildFiragaRig(kit) {
       die0: 0.62 + rnd() * 0.28,   // staggered deaths through the decay
       flickF: 9 + rnd() * 7,
       flickP: rnd() * TAU,
-      op: i < 3 ? 0.55 : 0.85,
+      // 4–6 of the 12 streaks overlap at the column axis, and they are
+      // additive: at the old 0.55/0.85 the stack summed past 4.0 and the core
+      // clipped to flat #ffffff, erasing the victim standing inside it
+      // (frame04 core measures #cfbdb4/L 0.755, and Rain stays legible).
+      // These land the axis stack near 1.6 linear → ~0.80 display after ACES.
+      op: i < 3 ? 0.08 : 0.12,
     })
   }
 

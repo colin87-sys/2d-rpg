@@ -510,26 +510,24 @@ function bakePortrait(bustCells, S, kind, dpr) {
     ctx.stroke()
   }
 
-  // 4) the bust — clipped by the LOWER diamond edges only; hair overflows top
+  // 4) the bust — clipped by the diamond itself (frame04: the portrait lives
+  // INSIDE the glass; only a few px of crown may ride over the upper edges).
+  // The clip is the diamond stretched 8 % upward, so hair grazes the top
+  // vertex instead of erupting out of the tile.
   ctx.save()
   const chw = half - inset
-  ctx.beginPath()
-  ctx.moveTo(ax - chw, ay)
-  ctx.lineTo(ax, ay + chw)
-  ctx.lineTo(ax + chw, ay)
-  ctx.lineTo(ax + chw, 0)
-  ctx.lineTo(ax - chw, 0)
-  ctx.closePath()
+  diamondPath(ctx, ax, ay, chw, chw * 1.08)
   ctx.clip()
-  // Bust scale per kind (calibrated against the plates): the active bust
-  // fits comfortably inside its big diamond with the crown near the inner
-  // top edge; the small queue busts fill their diamonds and overflow the
-  // top, faces riding the upper half with chins near the midline.
-  const t = isActive ? S / 28 : S / 23
+  // Bust scale per kind, measured off frame04: the bust column (crown →
+  // shoulder hem) is ≈ 0.70 of the diamond's point-to-point size, so the
+  // 24×28 cell lands well inside the inscribed box and the upper diamond
+  // edges crop the hair, exactly as the plate shows. Drawing it at S tall
+  // (the old value) burst the frame and read as a floating head.
+  const t = (isActive ? 0.60 : 0.66) * S / BH
   const bw = BW * t
   const bh = BH * t
   const bx = ax - bw / 2
-  const by = ay + chw * (isActive ? 0.90 : 0.96) - bh   // shoulders sink into the lower V
+  const by = ay + chw * (isActive ? 0.62 : 0.70) - bh   // shoulders sink into the lower V
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(bustCells, bx, by, bw, bh)
   ctx.restore()

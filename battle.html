@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- no binary assets in this POC; declaring an empty icon keeps the
+         screenshot harness console clean instead of logging a favicon 404 -->
+    <link rel="icon" href="data:," />
+    <title>Aetherbound — Battle</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #05070c; overflow: hidden; }
+      body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #eaf2ff; }
+      #app { position: fixed; inset: 0; }
+      canvas { display: block; width: 100%; height: 100%; }
+      /* UI is DOM above the canvas — post never touches it (BIBLE §7). */
+      #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+      #boot {
+        position: fixed; inset: 0; display: grid; place-items: center;
+        background: #05070c; z-index: 50; transition: opacity .6s ease;
+        letter-spacing: .35em; font-size: 12px; text-transform: uppercase; color: #7f93b8;
+      }
+      #boot.hidden { opacity: 0; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="ui"></div>
+    <div id="boot">Loading</div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/node_modules/three/build/three.module.js",
+          "three/addons/": "/node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="/src/battle/main.js"></script>
+  </body>
+</html>

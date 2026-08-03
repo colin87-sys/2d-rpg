@@ -366,9 +366,14 @@ const BLOB_FRAG = /* glsl */ `
     float r = length(q);
     float a = 1.0 - smoothstep(0.55, 1.0, r);          // 45 % feather
     a *= 0.80 + 0.20 * (1.0 - smoothstep(0.0, 0.5, r)); // denser core
+    // Distance fade only — NOT a second fog pass. The blob is a decal lying on
+    // the ground at the ground's own depth, so the scene fog that veils the
+    // floor veils the blob with it; re-applying the full curve here double-
+    // counted and, at the highland's 0.028 density, stripped a quarter of the
+    // party's grounding before the mist cards even landed on top of it.
     float fd = uFogDensity * length(vWorld - cameraPosition);
     float fogT = exp(-fd * fd);
-    float outA = a * uAlpha * mix(0.25, 1.0, fogT);
+    float outA = a * uAlpha * mix(0.60, 1.0, fogT);
     if (outA < 0.004) discard;
     gl_FragColor = vec4(uColor, outA);
     #include <colorspace_fragment>
@@ -605,7 +610,18 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
       fogScale: SPRITE_FOG_SCALE,
       lightBase: 0.42,
       lightResp: 2.2,
-      lightClamp: [0.0, 1.6],
+      // Torch irradiance across the §1 staging spans 9× (Lasswell 0.13 →
+      // Fina 1.22, she stands 5.4 m under torch R): at a 1.6 ceiling Fina's
+      // cells clipped to a flat yellow-white silhouette while Lasswell sat at
+      // 0.6 — a 2.7× exposure spread across four units on one stage, where
+      // frame04 reads them at one exposure. The window is tightened so no
+      // unit can clip and none can sink below the shade floor. The ceiling is
+      // 1.0 on purpose: §5.3 gives the +35 % overexposure headroom to the
+      // SPELL, not to a torch, and it rides uSpellAdd after this multiply —
+      // so the victim still blows toward #ffc2a3 while a hero standing 5 m
+      // under a brazier merely reads warm (mul 1.00/1.00/0.79) instead of
+      // clipping to a white silhouette.
+      lightClamp: [0.55, 1.00],
     })
     // §5.4 occlusion window in cell-local v: soles → +15 % of the body.
     const soleV = (sheet.frameH - (groundRow + 1)) / sheet.frameH
