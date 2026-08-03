@@ -27,12 +27,25 @@ const asJson = args.includes('--json')
 const CHROME = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 const manifest = JSON.parse(readFileSync(join(DIR, 'manifest.json'), 'utf8'))
 
-// Scale tolerance. Generated frames legitimately differ in silhouette height
-// (a crouched `ko` pose IS shorter than `idle`), so height alone is a bad
-// signal. We compare against the per-sheet MEDIAN and only flag outliers well
-// outside what posing explains.
-const SCALE_WARN = 0.25   // >25% off the median content height → worth a look
-const SCALE_FAIL = 0.45   // >45% → almost certainly a scale error, not a pose
+// Scale tolerance.
+//
+// Naive whole-sheet comparison does not work: a `ko` frame is a character
+// LYING DOWN and is legitimately ~half height, and `victory` raises a weapon
+// overhead and is legitimately taller. Comparing those to a sheet-wide median
+// flags correct art as broken (it did, on all four battlers).
+//
+// So compare in two passes instead:
+//   WITHIN an animation — every frame of `idle` depicts the same standing
+//     character, so a real scale change shows up here.
+//   ACROSS animations — only between animations that share a posture. Prone
+//     and airborne anims are exempt from cross-comparison, because their
+//     height difference is the pose, not the scale.
+const WITHIN_WARN = 0.18
+const WITHIN_FAIL = 0.35
+const ACROSS_WARN = 0.22
+const ACROSS_FAIL = 0.40
+// Animations whose silhouette height is not comparable to a standing pose.
+const POSTURE_EXEMPT = /^(ko|death|die|down|hit|hurt|knock)/i
 
 const browser = await chromium.launch({ executablePath: existsSync(CHROME) ? CHROME : undefined, args: ['--no-sandbox'] })
 const page = await browser.newPage()
@@ -52,7 +65,7 @@ for (const a of manifest.assets) {
   }
 
   const b64 = readFileSync(file).toString('base64')
-  const res = await page.evaluate(async ({ d, a, SCALE_WARN, SCALE_FAIL }) => {
+  const res = await page.evaluate(async ({ d, a }) => {
     const img = new Image()
     img.src = d
     await img.decode()
@@ -88,8 +101,34 @@ for (const a of manifest.assets) {
       for (let col = 0; col < columns; col++) {
         const idx = r * columns + col
         const ox = col * cellWidth, oy = r * cellHeight
-        let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1, opaque = 0
+
+        // Pass 1 — opaque pixel count per scanline, so detached debris shows up
+        // as its own band. Generated sheets carry orphan fragments (stray hair
+        // or crest tips left behind by the generator), and because they can sit
+        // BELOW the character they would hijack a naive bottom-centre anchor and
+        // plant every frame too high. Keep only the dominant band.
+        const rowCount = new Array(cellHeight).fill(0)
         for (let y = 0; y < cellHeight; y++) {
+          const rowOff = ((oy + y) * img.width + ox) * 4
+          let n = 0
+          for (let x = 0; x < cellWidth; x++) if (all[rowOff + x * 4 + 3] > 16) n++
+          rowCount[y] = n
+        }
+        const bands = []
+        for (let y = 0, s = -1; y <= cellHeight; y++) {
+          const on = y < cellHeight && rowCount[y] > 0
+          if (on && s < 0) s = y
+          else if (!on && s >= 0) { bands.push({ a: s, b: y - 1, px: 0 }); s = -1 }
+        }
+        for (const bd of bands) for (let y = bd.a; y <= bd.b; y++) bd.px += rowCount[y]
+        const dominant = bands.reduce((best, bd) => (!best || bd.px > best.px ? bd : best), null)
+        const discarded = bands.filter((bd) => bd !== dominant && bd.px > 0)
+        const yLo = dominant ? dominant.a : 0
+        const yHi = dominant ? dominant.b : -1
+
+        // Pass 2 — bbox within the dominant band only.
+        let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1, opaque = 0
+        for (let y = yLo; y <= yHi; y++) {
           const rowOff = ((oy + y) * img.width + ox) * 4
           for (let x = 0; x < cellWidth; x++) {
             if (all[rowOff + x * 4 + 3] > 16) {
@@ -110,11 +149,12 @@ for (const a of manifest.assets) {
               footX: +(((minX + maxX) / 2)).toFixed(1),
               footY: maxY + 1,
               touchesEdge: minX === 0 || minY === 0 || maxX === cellWidth - 1 || maxY === cellHeight - 1,
+              debris: discarded.map((bd) => ({ y0: bd.a, y1: bd.b, px: bd.px })),
             })
       }
     }
     return out
-  }, { d: `data:image/png;base64,${b64}`, a, SCALE_WARN, SCALE_FAIL })
+  }, { d: `data:image/png;base64,${b64}`, a })
 
   row.size = `${res.w}x${res.h}`
   row.transparentPct = res.transparentPct
@@ -149,28 +189,77 @@ for (const a of manifest.assets) {
       }
     }
 
-    // 4. bleed
+    // 4. bleed and orphan debris
     const bleeding = occupied.filter((c) => c.touchesEdge)
     if (bleeding.length) {
       row.problems.push({ level: 'WARN', msg: `${bleeding.length} cell(s) touch their cell edge (${bleeding.slice(0, 6).map((c) => c.idx).join(', ')}${bleeding.length > 6 ? '…' : ''}) — content may be clipped` })
     }
+    const withDebris = occupied.filter((c) => c.debris && c.debris.length)
+    if (withDebris.length) {
+      const worst = withDebris.flatMap((c) => c.debris).reduce((m, d) => Math.max(m, d.px), 0)
+      row.notes.push(`${withDebris.length} cell(s) carry detached fragments away from the figure ` +
+        `(cells ${withDebris.slice(0, 6).map((c) => c.idx).join(', ')}${withDebris.length > 6 ? '…' : ''}; largest ${worst}px). ` +
+        `Discarded before anchoring — had they been kept, bottom-centre would have planted on the debris.`)
+    }
 
     // 5. scale consistency — the un-repairable one
-    const heights = occupied.map((c) => c.h).sort((x, y) => x - y)
-    const median = heights[Math.floor(heights.length / 2)]
-    row.contentHeight = { median, min: heights[0], max: heights[heights.length - 1] }
-    const outliers = occupied
-      .map((c) => ({ idx: c.idx, h: c.h, dev: (c.h - median) / median }))
-      .filter((o) => Math.abs(o.dev) > SCALE_WARN)
-      .sort((p, q) => Math.abs(q.dev) - Math.abs(p.dev))
-    for (const o of outliers) {
-      const lvl = Math.abs(o.dev) > SCALE_FAIL ? 'FAIL' : 'WARN'
-      if (lvl === 'FAIL') hardFails++
-      row.problems.push({
-        level: lvl,
-        msg: `cell ${o.idx} content height ${o.h}px is ${(o.dev * 100).toFixed(0)}% off the sheet median ${median}px` +
-             (lvl === 'WARN' ? ' — check it is a pose, not a scale change' : ' — scale drift cannot be auto-repaired'),
-      })
+    const med = (xs) => { const s = [...xs].sort((p, q) => p - q); return s[Math.floor(s.length / 2)] }
+    const byIdx = new Map(occupied.map((c) => [c.idx, c]))
+    const allH = occupied.map((c) => c.h)
+    row.contentHeight = { median: med(allH), min: Math.min(...allH), max: Math.max(...allH) }
+
+    // Fall back to treating the whole sheet as one animation if none declared.
+    const anims = a.animations
+      ? Object.entries(a.animations).map(([name, r]) => ({
+          name,
+          cells: Array.from({ length: r.count }, (_, i) => byIdx.get(r.start + i)).filter(Boolean),
+        }))
+      : [{ name: '(sheet)', cells: occupied }]
+
+    const animMedians = []
+    for (const an of anims) {
+      if (!an.cells.length) continue
+      const m = med(an.cells.map((c) => c.h))
+      const exempt = POSTURE_EXEMPT.test(an.name)
+      animMedians.push({ name: an.name, median: m, exempt })
+      // A ko/death animation is a posture TRANSITION — it starts upright and
+      // ends prone, so its own frames are not height-comparable to each other
+      // either. Height carries no scale signal here at all; report the numbers
+      // for eyeballing rather than inventing a failure.
+      if (exempt) {
+        row.notes.push(`${an.name}: heights ${an.cells.map((c) => c.h).join(' → ')}px (posture transition, scale not checkable by height)`)
+        continue
+      }
+      // --- within-animation drift ---
+      for (const c of an.cells) {
+        const dev = (c.h - m) / m
+        if (Math.abs(dev) <= WITHIN_WARN) continue
+        const lvl = Math.abs(dev) > WITHIN_FAIL ? 'FAIL' : 'WARN'
+        if (lvl === 'FAIL') hardFails++
+        row.problems.push({
+          level: lvl,
+          msg: `cell ${c.idx} (${an.name}) is ${(dev * 100).toFixed(0)}% off that animation's own median ${m}px` +
+               (lvl === 'FAIL' ? ' — scale drift within one animation cannot be auto-repaired' : ''),
+        })
+      }
+    }
+
+    // --- across comparable (upright) animations ---
+    const upright = animMedians.filter((x) => !x.exempt)
+    if (upright.length > 1) {
+      const base = med(upright.map((x) => x.median))
+      row.animMedians = Object.fromEntries(animMedians.map((x) => [x.name, x.median + (x.exempt ? ' (posture-exempt)' : '')]))
+      for (const u of upright) {
+        const dev = (u.median - base) / base
+        if (Math.abs(dev) <= ACROSS_WARN) continue
+        const lvl = Math.abs(dev) > ACROSS_FAIL ? 'FAIL' : 'WARN'
+        if (lvl === 'FAIL') hardFails++
+        row.problems.push({
+          level: lvl,
+          msg: `animation "${u.name}" sits ${(dev * 100).toFixed(0)}% off the upright baseline ${base}px` +
+               (lvl === 'WARN' ? ' — check it is a raised weapon, not a scale change' : ''),
+        })
+      }
     }
 
     // 6. foot anchor spread
