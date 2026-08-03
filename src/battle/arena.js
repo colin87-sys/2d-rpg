@@ -2,43 +2,52 @@
 // src/battle/arena.js — Aetherbound battle environments (BATTLE_BIBLE §1/§3/§4)
 //
 //   createArena({ renderer, scene, variant })   variant: 'hall' | 'highland'
+//   export const arenaBackdropsReady            resolves when both plates load
 //
-// Owns: the whole set, the scene fog + background, every environment light,
-// the sprite rim law (§5.1) that units.js reads, addSpellLight() parenting for
-// VFX point lights, groundY(x,z), and per-frame torch flicker / flame boil /
-// ember spawn / fog-card drift / ground-mist churn.
+// ROUND 3 — painted backdrop plates. The camera is a fixed proscenium (§1:
+// vFOV 26°, (0, 7, 14), pitch 12° down, never orbits), which is exactly the
+// case where a painted plate beats geometry. The procedurally modelled sets
+// (hall: walls, fluted columns, arcade arches, brazier columns, podium,
+// steps, door, rubble; highland: rock knuckles, crag buttress, conifer
+// cards, skyline cards, painted-canvas sky, glow discs) are replaced by two
+// pre-lit 1920×1080 painterly plates:
 //
-//   HALL (frame04)     — near-black ashlar hall drowning in blue dark; two
-//                        monumental brazier columns at (∓5.3, ·, −10.8) whose
-//                        flames at y 5.4 are the only warmth besides the door
-//                        glow; splayed side walls with fluted columns and
-//                        arcade arches falling to void; a stepped podium and
-//                        braced double door upstage at z −12; a coursed
-//                        flagstone floor that only warms inside torch radius.
-//                        ROUND 2: albedo re-authored AT the sampled §3
-//                        palette (WALL_MID/WALL_DARK/FLOOR_COOL), the violet
-//                        emissive floor killed (§11.6), torch warmth confined
-//                        to ~0.11 fw pools, glow sprites shrunk to the flame
-//                        footprint, furniture → stone ruins, debris seated
-//                        with contact darkening.
-//   HIGHLAND (frame05) — a mossy rock shelf ending in a cliff lip at z −14;
-//                        conifer silhouettes stage-left, a crag buttress
-//                        upper-right, skyline cards and a painted fog-band
-//                        backdrop behind; three drifting fog cards, a
-//                        backlight glow disc, low ground mist and drifting
-//                        motes. Cool, near-monochrome, silhouette-first.
+//   assets/backdrops/torchlit-stone-hall.png → 'hall'     (frame04 family)
+//   assets/backdrops/misty-highland.png      → 'highland' (frame05 family)
 //
-// Every number that appears with a bible reference is typed in from
-// docs/BATTLE_BIBLE.md — do not "tune" them. Where the reference images and
-// the bible disagreed, the images won (noted inline).
+// What SURVIVES as real geometry / live rig:
+//   · the FLOOR — lit, shadow-receiving, spell-light-responsive. §8's light
+//     spill ("a burst that does not repaint its surroundings is an instant
+//     fail") demands a floor real lights can hit; the plate cannot provide
+//     that. The floor is trimmed so its far edge sits exactly on the painted
+//     floor/set junction (placement math at makeBackdropPlate).
+//   · groundY(x, z) — flat y = 0 for the hall, the 2° shelf for the
+//     highland. Every foot and contact blob in units.js plants on it.
+//   · the §3/§4 LIGHT RIGS — torch point lights at (∓5.3, 5.4, −10.8) with
+//     two-octave flicker + position jitter, hemisphere ambient, the cool
+//     front fill (hall, carries the one PCF shadow map) and the backlight
+//     key (highland). The visible flames are painted into the plate now, but
+//     the sprites must still take the warm brazier key — removing these
+//     lights would flatten every character.
+//   · the rim law + addSpellLight parenting (units.js / vfx.js contracts).
+//   · the highland's LIVING atmosphere — three drifting fog cards, ground
+//     mist blobs and motes — which all sit in FRONT of the plate and keep
+//     the frozen painting breathing.
 //
-// Rim-law convention published here (units.js consumes):
+// The plate itself is UNLIT: it is pre-lit in paint (its torch pools, door
+// glow, fog band and backlight are baked in), so it renders MeshBasicMaterial
+// with fog:false and takes no shadows — scene lights on it would
+// double-expose. Consequences accepted and noted for the integrator:
+//   · flame billboards / embers / door-glow sprite / coals are gone (painted,
+//     static); the torch light flicker still animates the real floor pools.
+//   · the plates' own painted floors (their bottom ~40 %) are occluded by the
+//     real lit floor — by design, so VFX spill and contact shadows work.
+//
+// Rim-law convention (unchanged — units.js consumes):
 //   rim.dir      [x, y] normalized SCREEN-space direction from a unit TOWARD
-//                its rim light, y positive DOWN (CSS/px sense). Highland's
-//                fixed (0, −1) therefore means "lit from straight above".
+//                its rim light, y positive DOWN (CSS/px sense).
 //   rim.color    '#rrggbb' string.  rim.strength  0..1.
-//   rim.sources  live world-space light anchors ({x,y,z,kind}) — torches plus
-//                any active spell lights — so units may refine per-unit.
+//   rim.sources  live world-space light anchors ({x,y,z,kind}).
 // ---------------------------------------------------------------------------
 
 import * as THREE from 'three'
@@ -66,7 +75,6 @@ function mulberry32(a) {
 
 function rgb(hex) { return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255] }
 function css(c) { return 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')' }
-function cssa(c, a) { return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')' }
 function mixc(a, b, t) {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
@@ -133,7 +141,7 @@ function makeNoise2(seed) {
 }
 
 // ===========================================================================
-// 2. Texture kit — every map painted in Canvas2D at runtime, no assets
+// 2. Texture kit — floor maps + atmosphere alphas painted in Canvas2D
 // ===========================================================================
 
 function canvasTex(w, h, aniso, painter, opts = {}) {
@@ -151,7 +159,7 @@ function canvasTex(w, h, aniso, painter, opts = {}) {
   return t
 }
 
-// Soft white radial disc — tinted per-material (glows, halos, discs, mist).
+// Soft white radial disc — tinted per-material (contact patches, motes).
 function radialTex(size, stops) {
   const c = document.createElement('canvas')
   c.width = c.height = size
@@ -237,270 +245,112 @@ function fogCardTex(seed) {
   return t
 }
 
-// --- torch flame: 3 layers × 3 boil frames, additive teardrops (§3) --------
-// Layer palette (BIBLE §3): core #f9f3e3, body #e99648, tongues #af5d21.
-function flameAtlasTex(layer, seed) {
-  const F = 128
-  const c = document.createElement('canvas')
-  c.width = F * 3
-  c.height = F
-  const g = c.getContext('2d')
-  const rnd = mulberry32(seed)
-  const spec = {
-    core: { col: rgb(0xf9f3e3), hot: rgb(0xffffff), w: 0.30, lobes: 2, rag: 0.10 },
-    body: { col: rgb(0xe99648), hot: rgb(0xf9f3e3), w: 0.40, lobes: 3, rag: 0.20 },
-    tongues: { col: rgb(0xaf5d21), hot: rgb(0xe99648), w: 0.48, lobes: 4, rag: 0.34 },
-  }[layer]
-  for (let f = 0; f < 3; f++) {
-    const ox = f * F
-    const cx = ox + F / 2
-    const baseY = F * 0.94
-    // teardrop body: stacked shrinking blobs with per-frame wobble
-    const steps = 22
-    for (let i = 0; i < steps; i++) {
-      const t = i / (steps - 1) // 0 base → 1 tip
-      const y = baseY - t * F * 0.86
-      const wob = Math.sin(t * 9 + f * 2.1 + seed) * spec.rag * (0.3 + t)
-      const x = cx + wob * F * 0.30
-      const r = F * spec.w * (1 - t * 0.85) * (0.82 + 0.18 * Math.sin(t * 5 + f))
-      const a = (1 - t * 0.55) * 0.16
-      g.fillStyle = cssa(mixc(spec.col, spec.hot, Math.pow(1 - t, 1.6) * 0.8), a)
-      g.beginPath()
-      g.ellipse(x, y, Math.max(1.5, r), Math.max(2, r * 1.35), 0, 0, TAU)
-      g.fill()
+// ===========================================================================
+// 3. Backdrop plates — async load + the solved proscenium placement
+// ===========================================================================
+
+const _plateLoader = new THREE.TextureLoader()
+
+function loadPlate(url) {
+  let done
+  const promise = new Promise((res) => { done = res })
+  // TextureLoader.load returns the Texture synchronously and fills it in
+  // later — createArena stays synchronous, the promise gates the capture.
+  const tex = _plateLoader.load(
+    url,
+    () => done(tex),
+    undefined,
+    (err) => {
+      console.error('[arena] backdrop failed to load: ' + url, err)
+      done(tex) // resolve anyway — never hang the shot harness on a 404
     }
-    // side tongues licking upward
-    for (let l = 0; l < spec.lobes; l++) {
-      const side = l % 2 ? 1 : -1
-      const ty = baseY - F * (0.18 + rnd() * 0.34)
-      const tx = cx + side * F * spec.w * (0.5 + rnd() * 0.45)
-      const th = F * (0.16 + rnd() * 0.22)
-      g.fillStyle = cssa(spec.col, 0.30 + rnd() * 0.2)
-      g.beginPath()
-      g.moveTo(tx - 4, ty)
-      g.quadraticCurveTo(tx + side * 7, ty - th * 0.5, tx + side * 2, ty - th)
-      g.quadraticCurveTo(tx - side * 5, ty - th * 0.4, tx - 4, ty)
-      g.fill()
-    }
-    // ragged edge erosion — punch transparent bites so the silhouette boils
-    g.globalCompositeOperation = 'destination-out'
-    const bites = layer === 'core' ? 8 : 16
-    for (let i = 0; i < bites; i++) {
-      const t = rnd()
-      const y = baseY - t * F * 0.9
-      const x = cx + (rnd() - 0.5) * F * spec.w * 2.4
-      const r = F * (0.02 + rnd() * 0.05) * (0.5 + t)
-      g.beginPath()
-      g.arc(x, y, r, 0, TAU)
-      g.fill()
-    }
-    g.globalCompositeOperation = 'source-over'
-    // hot base seat
-    const grad = g.createRadialGradient(cx, baseY - F * 0.04, 0, cx, baseY - F * 0.04, F * spec.w * 0.9)
-    grad.addColorStop(0, cssa(spec.hot, layer === 'core' ? 0.9 : 0.5))
-    grad.addColorStop(1, cssa(spec.hot, 0))
-    g.fillStyle = grad
-    g.beginPath()
-    g.ellipse(cx, baseY - F * 0.05, F * spec.w, F * 0.13, 0, 0, TAU)
-    g.fill()
-  }
-  const t = new THREE.CanvasTexture(c)
-  t.colorSpace = THREE.SRGBColorSpace
-  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping
-  t.magFilter = t.minFilter = THREE.LinearFilter
-  t.generateMipmaps = false
-  t.repeat.set(1 / 3, 1)
-  return t
+  )
+  // Full-frame plate, not an atlas. flipY true matches PlaneGeometry UVs
+  // (v = 1 at the top edge → image top at the plate's top edge).
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.flipY = true
+  tex.generateMipmaps = true
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.magFilter = THREE.LinearFilter
+  return { tex, promise }
+}
+
+const PLATES = {
+  hall: loadPlate(new URL('../../assets/backdrops/torchlit-stone-hall.png', import.meta.url).href),
+  highland: loadPlate(new URL('../../assets/backdrops/misty-highland.png', import.meta.url).href),
+}
+
+// Resolves once both plates have decoded (or errored — see loadPlate). The
+// integrator awaits this before signalling the capture harness; without it
+// the screenshot fires on a blank plate.
+export const arenaBackdropsReady =
+  Promise.all([PLATES.hall.promise, PLATES.highland.promise]).then(() => {})
+
+// --- placement math --------------------------------------------------------
+// §1 camera: (0, 7, 14), pitch 12° down, vFOV 26°, 16:9 frame. The plate is
+// a camera-facing plane at D = 30 m along the view axis (behind the shelf
+// far edge at ~26.9 m, behind the z −14 fog card at ~28.5 m, inside far 80).
+// A plane exactly filling the frustum maps plate fractions 1:1 to screen
+// fractions, so a painted feature at pF fh of the image lands at screen
+//   fy = 0.5 − uC/H − (0.5 − pF)·k
+// (H = frustum height at D, k = oversize scale, uC = centre offset along
+// camera-up). Solving for the feature to land at target sF:
+//   uC = H · (0.5 − sF − (0.5 − pF)·k)
+//
+// HALL — pixel-measured: the painted stair-foot junction (where the stepped
+// platform meets the flagstones, centre band x 900–1020 of the 1920×1080
+// plate) sits at pF = 0.598 fh; the painted flame centroids at (0.252, 0.24)
+// and (0.732, 0.25), midpoint 0.492 fw — matching the §3 torch-anchor screen
+// midpoint 0.494, so the plate stays horizontally centred. The geometry's
+// floor-to-wall junction (back wall z = −12, y = 0) projects to fy 0.6161
+// under the §1 camera. The plate is therefore shifted 0.196 m DOWN along
+// camera-up (uC = 13.852·(0.5 − 0.6161 − (0.5 − 0.598)·1.04) = −0.196) so
+// the painted junction lands exactly on the z −12 line, and the real floor
+// is trimmed to end at z = −12: the real/painted seam IS the junction, and
+// no painted floor shows above the live one. k = 1.04 keeps full coverage
+// after the shift (top edge 0.506·H > 0.500·H, bottom 0.534·H).
+//
+// HIGHLAND — the real 2° shelf's far edge (z −12, y 0.244 — same wall-plane
+// anchor as the hall per §1) projects to fy 0.597. The plate's cracked-stone
+// floor runs up to ≈ 0.60–0.65 fh with the mid-ground rock band above, so
+// the plate keeps its authored framing (pF = sF = 0.597 → zero net shift,
+// uC = +0.04 m is pure oversize compensation): the real turf horizon at
+// 0.597 occludes the painted rock-band bottoms (0.60–0.65), which reads as
+// boulders beyond a rise — nothing painted floats above live ground.
+const PLATE_FIT = {
+  hall: { pF: 0.598, sF: 0.6161, k: 1.04 },
+  highland: { pF: 0.597, sF: 0.597, k: 1.03 },
+}
+const PLATE_DIST = 30
+
+function makeBackdropPlate(variant, aniso) {
+  const { tex } = PLATES[variant]
+  if (aniso) tex.anisotropy = aniso
+  const { pF, sF, k } = PLATE_FIT[variant]
+  const pitch = THREE.MathUtils.degToRad(12)
+  const fwd = new THREE.Vector3(0, -Math.sin(pitch), -Math.cos(pitch))
+  const up = new THREE.Vector3(0, Math.cos(pitch), -Math.sin(pitch))
+  const H = 2 * PLATE_DIST * Math.tan(THREE.MathUtils.degToRad(13)) // 13.852 m
+  const W = H * (16 / 9) // 24.626 m — the plates are 16:9 like the frame
+  const uC = H * (0.5 - sF - (0.5 - pF) * k)
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(W * k, H * k),
+    // Pre-lit plate: unlit material, no scene fog, no tint — §3/§4 lighting
+    // is already painted in. Lighting it again would double-expose.
+    new THREE.MeshBasicMaterial({ map: tex, fog: false })
+  )
+  mesh.position.set(0, 7.0, 14.0).addScaledVector(fwd, PLATE_DIST).addScaledVector(up, uC)
+  mesh.rotation.x = -pitch // normal (0, sin12°, cos12°): faces the fixed seat
+  mesh.castShadow = false
+  mesh.receiveShadow = false // pre-lit — must never catch the shadow map
+  mesh.frustumCulled = false
+  mesh.name = 'arena_backdrop_' + variant
+  return mesh
 }
 
 // ===========================================================================
-// 3. Geometry kit — primitives with worldized UVs, merged per material
+// 4. Floor painters — the two surfaces that stay real and lit
 // ===========================================================================
-
-function worldizeBoxUV(geo, w, h, d, s, u0) {
-  const dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]]
-  const uv = geo.attributes.uv
-  for (let f = 0; f < 6; f++) {
-    const dw = dims[f][0] / s
-    const dh = dims[f][1] / s
-    for (let i = f * 4; i < f * 4 + 4; i++) {
-      uv.setXY(i, uv.getX(i) * dw + u0, uv.getY(i) * dh)
-    }
-  }
-}
-function autoU(x, y, z) {
-  const v = x * 7.31 + z * 3.97 + y * 1.71
-  return v - Math.floor(v)
-}
-function gFinish(geo, x, y, z, o) {
-  if (o.rz) geo.rotateZ(o.rz)
-  if (o.rx) geo.rotateX(o.rx)
-  if (o.ry) geo.rotateY(o.ry)
-  geo.translate(x, y, z)
-  return geo
-}
-// Box, base-anchored at y unless o.c (centred). o.uv = metres per repeat.
-function gBox(w, h, d, x, y, z, o = {}) {
-  const geo = new THREE.BoxGeometry(w, h, d)
-  worldizeBoxUV(geo, w, h, d, o.uv || 1.5, o.u0 !== undefined ? o.u0 : autoU(x, y, z))
-  return gFinish(geo, x, o.c ? y : y + h / 2, z, o)
-}
-function gCyl(rT, rB, h, seg, x, y, z, o = {}) {
-  const geo = new THREE.CylinderGeometry(rT, rB, h, seg)
-  const s = o.uv || 1.5
-  const uv = geo.attributes.uv
-  const cu = (TAU * (rT + rB)) / 2 / s
-  const cv = h / s
-  const u0 = autoU(x, y, z)
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * cu + u0, uv.getY(i) * cv)
-  return gFinish(geo, x, o.c ? y : y + h / 2, z, o)
-}
-function gLathe(profile, seg, x, y, z, o = {}) {
-  const pts = profile.map((p) => new THREE.Vector2(p[0], p[1]))
-  const geo = new THREE.LatheGeometry(pts, seg)
-  const s = o.uv || 1.2
-  const uv = geo.attributes.uv
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 2.2, uv.getY(i) * (2.2 / s))
-  return gFinish(geo, x, y, z, o)
-}
-// Wall slab with a round-top arched hole, front face on +Z (arcades, niches).
-function gArchWall(w, h, t, aw, ah, x, y, z, o = {}) {
-  const shp = new THREE.Shape()
-  shp.moveTo(-w / 2, 0)
-  shp.lineTo(w / 2, 0)
-  shp.lineTo(w / 2, h)
-  shp.lineTo(-w / 2, h)
-  shp.closePath()
-  const hole = new THREE.Path()
-  const r = aw / 2
-  hole.moveTo(-r, 0)
-  hole.lineTo(-r, ah - r)
-  hole.absarc(0, ah - r, r, Math.PI, 0, true)
-  hole.lineTo(r, 0)
-  hole.closePath()
-  shp.holes.push(hole)
-  const geo = new THREE.ExtrudeGeometry(shp, { depth: t, bevelEnabled: false, curveSegments: 9 })
-  geo.translate(0, 0, -t / 2)
-  const s = o.uv || 1.5
-  const uv = geo.attributes.uv
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / s, uv.getY(i) / s)
-  return gFinish(geo, x, y, z, o)
-}
-// Sagging chain/rope between two points (parabolic dip).
-function gCatTube(ax, ay, az, bx, by, bz, sag, r) {
-  const pts = []
-  for (let i = 0; i <= 10; i++) {
-    const t = i / 10
-    pts.push(new THREE.Vector3(
-      ax + (bx - ax) * t,
-      ay + (by - ay) * t - sag * 4 * t * (1 - t),
-      az + (bz - az) * t
-    ))
-  }
-  return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 12, r, 5, false)
-}
-// Faceted boulder: jittered icosahedron, flattened, base-anchored, sunk.
-function gRock(seed, sx, sy, sz, x, y, z, o = {}) {
-  const geo = new THREE.IcosahedronGeometry(0.5, 1)
-  const rnd = mulberry32(seed)
-  const pos = geo.attributes.position
-  const seen = new Map()
-  for (let i = 0; i < pos.count; i++) {
-    const key = pos.getX(i).toFixed(3) + ',' + pos.getY(i).toFixed(3) + ',' + pos.getZ(i).toFixed(3)
-    let s = seen.get(key)
-    if (s === undefined) { s = 0.76 + rnd() * 0.52; seen.set(key, s) }
-    pos.setXYZ(i, pos.getX(i) * s * sx, pos.getY(i) * s * sy * 0.8, pos.getZ(i) * s * sz)
-  }
-  geo.computeVertexNormals()
-  // base-anchor then sink 15 % for ground contact (no floating rocks)
-  geo.translate(0, sy * 0.34, 0)
-  return gFinish(geo, x, y - sy * 0.12, z, o)
-}
-function yawX(ux, uz) { return Math.atan2(-uz, ux) }
-
-// Bucket helpers — one geometry list per material key.
-function addG(list, geo) {
-  list.push(geo.index ? geo.toNonIndexed() : geo)
-}
-function mergeBuckets(group, B, MAT, opts = {}) {
-  for (const k of Object.keys(B)) {
-    if (!B[k].length) continue
-    const merged = mergeGeometries(B[k], false)
-    if (!merged) continue
-    const mesh = new THREE.Mesh(merged, MAT[k])
-    mesh.name = 'arena_' + k
-    mesh.castShadow = !(opts.noCast && opts.noCast.includes(k))
-    mesh.receiveShadow = true
-    group.add(mesh)
-    for (const g of B[k]) g.dispose()
-    B[k].length = 0
-  }
-}
-
-// ===========================================================================
-// 4. HALL painters — BIBLE §3 palette, authored as albedo (lights finish it)
-// ===========================================================================
-
-// Coursed ashlar masonry — authored AT the sampled §3 wall palette
-// (WALL_MID #532f23 / WALL_DARK #28242c). Round-2 note: the round-1 albedo
-// was ~2.5× brighter "so pools land on WALL_HOT" and the whole room went
-// candy; the torch pools now do that lift themselves (albedo × pool light
-// ≈ #a4551f–#ac6f40 after ACES), and off-pool masonry falls to #0a1420-class
-// under the 0.35 hemisphere alone — darkness does the composition's work.
-function paintAshlar(g, S, seed) {
-  const rnd = mulberry32(seed)
-  const mortar = rgb(0x221d1b)
-  const lit = rgb(0x5a3526)
-  const mid = rgb(0x532f23)  // WALL_MID
-  const dark = rgb(0x28242c) // WALL_DARK
-  g.fillStyle = css(mortar)
-  g.fillRect(0, 0, S, S)
-  const rows = 18 // 6 m/repeat → 0.33 m courses (f4_door crop: brick-fine ashlar)
-  const ch = S / rows
-  const wrapRect = (x, y, w, h) => {
-    g.fillRect(x, y, w, h)
-    if (x < 0) g.fillRect(x + S, y, w, h)
-    if (x + w > S) g.fillRect(x - S, y, w, h)
-  }
-  for (let r = 0; r < rows; r++) {
-    const y = r * ch
-    let x = -((r % 2) * 48 + rnd() * 10)
-    while (x < S) {
-      const bw = 66 * (0.72 + rnd() * 0.6)
-      let base = mixc(lit, mid, Math.pow(rnd(), 1.3))
-      if (rnd() < 0.14) base = mixc(mid, dark, 0.4 + rnd() * 0.5)
-      base = mixc(base, [base[0] + 9, base[1] + 4, base[2] - 6], rnd() * 0.5)
-      g.fillStyle = css(base)
-      wrapRect(x + 1.5, y + 1.5, bw - 3, ch - 3)
-      g.fillStyle = css(shade(base, 1.13))
-      wrapRect(x + 1.5, y + 1.5, bw - 3, 2) // top bevel
-      g.fillStyle = css(shade(base, 0.74))
-      wrapRect(x + 1.5, y + ch - 4, bw - 3, 2.4) // foot shadow
-      g.fillStyle = css(shade(base, 0.87))
-      wrapRect(x + bw - 3.6, y + 1.5, 2, ch - 3) // right shade
-      if (rnd() < 0.2) { // chip glint
-        g.fillStyle = css(shade(base, 1.22))
-        wrapRect(x + 3 + rnd() * (bw - 10), y + 2.5, 2.5 + rnd() * 3, 1.8)
-      }
-      if (rnd() < 0.3) { // soot/grime pooling at block feet
-        g.globalAlpha = 0.2 + rnd() * 0.2
-        g.fillStyle = css(shade(dark, 0.5))
-        wrapRect(x + 2 + rnd() * bw * 0.4, y + ch * 0.5, bw * (0.3 + rnd() * 0.35), ch * 0.46)
-        g.globalAlpha = 1
-      }
-      x += bw
-    }
-  }
-  // large value patches kill the wallpaper read (blue-dark, never #000 — §11.6)
-  for (let i = 0; i < 6; i++) {
-    g.globalAlpha = 0.045
-    g.fillStyle = i % 2 ? '#0a0e16' : '#ffe8c8'
-    g.beginPath()
-    g.arc(rnd() * S, rnd() * S, S * (0.18 + rnd() * 0.25), 0, TAU)
-    g.fill()
-    g.globalAlpha = 1
-  }
-}
 
 // Flagstone floor — FLOOR_COOL #3c4049 slate, FLOOR_GROUT #23262e joints.
 // Big 1.0 × 0.66 m slabs in running bond; visible coursing is mandatory.
@@ -582,620 +432,8 @@ function paintFlagstone(g, S, seed) {
   }
 }
 
-// Dressed stone for trim (columns, steps, podium, plinths, benches).
-// Optional flute stripes for the column shafts.
-function paintDressed(g, S, seed, base0, flutes) {
-  const rnd = mulberry32(seed)
-  const N = makeNoise2(seed + 3)
-  const base = rgb(base0)
-  g.fillStyle = css(base)
-  g.fillRect(0, 0, S, S)
-  for (let i = 0; i < 900; i++) {
-    const x = rnd() * S
-    const y = rnd() * S
-    const n = N.fbm(x / 40, y / 40, 4)
-    g.globalAlpha = 0.12
-    g.fillStyle = css(shade(base, 1 + n * 0.36))
-    g.fillRect(x, y, 2 + rnd() * 3, 2 + rnd() * 3)
-    g.globalAlpha = 1
-  }
-  // faint sediment banding
-  for (let y = 0; y < S; y += 14 + rnd() * 20) {
-    g.globalAlpha = 0.08
-    g.fillStyle = rnd() < 0.5 ? css(shade(base, 0.82)) : css(shade(base, 1.12))
-    g.fillRect(0, y, S, 3 + rnd() * 5)
-    g.globalAlpha = 1
-  }
-  // chips and pocks
-  for (let i = 0; i < 60; i++) {
-    g.globalAlpha = 0.35
-    g.fillStyle = rnd() < 0.6 ? css(shade(base, 0.66)) : css(shade(base, 1.24))
-    g.fillRect(rnd() * S, rnd() * S, 1.6, 1.6)
-    g.globalAlpha = 1
-  }
-  if (flutes) {
-    // 10 flutes per repeat: dark valley, bright arris — reads as fluting
-    const fw = S / 10
-    for (let i = 0; i < 10; i++) {
-      const x = i * fw
-      const grad = g.createLinearGradient(x, 0, x + fw, 0)
-      grad.addColorStop(0.0, 'rgba(255,240,220,0.20)')
-      grad.addColorStop(0.22, 'rgba(0,0,0,0.0)')
-      grad.addColorStop(0.62, 'rgba(0,0,10,0.30)')
-      grad.addColorStop(0.86, 'rgba(0,0,10,0.10)')
-      grad.addColorStop(1.0, 'rgba(255,240,220,0.20)')
-      g.fillStyle = grad
-      g.fillRect(x, 0, fw, S)
-    }
-  }
-  // grime foot band (v = 0 is the bottom of most trim boxes)
-  const grad = g.createLinearGradient(0, S, 0, S * 0.72)
-  grad.addColorStop(0, 'rgba(20,16,12,0.35)')
-  grad.addColorStop(1, 'rgba(20,16,12,0)')
-  g.fillStyle = grad
-  g.fillRect(0, S * 0.72, S, S * 0.28)
-}
-
-// Braced double door — DOOR_RECESS #4e3c28-family aged wood, near-black
-// straps, and a baked warm catch at the top where the lintel glow lands.
-// Round-2: the round-1 planks under two torches + the glow read as a flat
-// saturated barn-red decal; the palette is now desaturated umber.
-function paintDoor(g, W, H, seed) {
-  const rnd = mulberry32(seed)
-  const plank = rgb(0x3e3222)
-  const plankD = rgb(0x241d14)
-  const iron = rgb(0x191310)
-  const ironHi = rgb(0x4e3c28)
-  g.fillStyle = css(plankD)
-  g.fillRect(0, 0, W, H)
-  const leafW = W / 2
-  for (const leaf of [0, 1]) {
-    const ox = leaf * leafW
-    const pw = leafW / 4
-    for (let p = 0; p < 4; p++) {
-      const x = ox + p * pw
-      const tone = shade(plank, 0.82 + rnd() * 0.34)
-      g.fillStyle = css(tone)
-      g.fillRect(x + 1, 2, pw - 2, H - 4)
-      for (let i = 0; i < 6; i++) { // grain
-        g.globalAlpha = 0.2
-        g.strokeStyle = css(shade(tone, rnd() < 0.7 ? 0.66 : 1.24))
-        g.lineWidth = 1
-        g.beginPath()
-        const gx = x + 2 + rnd() * (pw - 4)
-        g.moveTo(gx, 0)
-        for (let y = 0; y <= H; y += H / 5) g.lineTo(gx + Math.sin(y * 0.04 + rnd() * 6) * 1.5, y)
-        g.stroke()
-        g.globalAlpha = 1
-      }
-    }
-    // X cross-brace (the frame04 tell) + top/bottom rails
-    g.strokeStyle = css(iron)
-    g.lineWidth = W * 0.045
-    g.lineCap = 'square'
-    g.beginPath()
-    g.moveTo(ox + leafW * 0.12, H * 0.16)
-    g.lineTo(ox + leafW * 0.88, H * 0.84)
-    g.moveTo(ox + leafW * 0.88, H * 0.16)
-    g.lineTo(ox + leafW * 0.12, H * 0.84)
-    g.stroke()
-    g.strokeStyle = css(ironHi)
-    g.lineWidth = 1.4
-    g.beginPath()
-    g.moveTo(ox + leafW * 0.12, H * 0.155)
-    g.lineTo(ox + leafW * 0.88, H * 0.835)
-    g.stroke()
-    for (const fy of [0.06, 0.94]) {
-      g.fillStyle = css(iron)
-      g.fillRect(ox + leafW * 0.06, H * fy - H * 0.022, leafW * 0.88, H * 0.044)
-      g.fillStyle = css(ironHi)
-      g.fillRect(ox + leafW * 0.06, H * fy - H * 0.022, leafW * 0.88, 1.5)
-    }
-    // studs
-    for (const [sx, sy] of [[0.12, 0.16], [0.88, 0.16], [0.12, 0.84], [0.88, 0.84], [0.5, 0.5]]) {
-      g.fillStyle = css(ironHi)
-      g.beginPath()
-      g.arc(ox + leafW * sx, H * sy, W * 0.014, 0, TAU)
-      g.fill()
-    }
-  }
-  // centre meeting gap + hinge edges
-  g.fillStyle = 'rgba(8,6,4,0.9)'
-  g.fillRect(W / 2 - 1.5, 0, 3, H)
-  g.fillRect(0, 0, 2, H)
-  g.fillRect(W - 2, 0, 2, H)
-  // warm edge from the lintel glow — brightest at the top, gone by mid-leaf
-  const glowGrad = g.createLinearGradient(0, 0, 0, H * 0.55)
-  glowGrad.addColorStop(0, 'rgba(196,124,54,0.30)')
-  glowGrad.addColorStop(1, 'rgba(196,124,54,0)')
-  g.fillStyle = glowGrad
-  g.fillRect(0, 0, W, H * 0.55)
-  // cool settle at the threshold
-  const footGrad = g.createLinearGradient(0, H, 0, H * 0.8)
-  footGrad.addColorStop(0, 'rgba(8,10,16,0.5)')
-  footGrad.addColorStop(1, 'rgba(8,10,16,0)')
-  g.fillStyle = footGrad
-  g.fillRect(0, H * 0.8, W, H * 0.2)
-}
-
-// One merged mesh of soft dark ellipses — 1–2 px contact darkening that
-// seats debris/props into the floor (the §5.2 grounding idea applied to
-// dressing; un-shadowed chunks read as floating stickers).
-function contactPatches(spots, color, opacity) {
-  const geos = []
-  for (const s of spots) {
-    const p = new THREE.PlaneGeometry(s.w, s.h)
-    p.rotateX(-HPI)
-    if (s.ry) p.rotateY(s.ry)
-    p.translate(s.x, s.y, s.z)
-    geos.push(p)
-  }
-  const merged = mergeGeometries(geos, false)
-  for (const p of geos) p.dispose()
-  const mesh = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({
-    map: radialTex(64, [[0, 0.85], [0.45, 0.42], [1, 0]]),
-    color, transparent: true, opacity, depthWrite: false,
-  }))
-  mesh.name = 'arena_contact'
-  return mesh
-}
-
-// ===========================================================================
-// 5. HALL build — frame04's torchlit stone hall
-// ===========================================================================
-
-function buildHall(env) {
-  const { group, aniso, rnd } = env
-  const patches = [] // contact-darkening spots, one merged mesh at the end
-
-  // ---- materials ----------------------------------------------------------
-  // Emissive floor = the §3 law "deep shadow is blue #060d18-class, never
-  // pure black": every stone material glows that value faintly so unlit
-  // masonry drowns blue, not black.
-  const tWall = canvasTex(512, 512, aniso, (g, S) => paintAshlar(g, S, 101))
-  const tFloor = canvasTex(512, 512, aniso, (g, S) => paintFlagstone(g, S, 202))
-  const tTrim = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 303, 0x56463a, false))
-  const tCol = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 404, 0x5e4b3c, true))
-  const tRecess = canvasTex(256, 256, aniso, (g, S) => paintDressed(g, S, 505, 0x443526, false)) // DOOR_RECESS family
-  const tDoor = canvasTex(256, 320, aniso, (g, w, h) => paintDoor(g, w, h, 606), { clamp: true })
-
-  const stdOpts = { roughness: 0.95, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }
-  const MAT = {
-    wall: new THREE.MeshStandardMaterial({ map: tWall, ...stdOpts }),
-    // Round-2 floor: the round-1 emissive (#8a97ad × 1.7, textured) lifted the
-    // whole slate to a violet glow — the measured #2e2249 shadow cast and a
-    // direct §11.6 instant-fail. The floor now carries only a whisper of
-    // blue-slate self-light (emissiveMap-shaped so coursing survives in the
-    // dark): enough to keep off-pool slate at hue-bearing #10161f-class —
-    // never grey, never violet — while the torch pools and the spell light
-    // repaint it locally. Grounding in the dark is the darkness itself.
-    floor: new THREE.MeshStandardMaterial({
-      map: tFloor, roughness: 0.85, metalness: 0,
-      emissive: 0x4a5464, emissiveMap: tFloor, emissiveIntensity: 1.0,
-    }),
-    trim: new THREE.MeshStandardMaterial({ map: tTrim, ...stdOpts }),
-    column: new THREE.MeshStandardMaterial({ map: tCol, ...stdOpts }),
-    recess: new THREE.MeshStandardMaterial({ map: tRecess, roughness: 0.9, metalness: 0, emissive: 0x1c1208, emissiveIntensity: 0.55 }),
-    door: new THREE.MeshStandardMaterial({ map: tDoor, roughness: 0.9, metalness: 0, emissive: 0x140c06, emissiveIntensity: 0.7 }),
-    bronze: new THREE.MeshStandardMaterial({ color: 0x401c0f, roughness: 0.5, metalness: 0.35, emissive: 0x120804, emissiveIntensity: 0.8 }), // BRAZIER_BOWL
-    coals: new THREE.MeshStandardMaterial({ color: 0x2a1206, roughness: 1, metalness: 0, emissive: 0xaf5d21, emissiveIntensity: 1.15 }), // FLAME_BASE
-    void: new THREE.MeshBasicMaterial({ color: 0x04080e }), // arch voids — blue-black, never #000
-    rubble: new THREE.MeshStandardMaterial({ map: tTrim, color: 0x7d746a, roughness: 1, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }),
-  }
-  MAT.prosc = MAT.wall // same masonry, separate bucket so it can skip shadow cast
-  const B = {}
-  for (const k of Object.keys(MAT)) B[k] = []
-
-  // ---- floor --------------------------------------------------------------
-  {
-    const geo = new THREE.PlaneGeometry(42, 20, 1, 1)
-    geo.rotateX(-HPI)
-    const uv = geo.attributes.uv
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (42 / 6), uv.getY(i) * (20 / 6))
-    geo.translate(0, 0, -8) // spans z −18…+2
-    addG(B.floor, geo)
-  }
-
-  // ---- back wall (z −12), cornice, string course, flanking niches ---------
-  addG(B.wall, gBox(34, 9.6, 0.7, 0, 0, -12.55, { uv: 6 })) // face at z −12.2
-  addG(B.trim, gBox(34, 0.38, 0.34, 0, 5.55, -12.1, { uv: 2.2 })) // cornice ledge (ref: line over the door)
-  addG(B.trim, gBox(34, 0.22, 0.24, 0, 2.62, -12.12, { uv: 2.2 })) // string course
-  for (const s of [-1, 1]) {
-    // arched niches flanking the door — arches falling to void (ref left/right dark recesses)
-    addG(B.recess, gArchWall(2.7, 3.7, 0.5, 1.8, 2.9, 0.5 + s * 5.7, 0, -12.05, { uv: 1.6 }))
-    addG(B.void, gBox(2.2, 3.2, 0.1, 0.5 + s * 5.7, 0, -12.38, { uv: 4 }))
-  }
-
-  // ---- splayed side walls with fluted columns + arcade arches -------------
-  // Inner face line runs (±6.35, −12.2) → (±11.6, +3.4): the proscenium splay
-  // that puts both walls obliquely in frame like the plate.
-  for (const s of [-1, 1]) {
-    const ax = 6.35 * s
-    const az = -12.2
-    const bx = 11.6 * s
-    const bz = 3.4
-    const dx = bx - ax
-    const dz = bz - az
-    const L = Math.hypot(dx, dz)
-    const ux = dx / L
-    const uz = dz / L
-    const yaw = yawX(ux, uz)
-    // inward normal
-    let nx = -uz
-    let nz = ux
-    if (nx * ax + nz * az > 0) { nx = -nx; nz = -nz }
-    const at = (t, off) => ({
-      x: ax + ux * t * L + nx * (off || 0),
-      z: az + uz * t * L + nz * (off || 0),
-    })
-    // wall pieces: solid — arcade — solid (the arcade sits between columns)
-    const seg = (t0, t1) => {
-      const c = at((t0 + t1) / 2, -0.34)
-      addG(B.wall, gBox((t1 - t0) * L + 0.1, 9.2, 0.65, c.x, 0, c.z, { ry: yaw, uv: 6 }))
-    }
-    seg(0, 0.115)
-    { // arcade arch piece with black void behind
-      const c = at(0.185, -0.3)
-      addG(B.wall, gArchWall(4.4, 9.2, 0.6, 2.35, 3.7, c.x, 0, c.z, { ry: yaw, uv: 6 }))
-      const v = at(0.185, -0.78)
-      addG(B.void, gBox(3.4, 4.4, 0.1, v.x, 0, v.z, { ry: yaw, uv: 4 }))
-    }
-    seg(0.255, 0.42)
-    { // second arcade opening (visible only as a dark mass near frame edge)
-      const c = at(0.49, -0.3)
-      addG(B.wall, gArchWall(4.4, 9.2, 0.6, 2.35, 3.7, c.x, 0, c.z, { ry: yaw, uv: 6 }))
-      const v = at(0.49, -0.78)
-      addG(B.void, gBox(3.4, 4.4, 0.1, v.x, 0, v.z, { ry: yaw, uv: 4 }))
-    }
-    seg(0.56, 1)
-    // wall string course + cornice ride the inner face
-    for (const [yy, hh, dd] of [[2.62, 0.22, 0.2], [5.55, 0.38, 0.3]]) {
-      const c = at(0.5, dd * 0.5 - 0.05)
-      addG(B.trim, gBox(L, hh, 0.26, c.x, yy, c.z, { ry: yaw, uv: 2.2 }))
-    }
-    // fluted wall columns on plinths (screen ≈ 0.05 / 0.18 fw and mirrored)
-    for (const t of [0.056, 0.30]) {
-      const c = at(t, 0.42)
-      addG(B.trim, gBox(1.45, 0.62, 1.45, c.x, 0, c.z, { uv: 1.2 })) // plinth
-      addG(B.trim, gBox(1.2, 0.24, 1.2, c.x, 0.62, c.z, { uv: 1.2 })) // torus base
-      addG(B.column, gCyl(0.46, 0.52, 7.6, 14, c.x, 0.86, c.z, { uv: 3.2 })) // shaft (flutes in map)
-      addG(B.trim, gBox(1.25, 0.3, 1.25, c.x, 8.46, c.z, { uv: 1.2 })) // capital
-    }
-    // stone dressing along the LEFT flank only (the right flank carries the
-    // brazier dais + trough, and both would interpenetrate there). Round-2:
-    // the round-1 bench slabs read as tavern furniture — replaced with the
-    // plate's sarcophagus blocks (plinth → chest → overhung lid) plus a
-    // squat pedestal and a toppled column drum downstage, all in the dark
-    // dressed-stone ramp, all seated with contact darkening.
-    if (s < 0) {
-      for (const [t, len, hh] of [[0.155, 2.2, 0.95], [0.24, 1.8, 0.8]]) {
-        const c = at(t, 1.15)
-        addG(B.trim, gBox(len + 0.3, 0.3, 1.25, c.x, 0, c.z, { ry: yaw, uv: 1.6 })) // plinth
-        addG(B.trim, gBox(len, hh - 0.3, 0.98, c.x, 0.3, c.z, { ry: yaw, uv: 1.6 })) // chest
-        addG(B.trim, gBox(len + 0.18, 0.2, 1.12, c.x, hh, c.z, { ry: yaw, uv: 1.6 })) // lid
-        patches.push({ x: c.x, y: 0.012, z: c.z, w: len + 1.1, h: 2.0, ry: yaw })
-      }
-      { // pedestal + fallen drum at the left frame edge (plate ≈ 0.05–0.16 fw;
-        // reprojected: pedestal lands fx ≈ 0.10, drum fx ≈ 0.08 / fy 0.77 —
-        // any further downstage the splayed wall exits the frustum)
-        const c = at(0.33, 1.05)
-        addG(B.trim, gBox(1.0, 0.3, 1.0, c.x, 0, c.z, { uv: 1.2 }))
-        addG(B.column, gCyl(0.27, 0.31, 1.05, 10, c.x, 0.3, c.z, { uv: 2.0 }))
-        addG(B.trim, gBox(0.78, 0.22, 0.78, c.x, 1.35, c.z, { uv: 1.2 }))
-        patches.push({ x: c.x, y: 0.012, z: c.z, w: 1.7, h: 1.7 })
-        const d = at(0.40, 1.5) // fallen drum beside it
-        addG(B.column, gCyl(0.26, 0.26, 1.3, 10, d.x, 0.26, d.z, { rz: HPI, ry: yaw + 0.35, c: true, uv: 2.0 }))
-        patches.push({ x: d.x, y: 0.012, z: d.z, w: 1.9, h: 0.9, ry: yaw + 0.35 })
-      }
-    }
-  }
-
-  // ---- proscenium vault overhead (dark top-corner masses, frame04 top) ----
-  // Solved against the §1 camera so it actually shows: face at z +2.2,
-  // opening 13 m × 8.2 m crown → unlit haunch wedges enter the frame's top
-  // corners (down to ≈ 0.20 fh at the frame edges) and clear the dragon
-  // crest at (0.31, 0.14). Own bucket: it must never cast — its silhouette
-  // would stripe the stage floor under the cool fill.
-  addG(B.prosc, gArchWall(30, 10.5, 1.4, 13, 8.2, 0, 0, 1.5, { uv: 6 }))
-
-  // ---- door + podium + steps (BIBLE §1: platform z −10.5→−11.5, 5 × 0.36;
-  //      door 3.2 m at (0.534, 0.20) screen) --------------------------------
-  const PX = 0.5 // platform centred on x +0.5
-  addG(B.trim, gBox(7.6, 1.7, 1.5, PX, 0, -11.65, { uv: 2.0 })) // podium body
-  addG(B.trim, gBox(8.0, 0.14, 1.9, PX, 1.7, -11.65, { uv: 2.0 })) // top slab lip
-  addG(B.trim, gBox(7.8, 0.2, 1.7, PX, 1.42, -11.68, { uv: 2.0 })) // cornice moulding
-  for (let i = 0; i < 5; i++) { // 5 steps × 0.36 rise, 0.2 tread from z −10.5
-    const z = -10.6 - i * 0.2
-    addG(B.trim, gBox(5.6, 0.36 * (i + 1), 0.24, PX, 0, z, { uv: 1.6 }))
-  }
-  for (const s of [-1, 1]) { // stair cheek blocks + bronze newels with chain
-    addG(B.trim, gBox(0.7, 0.9, 1.15, PX + s * 3.15, 0, -11.0, { uv: 1.3 }))
-    addG(B.trim, gBox(0.55, 0.42, 0.7, PX + s * 3.1, 0, -10.35, { uv: 1.3 }))
-    const nx = PX + s * 3.05
-    addG(B.bronze, gCyl(0.055, 0.075, 0.95, 8, nx, 0.42, -10.3, {}))
-    addG(B.bronze, new THREE.SphereGeometry(0.1, 8, 6).translate(nx, 1.45, -10.3))
-    addG(B.bronze, gCyl(0.05, 0.06, 0.8, 8, nx, 1.84, -11.5, {}))
-    addG(B.bronze, new THREE.SphereGeometry(0.08, 8, 6).translate(nx, 2.7, -11.5))
-    addG(B.bronze, gCatTube(nx, 1.38, -10.32, nx, 2.62, -11.5, 0.16, 0.028))
-  }
-  // door recess: jambs + lintel + leaves set into the back wall
-  addG(B.recess, gBox(0.5, 3.5, 0.55, PX - 1.55, 1.8, -11.95, { uv: 1.4 }))
-  addG(B.recess, gBox(0.5, 3.5, 0.55, PX + 1.55, 1.8, -11.95, { uv: 1.4 }))
-  addG(B.recess, gBox(3.6, 0.45, 0.55, PX, 5.25, -11.95, { uv: 1.4 }))
-  addG(B.recess, gBox(3.4, 0.16, 0.8, PX, 1.72, -11.9, { uv: 1.4 })) // threshold
-  {
-    const geo = new THREE.PlaneGeometry(2.6, 3.2)
-    geo.translate(PX, 1.8 + 1.6, -12.14)
-    addG(B.door, geo)
-  }
-  // fluted pilaster columns flanking the door (ref ≈ 0.40 / 0.63 fw giants)
-  for (const s of [-1, 1]) {
-    const x = PX + s * 2.9
-    addG(B.trim, gBox(1.6, 0.6, 1.6, x, 1.84, -11.85, { uv: 1.2 }))
-    addG(B.trim, gBox(1.35, 0.26, 1.35, x, 2.44, -11.85, { uv: 1.2 }))
-    addG(B.column, gCyl(0.5, 0.57, 6.8, 14, x, 2.7, -11.85, { uv: 3.2 }))
-  }
-
-  // ---- brazier columns at (∓5.3, ·, −10.8) — flame centres y 5.4 (§3) -----
-  // f4_right crop: a squat bronze goblet on a pale pedestal column, with the
-  // big ember trough on its own low dais to the OUTSIDE. The trough must NOT
-  // sit under the goblet — Fina's §1 anchor (+4.9, −10.5) is 0.5 m from the
-  // flame anchor and a box there occludes her sprite entirely. Everything in
-  // the pedestal keeps its front face upstage of z −10.5 so the back-rank
-  // sprites always draw in front (verified against the solved camera:
-  // Fina d 25.25 < plinth-front d 25.53; trough corner lands (0.799, 0.622)
-  // vs the plate's ≈(0.79, 0.60)).
-  const torches = []
-  for (const s of [-1, 1]) {
-    const x = 5.3 * s
-    const z = -10.8
-    const pz = z - 0.35 // pedestal footprint centred z −11.15
-    addG(B.trim, gBox(0.95, 0.3, 0.95, x, 0, pz, { uv: 1.2 })) // plinth
-    addG(B.trim, gBox(0.9, 0.22, 0.9, x, 0.3, pz, { uv: 1.2 })) // torus
-    addG(B.column, gCyl(0.30, 0.36, 1.62, 12, x, 0.52, pz, { uv: 2.2 })) // fluted drum
-    addG(B.trim, gBox(0.92, 0.3, 0.92, x, 2.14, pz, { uv: 1.2 })) // cap under the goblet
-    // squat goblet: splayed foot → knopped stem → wide shallow bowl, rim y 4.92
-    addG(B.bronze, gLathe([
-      [0.46, 0], [0.44, 0.08], [0.34, 0.16], [0.16, 0.30], [0.13, 0.9], [0.15, 1.5],
-      [0.19, 1.72], [0.42, 1.9], [0.30, 1.98], [0.27, 2.06], [0.58, 2.2],
-      [0.95, 2.38], [1.05, 2.48], [0.97, 2.46], [0.55, 2.34],
-    ], 18, x, 2.44, z, {}))
-    addG(B.coals, gCyl(0.8, 0.8, 0.1, 14, x, 4.72, z, {})) // burning bed in the bowl
-    // ember trough on a stepped dais, outboard of the flame (plate right side)
-    const tx = 7.3 * s
-    const tz = -11.2
-    addG(B.trim, gBox(3.6, 0.45, 3.2, tx + 0.15 * s, 0, tz - 0.1, { uv: 1.6 })) // dais slab
-    addG(B.trim, gBox(2.3, 1.05, 2.3, tx, 0.45, tz, { uv: 1.4 })) // trough body
-    addG(B.trim, gBox(2.55, 0.2, 2.55, tx, 1.5, tz, { uv: 1.4 })) // moulded lip
-    addG(B.coals, gBox(1.95, 0.06, 1.95, tx, 1.71, tz, { uv: 1.3 })) // ember soil bed
-    patches.push({ x, y: 0.012, z: pz, w: 1.9, h: 1.9 }) // seat the brazier plinth
-    torches.push({ x, y: 5.4, z })
-  }
-
-  // ---- rubble along wall feet and corners — every chunk gets a contact
-  //      patch so debris seats into the slate instead of floating on it -----
-  for (let i = 0; i < 16; i++) {
-    const s = rnd() < 0.5 ? -1 : 1
-    const t = rnd()
-    const x = s * (6.6 + t * 3.4) + (rnd() - 0.5) * 1.4
-    const z = -11.6 + t * 12 + (rnd() - 0.5) * 1.5
-    // keep debris out of the trough-dais footprints (both sides)
-    if (Math.abs(x) > 5.5 && Math.abs(x) < 9.4 && z > -13 && z < -9.5) continue
-    const sx = 0.2 + rnd() * 0.5
-    const sz = 0.2 + rnd() * 0.5
-    addG(B.rubble, gRock(900 + i, sx, 0.16 + rnd() * 0.3, sz, x, 0, z, { ry: rnd() * TAU }))
-    patches.push({ x, y: 0.012, z, w: sx * 1.8, h: sz * 1.6, ry: rnd() * TAU })
-  }
-  for (let i = 0; i < 6; i++) {
-    const sx = 0.15 + rnd() * 0.35
-    const sz = 0.15 + rnd() * 0.35
-    const x = PX + (rnd() - 0.5) * 7.5
-    const z = -10.1 + rnd() * 0.8
-    addG(B.rubble, gRock(950 + i, sx, 0.12 + rnd() * 0.22, sz, x, 0, z, { ry: rnd() * TAU }))
-    patches.push({ x, y: 0.012, z, w: sx * 1.8, h: sz * 1.6, ry: rnd() * TAU })
-  }
-
-  mergeBuckets(group, B, MAT, { noCast: ['floor', 'void', 'coals', 'prosc'] })
-  group.add(contactPatches(patches, 0x06090f, 0.5))
-
-  // ---- groundY: flat floor, then the 5-step flight, then the podium -------
-  function groundY(x, z) {
-    if (z > -10.5) return 0
-    if (Math.abs(x - PX) > 3.0 && z > -11.5) return 0 // beside the stair flight
-    if (z <= -11.5) return Math.abs(x - PX) <= 3.8 ? 1.8 : 0 // podium top is 7.6 m wide
-    const step = clamp(Math.floor((-10.5 - z) / 0.2) + 1, 0, 5)
-    return step * 0.36
-  }
-
-  return {
-    groundY,
-    torches,
-    // clear acting floor: contains every §1 feet anchor (Fina/Rain at
-    // z −10.5/−9.2) and stops short of the stair flight, the brazier
-    // pedestals (front faces z −10.575) and the right trough dais (x ≥ 5.65)
-    safeStage: { x0: -4.8, x1: 5.5, z0: -10.6, z1: -1.6 },
-  }
-}
-
-// ===========================================================================
-// 6. Fire rig — 3-layer flame billboards, halo glows, ember points (§3)
-// ===========================================================================
-
-function buildFireRig(env, torches) {
-  const { group, rnd } = env
-  const glowT = radialTex(128, [[0, 0.55], [0.35, 0.28], [1, 0]])
-  const layers = [
-    // BIBLE §3: core #f9f3e3 0.45 m, body #e99648 0.8 m, tongues #af5d21 1.15 m
-    // — the union of the three co-based quads spans exactly 1.15 m ≈ 0.10 fh.
-    { key: 'core', h: 0.45, tint: 0xfff6e0, y: 0.26, o: 0.95, hz: 9.0 },
-    { key: 'body', h: 0.80, tint: 0xffc07a, y: 0.42, o: 0.8, hz: 7.5 },
-    { key: 'tongues', h: 1.15, tint: 0xff9a50, y: 0.60, o: 0.62, hz: 6.2 },
-  ]
-  const texCache = {}
-  const rigs = []
-  for (let ti = 0; ti < torches.length; ti++) {
-    const T = torches[ti]
-    const rimY = T.y - 0.52 // bowl rim just under the flame anchor
-    const holder = new THREE.Group()
-    holder.position.set(T.x, rimY, T.z)
-    const quads = []
-    for (let li = 0; li < layers.length; li++) {
-      const L = layers[li]
-      const tex = (texCache[L.key + ti] = flameAtlasTex(L.key, 71 + ti * 13 + li))
-      const mat = new THREE.MeshBasicMaterial({
-        map: tex, color: L.tint, transparent: true, opacity: L.o,
-        blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-      })
-      const w = L.h * 0.72
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, L.h), mat)
-      m.position.y = L.y
-      m.position.z = li * 0.012 // layer separation, no z-fight
-      // renderOrder stays 0: additive blending is order-independent and the
-      // painter's depth sort must keep the enemy quad in front of the fire
-      m.frustumCulled = false
-      holder.add(m)
-      quads.push({ m, L, phase: rnd() * 37, frame: (rnd() * 3) | 0 })
-    }
-    // seat glow + halo. Round-2: the round-1 halo (5.2 × 4.2 m) was ~3.6× the
-    // tallest flame quad — with bloom it smeared the whole top quadrant and
-    // read as a 3×-oversized flame. Both glows now stay inside the 1.15 m
-    // flame's own footprint; bloom supplies the rest, as in the plate.
-    const seat = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowT, color: 0xffa64f, transparent: true, opacity: 0.38,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-    }))
-    seat.scale.set(1.15, 0.8, 1)
-    seat.position.y = 0.32
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowT, color: 0xcc5a26, transparent: true, opacity: 0.1,
-      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
-    }))
-    halo.scale.set(2.6, 2.1, 1)
-    halo.position.y = 0.6
-    // seat/halo keep renderOrder 0 ON PURPOSE: the wide halo overlaps the
-    // dragon's wing on screen, and only the painter's depth sort (torch z
-    // −10.8 is behind the enemy quad at −6.5) keeps the glow from washing
-    // additively OVER the enemy if its material doesn't write depth.
-    holder.add(seat, halo)
-    group.add(holder)
-
-    // point light — §3 colour/decay kept; intensity 40→33, distance 14→11.
-    // Image-over-bible call (frame04): with 40/14 the warmth reached every
-    // wall and the steps at full strength — the room lit evenly. 33/11 holds
-    // the pool at ~0.11 fw of strong influence and lets everything outside
-    // fall to #0a1420, which is the plate's whole composition.
-    const light = new THREE.PointLight(0xffa64f, 33, 11, 2)
-    light.position.set(T.x, T.y, T.z)
-    light.castShadow = false // §3: torch lights cast none (cost)
-    group.add(light)
-
-    rigs.push({
-      T, holder, quads, seat, halo, light,
-      phase: rnd() * 100, hz: 7 + rnd() * 2, // §3 flicker band 7–9 Hz per torch
-      emberAcc: rnd(),
-    })
-  }
-
-  // ---- embers: 6/s per torch, rise 0.7 m/s, life 1.2 s (§3) ---------------
-  const CAP = 26
-  const eGeo = new THREE.BufferGeometry()
-  const ePos = new Float32Array(CAP * 3)
-  const eCol = new Float32Array(CAP * 4)
-  eGeo.setAttribute('position', new THREE.BufferAttribute(ePos, 3))
-  eGeo.setAttribute('color', new THREE.BufferAttribute(eCol, 4))
-  const embers = []
-  for (let i = 0; i < CAP; i++) embers.push({ alive: false, x: 0, y: -50, z: 0, vx: 0, vy: 0, vz: 0, life: 0, age: 0 })
-  const eMat = new THREE.PointsMaterial({
-    map: radialTex(32, [[0, 1], [0.4, 0.6], [1, 0]]), size: 0.09, sizeAttenuation: true,
-    transparent: true, vertexColors: true, blending: THREE.AdditiveBlending,
-    depthWrite: false, fog: false,
-  })
-  const ePts = new THREE.Points(eGeo, eMat)
-  ePts.frustumCulled = false
-  ePts.renderOrder = 22
-  group.add(ePts)
-
-  const EMBER = rgb(0xb2512e)
-  const EMBER_HOT = rgb(0xf9f3e3)
-
-  function update(t, dt, camera, spellBoost) {
-    for (const R of rigs) {
-      // cylindrical billboard toward the camera
-      R.holder.rotation.y = Math.atan2(camera.position.x - R.T.x, camera.position.z - R.T.z)
-      // two-octave flicker: intensity ±12 %, position jitter ±0.06 m (§3)
-      const n = flicker2(t, R.hz, R.phase)
-      R.light.intensity = 33 * (1 + 0.12 * n)
-      R.light.position.set(
-        R.T.x + 0.06 * vnoise1(t * 5.1 + R.phase),
-        R.T.y + 0.06 * vnoise1(t * 6.3 + R.phase + 31),
-        R.T.z + 0.06 * vnoise1(t * 5.7 + R.phase + 67)
-      )
-      for (const Q of R.quads) {
-        // flipbook boil 6–9 Hz + scale flutter + sway
-        const fr = (Math.floor(t * Q.L.hz + Q.phase) % 3 + 3) % 3
-        Q.m.material.map.offset.x = fr / 3
-        const fx = 1 + 0.09 * vnoise1(t * 7.3 + Q.phase)
-        const fy = 1 + 0.13 * vnoise1(t * 8.1 + Q.phase + 9) + 0.05 * n
-        Q.m.scale.set(fx, fy, 1)
-        Q.m.rotation.z = 0.07 * vnoise1(t * 4.2 + Q.phase + 4)
-      }
-      R.seat.material.opacity = 0.35 + 0.06 * n
-      R.halo.material.opacity = 0.09 + 0.025 * n
-      // spawn embers
-      R.emberAcc += dt * 6
-      while (R.emberAcc >= 1) {
-        R.emberAcc -= 1
-        const e = embers.find((e2) => !e2.alive)
-        if (!e) break
-        e.alive = true
-        e.age = 0
-        e.life = 0.9 + rnd() * 0.6
-        e.x = R.T.x + (rnd() - 0.5) * 0.5
-        e.y = R.T.y - 0.35 + rnd() * 0.25
-        e.z = R.T.z + (rnd() - 0.5) * 0.5
-        e.vx = (rnd() - 0.5) * 0.34
-        e.vy = 0.7 + (rnd() - 0.5) * 0.24 // rise 0.7 m/s
-        e.vz = (rnd() - 0.5) * 0.34
-      }
-    }
-    // advance embers
-    for (let i = 0; i < CAP; i++) {
-      const e = embers[i]
-      if (e.alive) {
-        e.age += dt
-        if (e.age >= e.life) e.alive = false
-        e.x += (e.vx + 0.10 * vnoise1(t * 3 + i * 7.7)) * dt
-        e.y += e.vy * dt
-        e.z += e.vz * dt
-      }
-      const k = e.alive ? e.age / e.life : 1
-      ePos[i * 3] = e.x
-      ePos[i * 3 + 1] = e.alive ? e.y : -50
-      ePos[i * 3 + 2] = e.z
-      const c = mixc(EMBER_HOT, EMBER, clamp(k * 1.8, 0, 1))
-      const tw = 0.75 + 0.25 * vnoise1(t * 11 + i * 3.1) // ember twinkle
-      eCol[i * 4] = (c[0] / 255) * tw
-      eCol[i * 4 + 1] = (c[1] / 255) * tw
-      eCol[i * 4 + 2] = (c[2] / 255) * tw
-      eCol[i * 4 + 3] = e.alive ? (1 - k) * 0.9 : 0
-    }
-    eGeo.attributes.position.needsUpdate = true
-    eGeo.attributes.color.needsUpdate = true
-    void spellBoost
-  }
-
-  return { rigs, update }
-}
-
-// ===========================================================================
-// 7. HIGHLAND painters — BIBLE §4 palette, silhouette-first
-// ===========================================================================
-
-// Mossy shelf turf. Round-2: authored a full step darker — the round-1 turf
-// plus key + fog measured 0.44 luma at the party line against the plate's
-// dark shelf; the lit result must land near GROUND_FG #4e5a42, so the albedo
-// sits below it and the rig lifts it. Texture contrast is up (deep moss
-// pools, worn rock) so the shelf never reads as featureless felt.
+// Mossy shelf turf (§4) — authored below GROUND_FG so the rig lifts it;
+// deep moss pools + worn rock keep the shelf from reading as felt.
 function paintHighGround(g, S, seed) {
   const rnd = mulberry32(seed)
   const N = makeNoise2(seed + 11)
@@ -1203,7 +441,7 @@ function paintHighGround(g, S, seed) {
   const fg = rgb(0x39452f)
   const moss = rgb(0x2a3424)
   const rock = rgb(0x424d46)
-  const tip = rgb(0x6e6e54) // GRASS_PALE, dimmed to the new key
+  const tip = rgb(0x6e6e54) // GRASS_PALE, dimmed to the key
   g.fillStyle = css(mid)
   g.fillRect(0, 0, S, S)
   // macro patches — clumps and voids, never carpet
@@ -1272,248 +510,121 @@ function paintHighGround(g, S, seed) {
   }
 }
 
-// Teal-grey highland stone for rock knuckles.
-function paintHighRock(g, S, seed) {
-  const rnd = mulberry32(seed)
-  const N = makeNoise2(seed + 5)
-  const base = rgb(0x435e57) // ROCK_THRU_FOG near end
-  g.fillStyle = css(shade(base, 0.8))
-  g.fillRect(0, 0, S, S)
-  for (let i = 0; i < 700; i++) {
-    const x = rnd() * S
-    const y = rnd() * S
-    const n = N.fbm(x / 34, y / 34, 4)
-    g.globalAlpha = 0.16
-    g.fillStyle = css(shade(base, 0.72 + (n * 0.5 + 0.5) * 0.65))
-    g.fillRect(x, y, 2 + rnd() * 4, 2 + rnd() * 4)
-    g.globalAlpha = 1
+// One merged mesh of soft dark ellipses — contact darkening that seats
+// features into the ground (used for the highland's moss breakup).
+function contactPatches(spots, color, opacity) {
+  const geos = []
+  for (const s of spots) {
+    const p = new THREE.PlaneGeometry(s.w, s.h)
+    p.rotateX(-HPI)
+    if (s.ry) p.rotateY(s.ry)
+    p.translate(s.x, s.y, s.z)
+    geos.push(p)
   }
-  for (let i = 0; i < 5; i++) { // fracture seams
-    g.globalAlpha = 0.3
-    g.strokeStyle = css(shade(base, 0.5))
-    g.lineWidth = 1.4
-    g.beginPath()
-    let x = rnd() * S
-    let y = 0
-    g.moveTo(x, y)
-    while (y < S) { x += (rnd() - 0.5) * 26; y += 14 + rnd() * 22; g.lineTo(x, y) }
-    g.stroke()
-    g.globalAlpha = 1
-  }
-  // mossy top dusting
-  for (let i = 0; i < 150; i++) {
-    g.globalAlpha = 0.25
-    g.fillStyle = css(rgb(0x4a5a40))
-    g.fillRect(rnd() * S, rnd() * S * 0.4, 2 + rnd() * 5, 1.5 + rnd() * 2.5)
-    g.globalAlpha = 1
-  }
+  const merged = mergeGeometries(geos, false)
+  for (const p of geos) p.dispose()
+  const mesh = new THREE.Mesh(merged, new THREE.MeshBasicMaterial({
+    map: radialTex(64, [[0, 0.85], [0.45, 0.42], [1, 0]]),
+    color, transparent: true, opacity, depthWrite: false,
+  }))
+  mesh.name = 'arena_contact'
+  return mesh
 }
 
-// Ragged conifer silhouette card — TREE_SILHOUETTE #0a2620, barely-lighter
-// interior layering. Alpha-cut; the fog does the rest.
-function paintPine(g, W, H, seed) {
-  const rnd = mulberry32(seed)
-  const dark = rgb(0x0a2620)
-  const inner = rgb(0x123129)
-  const cx = W / 2
-  const tiers = 7 + ((rnd() * 3) | 0)
-  const topY = H * 0.03
-  const baseY = H * 0.97
-  // trunk
-  g.fillStyle = css(dark)
-  g.fillRect(cx - W * 0.02, H * 0.55, W * 0.04, H * 0.45)
-  for (let i = tiers - 1; i >= 0; i--) {
-    const t = i / (tiers - 1) // 0 top → 1 bottom
-    const y = topY + t * (baseY - topY) * 0.92
-    const halfW = W * (0.06 + t * 0.42) * (0.88 + rnd() * 0.24)
-    const tH = H * 0.16 * (0.7 + t * 0.5)
-    const col = rnd() < 0.3 ? inner : dark
-    g.fillStyle = css(col)
-    // ragged frond: jagged polygon, droopy tips
-    g.beginPath()
-    g.moveTo(cx, y)
-    const segs2 = 7
-    for (let s2 = 0; s2 <= segs2; s2++) {
-      const u = s2 / segs2
-      const x = cx + halfW * u
-      const yy = y + tH * (0.35 + u * 0.65) + (rnd() - 0.5) * tH * 0.3
-      g.lineTo(x, yy)
-    }
-    g.lineTo(cx, y + tH * 1.15)
-    for (let s2 = segs2; s2 >= 0; s2--) {
-      const u = s2 / segs2
-      const x = cx - halfW * u
-      const yy = y + tH * (0.35 + u * 0.65) + (rnd() - 0.5) * tH * 0.3
-      g.lineTo(x, yy)
-    }
-    g.closePath()
-    g.fill()
-  }
-  // needle nibble — erode edges so the silhouette is never smooth
-  g.globalCompositeOperation = 'destination-out'
-  for (let i = 0; i < 90; i++) {
-    const x = rnd() * W
-    const y = rnd() * H
-    g.beginPath()
-    g.arc(x, y, rnd() * 2.2, 0, TAU)
-    g.fill()
-  }
-  g.globalCompositeOperation = 'source-over'
-}
+// ===========================================================================
+// 5. HALL build — real flagstone floor in front of the painted plate
+// ===========================================================================
 
-// Skyline silhouette cards (far crag line / distant peak) — painted with
-// their through-fog colour baked, alpha ragged tops.
-function paintSkyline(g, W, H, seed, kind, col0) {
-  const rnd = mulberry32(seed)
-  const N = makeNoise2(seed)
-  const col = rgb(col0)
-  g.clearRect(0, 0, W, H)
-  const pts = []
-  const n = 56
-  for (let i = 0; i <= n; i++) {
-    const u = i / n
-    let h
-    if (kind === 'peak') {
-      // one strong asymmetric peak left-of-centre + rolling shoulders
-      const p1 = Math.exp(-Math.pow((u - 0.30) / 0.11, 2)) * 0.72
-      const p2 = Math.exp(-Math.pow((u - 0.62) / 0.2, 2)) * 0.3
-      h = 0.12 + p1 + p2 + N.fbm(u * 6, 0.5, 3) * 0.1
-    } else {
-      // blocky mesa/crag line, right-heavy (the ref's stacked buttresses)
-      const step = Math.floor(u * 7) / 7
-      h = 0.18 + step * 0.28 * (u > 0.55 ? 1.6 : 0.7) + N.fbm(u * 9, 3.5, 3) * 0.16
-      if (u > 0.8) h += 0.22
-    }
-    pts.push([u * W, H - clamp(h, 0.05, 0.98) * H])
-  }
-  g.fillStyle = css(col)
-  g.beginPath()
-  g.moveTo(0, H)
-  for (const [x, y] of pts) g.lineTo(x, y)
-  g.lineTo(W, H)
-  g.closePath()
-  g.fill()
-  // vertical crag striations
-  for (let i = 0; i < 40; i++) {
-    g.globalAlpha = 0.2
-    g.fillStyle = css(shade(col, rnd() < 0.5 ? 0.8 : 1.18))
-    const x = rnd() * W
-    g.fillRect(x, H - rnd() * H * 0.5, 1.5 + rnd() * 3, H)
-    g.globalAlpha = 1
-  }
-  // soft base fade so the card melts into the fog band
-  g.globalCompositeOperation = 'destination-out'
-  const grad = g.createLinearGradient(0, H * 0.72, 0, H)
-  grad.addColorStop(0, 'rgba(0,0,0,0)')
-  grad.addColorStop(1, 'rgba(0,0,0,0.9)')
-  g.fillStyle = grad
-  g.fillRect(0, H * 0.72, W, H * 0.28)
-  g.globalCompositeOperation = 'source-over'
-}
+function buildHall(env) {
+  const { group, aniso } = env
 
-// The painted sky/fog backdrop — bright band, sage haze, dark teal top,
-// pin-prick stars. Pre-fogged; the material ignores scene fog.
-function paintBackdrop(g, W, H, seed) {
-  const rnd = mulberry32(seed)
-  const N = makeNoise2(seed + 2)
-  // vertical ramp: v=0 top → v=1 bottom (canvas y down)
-  const stops = [
-    [0.0, rgb(0x06211f)], // TOP_CORNER-class near-black teal
-    [0.16, rgb(0x2a4a47)],
-    [0.34, rgb(0x617c7b)], // SKY_GLOW
-    [0.52, rgb(0x969d95)], // FOG_MID
-    [0.62, rgb(0x9fa194)], // FOG_BRIGHT band
-    [0.74, rgb(0x8e948b)],
-    [1.0, rgb(0x7b8b83)], // FOG_FAR at the base
+  // The one surviving surface: cool slate flagstones, lit by the rig so the
+  // torch pools, cool fill and any spell light repaint it live (§3/§8). The
+  // §11.6 blue-dark law rides in a whisper of emissiveMap self-light so
+  // off-pool slate drowns blue (#10161f-class), never grey, never black.
+  const tFloor = canvasTex(512, 512, aniso, (g, S) => paintFlagstone(g, S, 202))
+  const floorMat = new THREE.MeshStandardMaterial({
+    map: tFloor, roughness: 0.85, metalness: 0,
+    emissive: 0x4a5464, emissiveMap: tFloor, emissiveIntensity: 1.0,
+  })
+  {
+    // Spans z −12…+2: the far edge sits EXACTLY on the back-wall plane so
+    // the seam between live flagstones and the plate's painted stair foot is
+    // the floor-to-wall junction itself (see PLATE_FIT math). Extending
+    // further upstage would paint live slate over the painted platform.
+    const geo = new THREE.PlaneGeometry(42, 14, 1, 1)
+    geo.rotateX(-HPI)
+    const uv = geo.attributes.uv
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (42 / 6), uv.getY(i) * (14 / 6))
+    geo.translate(0, 0, -5)
+    const floor = new THREE.Mesh(geo, floorMat)
+    floor.name = 'arena_floor'
+    floor.castShadow = false
+    floor.receiveShadow = true
+    group.add(floor)
+  }
+
+  // §3 torch anchors — the flames are painted into the plate now, but these
+  // stay the live light positions and the rim/meta anchors.
+  const torches = [
+    { x: -5.3, y: 5.4, z: -10.8 },
+    { x: 5.3, y: 5.4, z: -10.8 },
   ]
-  const grad = g.createLinearGradient(0, 0, 0, H)
-  for (const [p, c] of stops) grad.addColorStop(p, css(c))
-  g.fillStyle = grad
-  g.fillRect(0, 0, W, H)
-  // large soft luminance wisps riding the band
-  for (let i = 0; i < 26; i++) {
-    const y = H * (0.42 + rnd() * 0.34)
-    const x = rnd() * W
-    const w = W * (0.1 + rnd() * 0.22)
-    const h = H * (0.02 + rnd() * 0.05)
-    const gr = g.createRadialGradient(x, y, 0, x, y, w)
-    const bright = rnd() < 0.6
-    gr.addColorStop(0, bright ? 'rgba(214,216,202,0.13)' : 'rgba(28,52,48,0.12)')
-    gr.addColorStop(1, 'rgba(0,0,0,0)')
-    g.fillStyle = gr
-    g.save()
-    g.translate(x, y)
-    g.scale(1, h / w)
-    g.beginPath()
-    g.arc(0, 0, w, 0, TAU)
-    g.fill()
-    g.restore()
-  }
-  // darker upper drapes (the ref's heavy top-left cloud masses)
-  for (let i = 0; i < 8; i++) {
-    const x = rnd() * W
-    const y = H * (0.02 + rnd() * 0.2)
-    const w = W * (0.16 + rnd() * 0.3)
-    const gr = g.createRadialGradient(x, y, 0, x, y, w)
-    gr.addColorStop(0, 'rgba(6,26,24,0.35)')
-    gr.addColorStop(1, 'rgba(0,0,0,0)')
-    g.fillStyle = gr
-    g.save()
-    g.translate(x, y)
-    g.scale(1, 0.4)
-    g.beginPath()
-    g.arc(0, 0, w, 0, TAU)
-    g.fill()
-    g.restore()
-  }
-  // faint noise grain so the gradient never bands
-  for (let i = 0; i < 2400; i++) {
-    const x = rnd() * W
-    const y = rnd() * H
-    const n = N.fbm(x / 60, y / 60, 3)
-    g.globalAlpha = 0.05
-    g.fillStyle = n > 0 ? '#ffffff' : '#001410'
-    g.fillRect(x, y, 2, 2)
-    g.globalAlpha = 1
-  }
-  // stars — upper half only, pin-prick, a few brighter (ref top-right)
-  for (let i = 0; i < 44; i++) {
-    const x = rnd() * W
-    const y = rnd() * H * 0.34
-    const big = rnd() < 0.2
-    g.globalAlpha = 0.25 + rnd() * (big ? 0.5 : 0.3)
-    g.fillStyle = '#d8e4da'
-    g.fillRect(x, y, big ? 2 : 1.4, big ? 2 : 1.4)
-    g.globalAlpha = 1
-  }
-}
 
-// Foreground grass-blade clump silhouette (bottom-left corner dressing).
-function paintBlades(g, W, H, seed, dark) {
-  const rnd = mulberry32(seed)
-  const col = rgb(dark ? 0x14251c : 0x4c5840)
-  const tip = rgb(dark ? 0x2c3d2c : 0x77775b)
-  for (let i = 0; i < 26; i++) {
-    const x = W * (0.1 + rnd() * 0.8)
-    const lean = (rnd() - 0.5) * 0.9
-    const h = H * (0.5 + rnd() * 0.48)
-    const w = 1.5 + rnd() * 2.5
-    g.strokeStyle = css(rnd() < 0.25 ? tip : col)
-    g.lineWidth = w
-    g.beginPath()
-    g.moveTo(x, H)
-    g.quadraticCurveTo(x + lean * h * 0.3, H - h * 0.6, x + lean * h, H - h)
-    g.stroke()
+  return {
+    // BIBLE §1 / task contract: the hall floor is flat y = 0. The stepped
+    // platform is paint now — nothing stands on it (no §1 feet anchor is
+    // upstage of z −10.5), so groundY is the flat slab.
+    groundY() { return 0 },
+    torches,
+    // clear acting floor: contains every §1 feet anchor and still stops
+    // short of the PAINTED stair flight / brazier pedestals / trough dais,
+    // which occupy the same screen real estate their geometry did.
+    safeStage: { x0: -4.8, x1: 5.5, z0: -10.6, z1: -1.6 },
   }
 }
 
 // ===========================================================================
-// 8. HIGHLAND build — frame05's misty shelf (§4)
+// 6. Torch light rig — §3 lights kept live; the visible fire is painted
+// ===========================================================================
+
+function buildTorchRig(env, torches) {
+  const { group, rnd } = env
+  const rigs = []
+  for (const T of torches) {
+    // §3 colour/decay; 33/11 is the round-2 image-over-bible tune that holds
+    // each pool at ~0.11 fw of strong influence — kept, because the plate's
+    // painted wall pools have that radius and the live floor pools must
+    // match them. These lights are what keep the SPRITES warm-keyed (§5):
+    // deleting them because the flames are painted would flatten the party.
+    const light = new THREE.PointLight(0xffa64f, 33, 11, 2)
+    light.position.set(T.x, T.y, T.z)
+    light.castShadow = false // §3: torch lights cast none (cost)
+    group.add(light)
+    rigs.push({ T, light, phase: rnd() * 100, hz: 7 + rnd() * 2 }) // §3 7–9 Hz
+  }
+  function update(t) {
+    for (const R of rigs) {
+      // two-octave flicker: intensity ±12 %, position jitter ±0.06 m (§3) —
+      // the live floor pools shimmer under the plate's static painted flames.
+      const n = flicker2(t, R.hz, R.phase)
+      R.light.intensity = 33 * (1 + 0.12 * n)
+      R.light.position.set(
+        R.T.x + 0.06 * vnoise1(t * 5.1 + R.phase),
+        R.T.y + 0.06 * vnoise1(t * 6.3 + R.phase + 31),
+        R.T.z + 0.06 * vnoise1(t * 5.7 + R.phase + 67)
+      )
+    }
+  }
+  return { update }
+}
+
+// ===========================================================================
+// 7. HIGHLAND build — real 2° turf shelf + living atmosphere over the plate
 // ===========================================================================
 
 function buildHighland(env) {
   const { group, aniso, rnd } = env
-  const CAM = new THREE.Vector3(0, 7, 14) // fixed proscenium seat (§1)
 
   // ---- groundY: shelf flat to z −5, then a 2° rise upstage, tiny undulation
   const TAN2 = 0.0349
@@ -1524,43 +635,33 @@ function buildHighland(env) {
     return y
   }
 
-  // ---- materials ----------------------------------------------------------
-  // Teal-green emissive darks (§11.6: highland darks are #022123-class,
-  // hue-bearing) — kept to a whisper; the fog and key do the visible work.
   const tGround = canvasTex(1024, 1024, aniso, (g, S) => paintHighGround(g, S, 121))
-  const tRock = canvasTex(256, 256, aniso, (g, S) => paintHighRock(g, S, 232))
-  const MAT = {
-    // vertexColors carries the authored downstage falloff (below)
-    ground: new THREE.MeshStandardMaterial({ map: tGround, vertexColors: true, roughness: 1, metalness: 0, emissive: 0x05170f, emissiveIntensity: 0.8 }),
-    rock: new THREE.MeshStandardMaterial({ map: tRock, roughness: 1, metalness: 0, emissive: 0x061914, emissiveIntensity: 0.8 }),
-    crag: new THREE.MeshStandardMaterial({ map: tRock, color: 0x9aa8a2, roughness: 1, metalness: 0, emissive: 0x071b18, emissiveIntensity: 1.0 }),
-  }
-  const B = { ground: [], rock: [], crag: [] }
-  const ss = (a, b, v) => { v = clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v) }
+  const MAT_ground = new THREE.MeshStandardMaterial({
+    // vertexColors carries the authored downstage falloff (below);
+    // teal-green emissive dark per §11.6 — hue-bearing, never grey
+    map: tGround, vertexColors: true, roughness: 1, metalness: 0,
+    emissive: 0x05170f, emissiveIntensity: 0.8,
+  })
 
-  // ---- the shelf: displaced plane ending at the cliff lip (z −14) ---------
+  // ---- the shelf: displaced plane, far edge on the z −12 junction line ----
   {
     const W = 48
-    const D = 21
-    const geo = new THREE.PlaneGeometry(W, D, 96, 44)
-    geo.rotateX(-HPI) // now on XZ, z spans −D/2…+D/2
-    geo.translate(0, 0, -14 + D / 2 + 0.0) // z −14 … +7
+    const D = 19
+    const geo = new THREE.PlaneGeometry(W, D, 96, 40)
+    geo.rotateX(-HPI)
+    geo.translate(0, 0, -12 + D / 2) // z −12 … +7: turf horizon at fy 0.597
     const pos = geo.attributes.position
     const uv = geo.attributes.uv
-    // Round-2 foreground falloff, baked as vertex colour: the plate's shelf
-    // is bright only in the fog band behind the units and falls dark toward
-    // the camera; ours measured 0.44 luma flat. Full albedo upstage of the
-    // party ranks → ~0.55 at the front rank → ~0.34 at the frame bottom,
-    // with a gentle pull-down toward the lateral edges. Authored albedo
-    // doing the vignette's work, the way the plate does it.
+    // Foreground falloff baked as vertex colour: the plate's world is bright
+    // only in the fog band; the live shelf falls dark toward the camera.
+    // Full albedo upstage → ~0.55 at the front rank → ~0.34 at the frame
+    // bottom, with a pull-down toward the lateral edges.
+    const ss = (a, b, v) => { v = clamp((v - a) / (b - a), 0, 1); return v * v * (3 - 2 * v) }
     const vcol = new Float32Array(pos.count * 3)
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i)
       const z = pos.getZ(i)
-      let y = groundY(x, z)
-      // shelf edge dips at the very lip so the rim rocks read as a brink
-      if (z < -13.2) y -= (z + 13.2) * (z + 13.2) * 0.55
-      pos.setY(i, y)
+      pos.setY(i, groundY(x, z))
       uv.setXY(i, x / 11, z / 11)
       let f = lerp(1.0, 0.52, ss(-8.5, -2.5, z))
       f = lerp(f, 0.34, ss(-2.5, 4, z))
@@ -1571,68 +672,15 @@ function buildHighland(env) {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(vcol, 3))
     geo.computeVertexNormals()
-    addG(B.ground, geo)
+    const shelf = new THREE.Mesh(geo, MAT_ground)
+    shelf.name = 'arena_ground'
+    shelf.castShadow = false
+    shelf.receiveShadow = true
+    group.add(shelf)
   }
-
-  // ---- rock knuckles ------------------------------------------------------
-  // Midground band behind the duel line (ref 0.42–0.60 fw cluster).
-  const patchSpots = [] // contact darkening under every placed knuckle/stone
-  const knuckles = [
-    [-0.8, -10.6, 1.5, 0.9, 1.2], [0.9, -11.4, 2.1, 1.3, 1.5], [2.6, -12.1, 1.2, 0.7, 1.0],
-    [-2.6, -11.8, 1.7, 1.0, 1.3], [4.6, -12.6, 1.6, 0.9, 1.2], [-5.2, -12.3, 2.2, 1.4, 1.6],
-    // low boulder row between boss and party — frame05's dark clump at
-    // ≈(0.25–0.35 fw, 0.62–0.72 fh); reprojects to (0.29–0.35, 0.64)
-    [-4.2, -9.4, 1.3, 0.55, 1.0], [-3.1, -9.8, 0.9, 0.4, 0.8], [-4.9, -10.1, 0.8, 0.35, 0.7],
-    // Round-2 foreground knuckles framing the party shelf, outside the
-    // safeStage acting box — the plate's dressed downstage; the felt gets
-    // bones. Coordinates reprojected: all land in the bottom corners/edges.
-    [-6.6, -1.0, 1.4, 0.7, 1.1], [-5.4, 1.5, 1.0, 0.5, 0.8], [6.7, -0.3, 1.2, 0.55, 1.0],
-    [6.0, 1.1, 0.9, 0.45, 0.75], [-7.4, -3.2, 1.1, 0.5, 0.9],
-  ]
-  let rs = 40
-  for (const [x, z, sx, sy, sz] of knuckles) {
-    addG(B.rock, gRock(rs++, sx, sy, sz, x, groundY(x, z), z, { ry: rnd() * TAU }))
-    patchSpots.push({ x, y: groundY(x, z) + (z < -5 ? 0.05 : 0.03), z, w: Math.min(sx * 1.7, 1.6), h: Math.min(sz * 1.6, 1.5), ry: rnd() * TAU })
-  }
-  // small half-buried stones INSIDE the stage (≤ ~0.2 m tall — dressing the
-  // party's ground plane, kept ≥ 1.2 m off every §1 feet anchor and off the
-  // duel line so no sprite or dash path is ever occluded)
-  for (const [x, z, s] of [[3.6, -7.9, 0.55], [6.3, -7.0, 0.5], [-0.6, -10.9, 0.6], [0.2, -2.7, 0.45], [5.9, -2.9, 0.5], [-2.6, -3.5, 0.42]]) {
-    addG(B.rock, gRock(rs++, s, s * 0.45, s, x, groundY(x, z), z, { ry: rnd() * TAU }))
-    patchSpots.push({ x, y: groundY(x, z) + (z < -5 ? 0.05 : 0.03), z, w: s * 1.7, h: s * 1.5, ry: rnd() * TAU })
-  }
-  // ragged lip row along the brink
-  for (let i = 0; i < 12; i++) {
-    const x = -13 + i * 2.3 + (rnd() - 0.5) * 1.2
-    const z = -13.3 - rnd() * 0.9
-    const s = 0.5 + rnd() * 1.1
-    addG(B.rock, gRock(rs++, s, s * (0.5 + rnd() * 0.5), s, x, groundY(x, Math.max(z, -13.2)), z, { ry: rnd() * TAU }))
-  }
-  // foreground-left scatter
-  for (const [x, z, s] of [[-6.8, -2.2, 0.9], [-7.9, -4.8, 1.3], [-5.6, -0.6, 0.6], [6.9, -2.4, 0.7]]) {
-    addG(B.rock, gRock(rs++, s, s * 0.7, s, x, groundY(x, z), z, { ry: rnd() * TAU }))
-  }
-  // the upper-right crag buttress — stacked mesa blocks descending toward
-  // centre. Enlarged to the plate's mass (frame05: the buttress owns the
-  // whole upper-right quadrant, ≈0.62–1.0 fw, exiting the frame top at the
-  // edge). Reprojected tops step fx 0.71 → 1.0, fy 0.41 → 0.11.
-  const stack = [
-    [8.6, -14.8, 3.4, 3.2, 3.0, 0], [10.4, -15.9, 4.0, 5.6, 3.4, 0.2],
-    [12.4, -17.0, 4.2, 9.0, 3.6, -0.15], [9.6, -16.4, 3.2, 7.2, 3.0, 0.5],
-    [7.2, -17.6, 3.0, 4.4, 3.0, -0.3], [11.2, -15.2, 2.8, 3.8, 2.6, 0.35],
-    [5.6, -18.4, 2.6, 3.0, 2.6, 0.15],
-  ]
-  for (const [x, z, sx, sy, sz, ry] of stack) {
-    addG(B.crag, gRock(rs++, sx, sy, sz, x, -0.6, z, { ry }))
-  }
-  // one lone far crag rising left of the buttress gap
-  addG(B.crag, gRock(rs++, 2.8, 3.4, 2.6, -8.8, -0.8, -16.5, { ry: 0.7 }))
-
-  mergeBuckets(group, B, MAT, { noCast: ['ground', 'crag'] })
-  group.add(contactPatches(patchSpots, 0x0b1712, 0.32))
 
   // ---- moss breakup — broad soft dark patches strewn across the acting
-  //      shelf (near, not under, the anchors) so the turf reads as ground
+  //      shelf (near, not under, the §1 anchors) so the turf reads as ground
   //      with history instead of felt; teal-green darks per §11.6 ----------
   {
     const mossSpots = []
@@ -1647,98 +695,9 @@ function buildHighland(env) {
     group.add(contactPatches(mossSpots, 0x1c281a, 0.3))
   }
 
-  // ---- conifer silhouette cards, stage-left (ref: only the left flank) ----
-  // Every spec below was reprojected through the §1 camera — the boot layout
-  // of the interrupted build had five of six pines OUTSIDE the frustum (the
-  // overworld's exact "specified but never in frame" failure). All pines sit
-  // upstage of the boss (z ≤ −9.6 < −7.5) so the sorcerer draws over them,
-  // exactly as frame05 layers it. Trunks land fx ≈ −0.01…0.21; the three
-  // tall ones exit or graze the frame top; bases dissolve in the fog band.
-  const trees = []
-  const treeSpecs = [
-    // x, z, h
-    [-10.6, -10.2, 9.0], // edge mass: right half fills fx 0.00–0.08
-    [-9.6, -12.8, 8.5],  // trunk fx 0.076, tip exits top
-    [-8.0, -11.8, 7.2],  // trunk fx 0.134, tip grazes 0.00 fh
-    [-6.5, -11.0, 6.2],  // trunk fx 0.194, tip 0.09 fh — the plate's hero pine
-    [-8.9, -13.4, 4.2],  // small, deep in fog, fx 0.115
-    [-5.9, -9.6, 4.6],   // short near-mid, fx 0.207, tip 0.25 fh
-  ]
-  let ti = 0
-  for (const [x, z, h] of treeSpecs) {
-    const tex = canvasTex(160, 384, aniso, (g, w, hh) => paintPine(g, w, hh, 500 + ti * 17), { clamp: true, smooth: true })
-    const w = h * 0.46
-    // silhouette law: the painted TREE_SILHOUETTE colour goes to screen
-    // as-is and only the scene fog softens it — a lit material let the key
-    // + hemisphere wash the pines up to pale grey-green in round 1
-    const mat = new THREE.MeshBasicMaterial({
-      map: tex, alphaTest: 0.42, side: THREE.DoubleSide, fog: true,
-    })
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-    const gy = groundY(x, z)
-    m.position.set(x, gy + h / 2 - 0.15, z) // base sunk into contact
-    m.rotation.y = Math.atan2(CAM.x - x, CAM.z - z)
-    m.castShadow = false
-    m.receiveShadow = false
-    group.add(m)
-    trees.push({ m, phase: rnd() * TAU, baseRot: m.rotation.y })
-    ti++
-  }
-
-  // ---- skyline cards + painted backdrop -----------------------------------
-  {
-    // mid crag line (z −22) and far peak line (z −32) — genuine parallax slabs
-    const mkCard = (w, h, y, z, kind, col, seed) => {
-      const tex = canvasTex(1024, 256, aniso, (g, ww, hh) => paintSkyline(g, ww, hh, seed, kind, col), { clamp: true, smooth: true })
-      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false })
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-      m.position.set(0, y, z)
-      // renderOrder stays 0: the painter's depth sort must draw these BEFORE
-      // the drifting fog cards (z −14 card veils the crag line at −22)
-      group.add(m)
-      return m
-    }
-    // colours are pre-fogged (§4 ROCK_THRU_FOG far end → fog colour)
-    mkCard(34, 7.5, 2.6, -22, 'crag', 0x35504a, 801)
-    mkCard(44, 9.0, 3.4, -32, 'peak', 0x5f7570, 802)
-    const bTex = canvasTex(1024, 512, aniso, (g, w, h) => paintBackdrop(g, w, h, 900), { clamp: true, smooth: true })
-    const back = new THREE.Mesh(
-      new THREE.PlaneGeometry(58, 36),
-      new THREE.MeshBasicMaterial({ map: bTex, fog: false, depthWrite: false })
-    )
-    back.position.set(0, 1.5, -42)
-    back.renderOrder = 1
-    group.add(back)
-  }
-
-  // ---- backlight glow disc behind the boss (§4: (−2.5, 3.5, −9.5) r 6) ----
-  // Round-2: strengthened + given a hot core — over the round-1 backdrop the
-  // 0.35 α disc vanished and the boss never read dark-on-bright. This disc
-  // is what buys the silhouette contrast the §4 readability contract wants.
-  const glowDisc = new THREE.Mesh(
-    new THREE.PlaneGeometry(13, 13),
-    new THREE.MeshBasicMaterial({
-      map: radialTex(256, [[0, 0.5], [0.4, 0.26], [1, 0]]), color: 0xc6d2c4,
-      transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending,
-      depthWrite: false, fog: false,
-    })
-  )
-  glowDisc.position.set(-2.5, 3.5, -9.5)
-  // depth-sorted (no renderOrder): drawn after the far fog cards, before the
-  // near one, and before the boss quad at −7.5 — the boss silhouettes on it
-  group.add(glowDisc)
-  const glowCore = new THREE.Mesh(
-    new THREE.PlaneGeometry(6.5, 6.5),
-    new THREE.MeshBasicMaterial({
-      map: radialTex(128, [[0, 0.55], [0.45, 0.28], [1, 0]]), color: 0xdde6d8,
-      transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending,
-      depthWrite: false, fog: false,
-    })
-  )
-  glowCore.position.set(-2.5, 3.6, -9.45)
-  group.add(glowCore)
-
   // ---- three drifting fog cards (§4: z −4/−9/−14, α .22/.35/.50) ----------
+  // All three sit in FRONT of the plate (z ≥ −14 vs plate at ~30 m along the
+  // axis) — the painting stays still, the weather over it does not.
   const fogCards = []
   const cardSpecs = [
     { z: -4, a: 0.22, w: 16, h: 4.6, y: 1.6, speed: 0.40, seed: 31 },
@@ -1801,36 +760,19 @@ function buildHighland(env) {
   motes.renderOrder = 15
   group.add(motes)
 
-  // ---- foreground blade clumps, bottom-left corner silhouettes ------------
-  for (let i = 0; i < 7; i++) {
-    const dark = i < 5
-    const tex = canvasTex(128, 128, aniso, (g, w, h) => paintBlades(g, w, h, 700 + i * 9, dark), { clamp: true, smooth: true })
-    const w = dark ? 1.9 + rnd() * 1.3 : 0.7 + rnd() * 0.4
-    const h = w * (0.75 + rnd() * 0.3)
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: !dark })
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-    // dark clumps: bottom-left corner. At z > 1 the frame bottom cuts at
-    // y ≈ 1.0 and the old placements never appeared; at z ∈ [−0.6, 0.6]
-    // they land fx 0.00–0.13, fy 0.8–1.0 like the plate's silhouettes.
-    const x = dark ? -6.1 + rnd() * 1.8 : -2 + rnd() * 9
-    const z = dark ? -0.6 + rnd() * 1.2 : -2.5 - rnd() * 7
-    m.position.set(x, groundY(x, z) + h * 0.48, z)
-    m.rotation.y = Math.atan2(CAM.x - x, CAM.z - z)
-    m.renderOrder = dark ? 16 : 0
-    group.add(m)
-    trees.push({ m, phase: rnd() * TAU, baseRot: m.rotation.y, tuft: true })
-  }
-
   return {
     groundY,
     torches: [], // no fire in the highland — rim comes from the key (§5.1)
-    safeStage: { x0: -5.5, x1: 7.5, z0: -12.0, z1: -1.0 },
-    fogCards, mists, motes, mSeed, mPos, mGeo, glowDisc, glowCore, trees,
+    // z0 pulled downstage of the old −12.0: the shelf now ENDS at z −12 (the
+    // plate junction), so the acting box keeps a margin off the seam. Every
+    // §1 feet anchor (max upstage −10.5) stays comfortably inside.
+    safeStage: { x0: -5.5, x1: 7.5, z0: -11.2, z1: -1.0 },
+    fogCards, mists, motes, mSeed, mPos, mGeo,
   }
 }
 
 // ===========================================================================
-// 9. createArena — the one export (BATTLE_CONTRACT)
+// 8. createArena — the one construction export (BATTLE_CONTRACT)
 // ===========================================================================
 
 const _vA = new THREE.Vector3()
@@ -1843,7 +785,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
   const rnd = mulberry32(variant === 'hall' ? 0xa17e04 : 0xa17e05)
   const env = { group, aniso, rnd }
 
-  // Each rig carries exactly one PCF shadow map (§3/§4). engine.js already
+  // The rig carries exactly one PCF shadow map (§3/§4). engine.js already
   // enables renderer shadows; this is a construction-time guard for a bespoke
   // renderer so the grounding shadow never silently vanishes.
   if (renderer && renderer.shadowMap && !renderer.shadowMap.enabled) {
@@ -1855,21 +797,23 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
   spellGroup.name = 'arenaSpellLights'
   group.add(spellGroup)
 
+  // The painted set — pre-lit plate on the solved proscenium plane.
+  group.add(makeBackdropPlate(variant, aniso))
+
   let built
   let fire = null
-  let doorGlow = null
-  let doorLight = null
-  let coalsMat = null
   const rim = { dir: [0, -1], color: '#cfd6cb', strength: 0.7, sources: [] }
 
   if (variant === 'hall') {
     // ---- scene atmosphere (§3): the hall drowns, it doesn't haze ----------
+    // Fog still shades the live floor and sprites (the far slate edge hazes
+    // blue-dark toward the seam); the plate ignores it (fog:false).
     if (scene) {
       scene.fog = new THREE.FogExp2(0x0a1018, 0.012)
       scene.background = new THREE.Color(0x070e18) // blue-black, never #000
     }
     built = buildHall(env)
-    fire = buildFireRig(env, built.torches)
+    fire = buildTorchRig(env, built.torches)
 
     // hemisphere ambient — sky #2a3448 / ground #1c1410, 0.35 (§3)
     group.add(new THREE.HemisphereLight(0x2a3448, 0x1c1410, 0.35))
@@ -1893,34 +837,9 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
     fill.shadow.radius = 4
     group.add(fill, fill.target)
 
-    // door glow centred (0.534, 0.20) screen → the lintel wash at z −12 (§3)
-    doorGlow = new THREE.Mesh(
-      new THREE.PlaneGeometry(3.4, 2.4),
-      new THREE.MeshBasicMaterial({
-        map: radialTex(128, [[0, 0.5], [0.4, 0.24], [1, 0]]), color: 0xe99648,
-        transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending,
-        depthWrite: false, fog: false,
-      })
-    )
-    // world (0.75, 5.0, −11.85) reprojects to the bible's (0.534, 0.20) glow
-    // centre. Depth-sorted with the other additive layers, no renderOrder.
-    doorGlow.position.set(0.75, 5.0, -11.85)
-    doorGlow.material.opacity = 0.26
-    group.add(doorGlow)
-
-    // a small warm light IN the glow so the lintel, jambs and upper steps
-    // actually catch it (STEPS_LIT gradient) — the third warmth of §3's
-    // composition: two torch pools + the door glow, nothing else.
-    doorLight = new THREE.PointLight(0xe8964e, 7, 7.5, 2)
-    doorLight.position.set(0.6, 4.3, -11.2)
-    group.add(doorLight)
-
-    const cm = group.getObjectByName('arena_coals')
-    coalsMat = cm ? cm.material : null
-
     // rim law (§5.1): #ffb47a at 0.55 from the nearest warm source; boot dir
     // points at torch R from the party block (updated per frame with camera).
-    rim.dir = [0.1903, -0.9817] // unit vector toward torch R from the party block
+    rim.dir = [0.1903, -0.9817]
     rim.color = '#ffb47a'
     rim.strength = 0.55
     rim.sources = built.torches.map((T) => ({ x: T.x, y: T.y, z: T.z, kind: 'torch' }))
@@ -1936,7 +855,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
     group.add(new THREE.HemisphereLight(0x8a958c, 0x3a4434, 0.55))
 
     // key from behind-left-high (−0.4, 0.75, −0.55): a backlight, not a face
-    // key — #c9d2c4, 0.9 (§4). Soft shadow map so the rocks seat visually.
+    // key — #c9d2c4, 0.9 (§4). Soft shadow map so the units seat visually.
     const key = new THREE.DirectionalLight(0xc9d2c4, 0.9)
     key.position.set(-0.4 * 30, 0.75 * 30, -0.55 * 30 - 8)
     key.target.position.set(0, 0, -8)
@@ -1975,6 +894,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
   function update(t, camera) {
     const dt = clamp(t - lastT, 0, 0.1)
     lastT = t
+    void dt
     const spells = collectSpellLights()
 
     // publish live rim sources: torches (or key) + any active spell lights
@@ -1984,10 +904,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
     }
 
     if (variant === 'hall') {
-      fire.update(t, dt, camera, spells)
-      if (doorGlow) doorGlow.material.opacity = 0.24 + 0.045 * vnoise1(t * 4.3 + 2.2)
-      if (doorLight) doorLight.intensity = 6.6 + 1.1 * vnoise1(t * 5.1 + 8.8)
-      if (coalsMat) coalsMat.emissiveIntensity = 1.05 + 0.3 * vnoise1(t * 8.2)
+      fire.update(t)
 
       // rim.dir: strongest of {torch L, torch R, active spell} as seen from
       // the party block, projected to screen space (y down) — §5.1.
@@ -2016,9 +933,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
         }
       }
     } else {
-      // fog-card drift 0.15–0.4 m/s + seamless texture scroll (§4). Peak
-      // carriage speed amp·0.5·w = 0.5·speed plus the UV scroll's
-      // 0.02·speed·width m/s keeps each card inside the spec band.
+      // fog-card drift 0.15–0.4 m/s + seamless texture scroll (§4)
       for (let i = 0; i < built.fogCards.length; i++) {
         const F = built.fogCards[i]
         const w = 0.085 + i * 0.021
@@ -2059,12 +974,6 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
       }
       built.mGeo.attributes.position.needsUpdate = true
       built.motes.material.opacity = 0.45 + 0.15 * Math.sin(t * 0.7)
-      built.glowDisc.material.opacity = 0.45 + 0.025 * Math.sin(t * 0.21)
-      built.glowCore.material.opacity = 0.3 + 0.03 * Math.sin(t * 0.26 + 1.3)
-      // near-imperceptible tree/tuft sway keeps the flank alive
-      for (const T of built.trees) {
-        T.m.rotation.z = (T.tuft ? 0.016 : 0.005) * Math.sin(t * (T.tuft ? 0.9 : 0.5) + T.phase)
-      }
     }
   }
 
@@ -2089,7 +998,3 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
     },
   }
 }
-
-
-
-
