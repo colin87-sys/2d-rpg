@@ -102,6 +102,58 @@ async function boot() {
 
   window.__POC = { ready: false, engine, THREE, variant, arena, units, vfx, choreo, post }
 
+  // ---- asset gate ---------------------------------------------------------
+  // The art modules load PNGs now instead of drawing them. THREE.TextureLoader
+  // hands back a Texture synchronously and fills in the image later, which is
+  // what lets the contract's factories stay synchronous — but it means the
+  // first frames render with empty textures. The capture harness waits on
+  // `__POC.ready`, so without a gate here the screenshot lands on a blank
+  // stage and we would score an empty frame.
+  //
+  // Each art module exports a readiness promise, but this does not rely on
+  // them: it walks the live scene graph and waits for every texture actually
+  // in use to hold a decoded image. That verifies the thing that matters
+  // rather than trusting that a promise was wired to the right texture.
+  const collectTextures = (root) => {
+    const found = new Set()
+    root.traverse((o) => {
+      const mats = !o.material ? [] : Array.isArray(o.material) ? o.material : [o.material]
+      for (const m of mats) {
+        if (!m) continue
+        for (const k of ['map', 'emissiveMap', 'alphaMap']) {
+          if (m[k] && m[k].isTexture) found.add(m[k])
+        }
+        // shader materials keep their samplers in uniforms
+        if (m.uniforms) {
+          for (const u of Object.values(m.uniforms)) {
+            if (u && u.value && u.value.isTexture) found.add(u.value)
+          }
+        }
+      }
+    })
+    return [...found]
+  }
+  const decoded = (tex) => {
+    const img = tex.image
+    if (!img) return false
+    if (img.width === 0 && img.height === 0) return false
+    // HTMLImageElement reports `complete`; canvas/data textures have no such flag
+    return img.complete === undefined ? true : img.complete
+  }
+  const waitForAssets = async (timeoutMs = 20000) => {
+    const t0 = Date.now()
+    for (;;) {
+      const texes = collectTextures(scene)
+      const pending = texes.filter((t) => !decoded(t))
+      if (!pending.length) return { total: texes.length, waitedMs: Date.now() - t0 }
+      if (Date.now() - t0 > timeoutMs) {
+        console.warn(`asset gate: ${pending.length}/${texes.length} textures still undecoded after ${timeoutMs}ms — capturing anyway`)
+        return { total: texes.length, pending: pending.length, waitedMs: Date.now() - t0 }
+      }
+      await new Promise((r) => setTimeout(r, 50))
+    }
+  }
+
   // A "fully-populated frame" means the whole chain has run at least once and
   // the enemy + party have projected screen anchors the UI could read. On
   // SwiftShader the first couple of frames are still uploading textures, so we
@@ -124,12 +176,23 @@ async function boot() {
     callouts.update(dt)
     post.render(dt, vfx.impulses)
 
-    if (++frames === 4) {
-      document.getElementById('boot')?.classList.add('hidden')
-      window.__POC.ready = true
-    }
+    frames++
   }
   tick()
+
+  // Four drawn frames was the old gate — enough when every texture was drawn
+  // synchronously into a canvas. Now the images arrive over the network, so
+  // wait for both: the pipeline having run, and the pixels having landed.
+  const gate = await waitForAssets()
+  await new Promise((r) => {
+    const spin = () => (frames >= 4 ? r() : requestAnimationFrame(spin))
+    spin()
+  })
+  console.log(`asset gate: ${gate.total} textures decoded in ${gate.waitedMs}ms` +
+    (gate.pending ? ` (${gate.pending} TIMED OUT)` : ''))
+  document.getElementById('boot')?.classList.add('hidden')
+  window.__POC.ready = true
+  window.__POC.assetGate = gate
 }
 
 boot().catch((err) => {
