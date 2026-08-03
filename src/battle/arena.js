@@ -445,7 +445,7 @@ function paintAshlar(g, S, seed) {
   const dark = rgb(0x5b4c40)
   g.fillStyle = css(mortar)
   g.fillRect(0, 0, S, S)
-  const rows = 12 // 6 m/repeat → 0.5 m courses
+  const rows = 18 // 6 m/repeat → 0.33 m courses (f4_door crop: brick-fine ashlar)
   const ch = S / rows
   const wrapRect = (x, y, w, h) => {
     g.fillRect(x, y, w, h)
@@ -454,9 +454,9 @@ function paintAshlar(g, S, seed) {
   }
   for (let r = 0; r < rows; r++) {
     const y = r * ch
-    let x = -((r % 2) * 64 + rnd() * 10)
+    let x = -((r % 2) * 48 + rnd() * 10)
     while (x < S) {
-      const bw = 96 * (0.72 + rnd() * 0.6)
+      const bw = 66 * (0.72 + rnd() * 0.6)
       let base = mixc(lit, mid, Math.pow(rnd(), 1.3))
       if (rnd() < 0.14) base = mixc(mid, dark, 0.4 + rnd() * 0.5)
       base = mixc(base, [base[0] + 9, base[1] + 4, base[2] - 6], rnd() * 0.5)
@@ -724,6 +724,7 @@ function buildHall(env) {
     void: new THREE.MeshBasicMaterial({ color: 0x04080e }), // arch voids — blue-black, never #000
     rubble: new THREE.MeshStandardMaterial({ map: tTrim, color: 0x8a8a96, roughness: 1, metalness: 0, emissive: 0x060d18, emissiveIntensity: 1.0 }),
   }
+  MAT.prosc = MAT.wall // same masonry, separate bucket so it can skip shadow cast
   const B = {}
   for (const k of Object.keys(MAT)) B[k] = []
 
@@ -802,16 +803,25 @@ function buildHall(env) {
       addG(B.column, gCyl(0.46, 0.52, 7.6, 14, c.x, 0.86, c.z, { uv: 3.2 })) // shaft (flutes in map)
       addG(B.trim, gBox(1.25, 0.3, 1.25, c.x, 8.46, c.z, { uv: 1.2 })) // capital
     }
-    // stone bench slabs along the wall (ref: left-side sarcophagus blocks)
-    for (const [t, len] of [[0.155, 2.1], [0.235, 1.7]]) {
-      const c = at(t, 1.15)
-      addG(B.trim, gBox(len, 0.55, 1.0, c.x, 0, c.z, { ry: yaw, uv: 1.3 }))
-      addG(B.trim, gBox(len + 0.24, 0.16, 1.18, c.x, 0.55, c.z, { ry: yaw, uv: 1.3 }))
+    // stone bench slabs along the wall — LEFT side only (the plate's
+    // sarcophagus blocks at ≈0.05–0.16 fw; the right flank now carries the
+    // brazier dais + trough instead, and both would interpenetrate there)
+    if (s < 0) {
+      for (const [t, len] of [[0.155, 2.1], [0.235, 1.7]]) {
+        const c = at(t, 1.15)
+        addG(B.trim, gBox(len, 0.55, 1.0, c.x, 0, c.z, { ry: yaw, uv: 1.3 }))
+        addG(B.trim, gBox(len + 0.24, 0.16, 1.18, c.x, 0.55, c.z, { ry: yaw, uv: 1.3 }))
+      }
     }
   }
 
-  // ---- proscenium arch overhead (dark top-corner masses, frame04 top) -----
-  addG(B.wall, gArchWall(30, 10.5, 1.4, 21, 9.6, 0, 0, -1.6, { uv: 6 }))
+  // ---- proscenium vault overhead (dark top-corner masses, frame04 top) ----
+  // Solved against the §1 camera so it actually shows: face at z +2.2,
+  // opening 13 m × 8.2 m crown → unlit haunch wedges enter the frame's top
+  // corners (down to ≈ 0.20 fh at the frame edges) and clear the dragon
+  // crest at (0.31, 0.14). Own bucket: it must never cast — its silhouette
+  // would stripe the stage floor under the cool fill.
+  addG(B.prosc, gArchWall(30, 10.5, 1.4, 13, 8.2, 0, 0, 1.5, { uv: 6 }))
 
   // ---- door + podium + steps (BIBLE §1: platform z −10.5→−11.5, 5 × 0.36;
   //      door 3.2 m at (0.534, 0.20) screen) --------------------------------
@@ -852,21 +862,37 @@ function buildHall(env) {
   }
 
   // ---- brazier columns at (∓5.3, ·, −10.8) — flame centres y 5.4 (§3) -----
+  // f4_right crop: a squat bronze goblet on a pale pedestal column, with the
+  // big ember trough on its own low dais to the OUTSIDE. The trough must NOT
+  // sit under the goblet — Fina's §1 anchor (+4.9, −10.5) is 0.5 m from the
+  // flame anchor and a box there occludes her sprite entirely. Everything in
+  // the pedestal keeps its front face upstage of z −10.5 so the back-rank
+  // sprites always draw in front (verified against the solved camera:
+  // Fina d 25.25 < plinth-front d 25.53; trough corner lands (0.799, 0.622)
+  // vs the plate's ≈(0.79, 0.60)).
   const torches = []
   for (const s of [-1, 1]) {
     const x = 5.3 * s
     const z = -10.8
-    addG(B.trim, gBox(2.5, 0.42, 2.5, x, 0, z, { uv: 1.4 })) // stepped plinth
-    addG(B.trim, gBox(2.15, 0.3, 2.15, x, 0.42, z, { uv: 1.4 }))
-    addG(B.trim, gBox(1.85, 1.1, 1.85, x, 0.72, z, { uv: 1.3 })) // planter box
-    addG(B.trim, gBox(2.1, 0.22, 2.1, x, 1.82, z, { uv: 1.3 })) // moulded rim
-    addG(B.coals, gBox(1.6, 0.08, 1.6, x, 1.86, z, { uv: 1.3 })) // ember bed in the box
-    // goblet brazier: foot → stem → flaring bowl, rim ≈ y 4.95
+    const pz = z - 0.35 // pedestal footprint centred z −11.15
+    addG(B.trim, gBox(0.95, 0.3, 0.95, x, 0, pz, { uv: 1.2 })) // plinth
+    addG(B.trim, gBox(0.9, 0.22, 0.9, x, 0.3, pz, { uv: 1.2 })) // torus
+    addG(B.column, gCyl(0.30, 0.36, 1.62, 12, x, 0.52, pz, { uv: 2.2 })) // fluted drum
+    addG(B.trim, gBox(0.92, 0.3, 0.92, x, 2.14, pz, { uv: 1.2 })) // cap under the goblet
+    // squat goblet: splayed foot → knopped stem → wide shallow bowl, rim y 4.92
     addG(B.bronze, gLathe([
-      [0.52, 0], [0.5, 0.1], [0.24, 0.28], [0.17, 0.7], [0.15, 1.6], [0.2, 2.1],
-      [0.5, 2.42], [0.34, 2.52], [0.3, 2.62], [0.62, 2.78], [0.92, 2.95], [1.0, 3.0], [0.9, 2.98], [0.5, 2.86],
-    ], 16, x, 1.95, z, {}))
-    addG(B.coals, gCyl(0.78, 0.78, 0.1, 14, x, 4.78, z, {})) // burning bed in the bowl
+      [0.46, 0], [0.44, 0.08], [0.34, 0.16], [0.16, 0.30], [0.13, 0.9], [0.15, 1.5],
+      [0.19, 1.72], [0.42, 1.9], [0.30, 1.98], [0.27, 2.06], [0.58, 2.2],
+      [0.95, 2.38], [1.05, 2.48], [0.97, 2.46], [0.55, 2.34],
+    ], 18, x, 2.44, z, {}))
+    addG(B.coals, gCyl(0.8, 0.8, 0.1, 14, x, 4.72, z, {})) // burning bed in the bowl
+    // ember trough on a stepped dais, outboard of the flame (plate right side)
+    const tx = 7.3 * s
+    const tz = -11.2
+    addG(B.trim, gBox(3.6, 0.45, 3.2, tx + 0.15 * s, 0, tz - 0.1, { uv: 1.6 })) // dais slab
+    addG(B.trim, gBox(2.3, 1.05, 2.3, tx, 0.45, tz, { uv: 1.4 })) // trough body
+    addG(B.trim, gBox(2.55, 0.2, 2.55, tx, 1.5, tz, { uv: 1.4 })) // moulded lip
+    addG(B.coals, gBox(1.95, 0.06, 1.95, tx, 1.71, tz, { uv: 1.3 })) // ember soil bed
     torches.push({ x, y: 5.4, z })
   }
 
@@ -876,6 +902,8 @@ function buildHall(env) {
     const t = rnd()
     const x = s * (6.6 + t * 3.4) + (rnd() - 0.5) * 1.4
     const z = -11.6 + t * 12 + (rnd() - 0.5) * 1.5
+    // keep debris out of the trough-dais footprints (both sides)
+    if (Math.abs(x) > 5.5 && Math.abs(x) < 9.4 && z > -13 && z < -9.5) continue
     addG(B.rubble, gRock(900 + i, 0.2 + rnd() * 0.5, 0.16 + rnd() * 0.3, 0.2 + rnd() * 0.5, x, 0, z, { ry: rnd() * TAU }))
   }
   for (let i = 0; i < 6; i++) {
@@ -883,13 +911,13 @@ function buildHall(env) {
       PX + (rnd() - 0.5) * 7.5, 0, -10.1 + rnd() * 0.8, { ry: rnd() * TAU }))
   }
 
-  mergeBuckets(group, B, MAT, { noCast: ['floor', 'void', 'coals'] })
+  mergeBuckets(group, B, MAT, { noCast: ['floor', 'void', 'coals', 'prosc'] })
 
   // ---- groundY: flat floor, then the 5-step flight, then the podium -------
   function groundY(x, z) {
     if (z > -10.5) return 0
     if (Math.abs(x - PX) > 3.0 && z > -11.5) return 0 // beside the stair flight
-    if (z <= -11.5) return 1.8
+    if (z <= -11.5) return Math.abs(x - PX) <= 3.8 ? 1.8 : 0 // podium top is 7.6 m wide
     const step = clamp(Math.floor((-10.5 - z) / 0.2) + 1, 0, 5)
     return step * 0.36
   }
@@ -897,7 +925,10 @@ function buildHall(env) {
   return {
     groundY,
     torches,
-    safeStage: { x0: -4.8, x1: 6.6, z0: -10.2, z1: -1.6 },
+    // clear acting floor: contains every §1 feet anchor (Fina/Rain at
+    // z −10.5/−9.2) and stops short of the stair flight, the brazier
+    // pedestals (front faces z −10.575) and the right trough dais (x ≥ 5.65)
+    safeStage: { x0: -4.8, x1: 5.5, z0: -10.6, z1: -1.6 },
   }
 }
 
@@ -946,14 +977,16 @@ function buildFireRig(env, torches) {
     }))
     seat.scale.set(1.7, 1.2, 1)
     seat.position.y = 0.35
-    seat.renderOrder = 19
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowT, color: 0xd96830, transparent: true, opacity: 0.17,
       blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
     }))
     halo.scale.set(5.2, 4.2, 1)
     halo.position.y = 0.7
-    halo.renderOrder = 18
+    // seat/halo keep renderOrder 0 ON PURPOSE: the wide halo overlaps the
+    // dragon's wing on screen, and only the painter's depth sort (torch z
+    // −10.8 is behind the enemy quad at −6.5) keeps the glow from washing
+    // additively OVER the enemy if its material doesn't write depth.
     holder.add(seat, halo)
     group.add(holder)
 
@@ -980,7 +1013,7 @@ function buildFireRig(env, torches) {
   const embers = []
   for (let i = 0; i < CAP; i++) embers.push({ alive: false, x: 0, y: -50, z: 0, vx: 0, vy: 0, vz: 0, life: 0, age: 0 })
   const eMat = new THREE.PointsMaterial({
-    map: radialTex(32, [[0, 1], [0.4, 0.6], [1, 0]]), size: 0.075, sizeAttenuation: true,
+    map: radialTex(32, [[0, 1], [0.4, 0.6], [1, 0]]), size: 0.09, sizeAttenuation: true,
     transparent: true, vertexColors: true, blending: THREE.AdditiveBlending,
     depthWrite: false, fog: false,
   })
@@ -1420,6 +1453,9 @@ function buildHighland(env) {
   const knuckles = [
     [-0.8, -10.6, 1.5, 0.9, 1.2], [0.9, -11.4, 2.1, 1.3, 1.5], [2.6, -12.1, 1.2, 0.7, 1.0],
     [-2.6, -11.8, 1.7, 1.0, 1.3], [4.6, -12.6, 1.6, 0.9, 1.2], [-5.2, -12.3, 2.2, 1.4, 1.6],
+    // low boulder row between boss and party — frame05's dark clump at
+    // ≈(0.25–0.35 fw, 0.62–0.72 fh); reprojects to (0.29–0.35, 0.64)
+    [-4.2, -9.4, 1.3, 0.55, 1.0], [-3.1, -9.8, 0.9, 0.4, 0.8], [-4.9, -10.1, 0.8, 0.35, 0.7],
   ]
   let rs = 40
   for (const [x, z, sx, sy, sz] of knuckles) {
@@ -1433,14 +1469,18 @@ function buildHighland(env) {
     addG(B.rock, gRock(rs++, s, s * (0.5 + rnd() * 0.5), s, x, groundY(x, Math.max(z, -13.2)), z, { ry: rnd() * TAU }))
   }
   // foreground-left scatter
-  for (const [x, z, s] of [[-6.8, -2.2, 0.9], [-7.9, -4.8, 1.3], [-5.6, -0.6, 0.6], [7.6, -2.4, 0.7]]) {
+  for (const [x, z, s] of [[-6.8, -2.2, 0.9], [-7.9, -4.8, 1.3], [-5.6, -0.6, 0.6], [6.9, -2.4, 0.7]]) {
     addG(B.rock, gRock(rs++, s, s * 0.7, s, x, groundY(x, z), z, { ry: rnd() * TAU }))
   }
-  // the upper-right crag buttress — stacked blocks descending toward centre
+  // the upper-right crag buttress — stacked mesa blocks descending toward
+  // centre. Enlarged to the plate's mass (frame05: the buttress owns the
+  // whole upper-right quadrant, ≈0.62–1.0 fw, exiting the frame top at the
+  // edge). Reprojected tops step fx 0.71 → 1.0, fy 0.41 → 0.11.
   const stack = [
-    [9.2, -14.5, 3.2, 2.6, 2.8, 0], [10.6, -15.8, 3.6, 4.4, 3.0, 0.2],
-    [12.2, -16.8, 3.4, 6.4, 3.2, -0.15], [8.4, -15.6, 2.2, 1.7, 2.0, 0.4],
-    [11.4, -14.9, 2.6, 3.4, 2.4, -0.3],
+    [8.6, -14.8, 3.4, 3.2, 3.0, 0], [10.4, -15.9, 4.0, 5.6, 3.4, 0.2],
+    [12.4, -17.0, 4.2, 9.0, 3.6, -0.15], [9.6, -16.4, 3.2, 7.2, 3.0, 0.5],
+    [7.2, -17.6, 3.0, 4.4, 3.0, -0.3], [11.2, -15.2, 2.8, 3.8, 2.6, 0.35],
+    [5.6, -18.4, 2.6, 3.0, 2.6, 0.15],
   ]
   for (const [x, z, sx, sy, sz, ry] of stack) {
     addG(B.crag, gRock(rs++, sx, sy, sz, x, -0.6, z, { ry }))
@@ -1451,11 +1491,21 @@ function buildHighland(env) {
   mergeBuckets(group, B, MAT, { noCast: ['ground', 'crag'] })
 
   // ---- conifer silhouette cards, stage-left (ref: only the left flank) ----
+  // Every spec below was reprojected through the §1 camera — the boot layout
+  // of the interrupted build had five of six pines OUTSIDE the frustum (the
+  // overworld's exact "specified but never in frame" failure). All pines sit
+  // upstage of the boss (z ≤ −9.6 < −7.5) so the sorcerer draws over them,
+  // exactly as frame05 layers it. Trunks land fx ≈ −0.01…0.21; the three
+  // tall ones exit or graze the frame top; bases dissolve in the fog band.
   const trees = []
   const treeSpecs = [
-    // x, z, h — near giants exit the frame top; far pair reads through fog
-    [-8.6, 1.2, 10.5], [-10.8, -1.8, 11.5], [-8.2, -4.6, 9.0],
-    [-11.6, -7.5, 8.0], [-7.3, -9.8, 5.6], [-9.8, -11.5, 6.4],
+    // x, z, h
+    [-10.6, -10.2, 9.0], // edge mass: right half fills fx 0.00–0.08
+    [-9.6, -12.8, 8.5],  // trunk fx 0.076, tip exits top
+    [-8.0, -11.8, 7.2],  // trunk fx 0.134, tip grazes 0.00 fh
+    [-6.5, -11.0, 6.2],  // trunk fx 0.194, tip 0.09 fh — the plate's hero pine
+    [-8.9, -13.4, 4.2],  // small, deep in fog, fx 0.115
+    [-5.9, -9.6, 4.6],   // short near-mid, fx 0.207, tip 0.25 fh
   ]
   let ti = 0
   for (const [x, z, h] of treeSpecs) {
@@ -1484,7 +1534,8 @@ function buildHighland(env) {
       const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false })
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
       m.position.set(0, y, z)
-      m.renderOrder = 2
+      // renderOrder stays 0: the painter's depth sort must draw these BEFORE
+      // the drifting fog cards (z −14 card veils the crag line at −22)
       group.add(m)
       return m
     }
@@ -1511,7 +1562,8 @@ function buildHighland(env) {
     })
   )
   glowDisc.position.set(-2.5, 3.5, -9.5)
-  glowDisc.renderOrder = 3
+  // depth-sorted (no renderOrder): drawn after the far fog cards, before the
+  // near one, and before the boss quad at −7.5 — the boss silhouettes on it
   group.add(glowDisc)
 
   // ---- three drifting fog cards (§4: z −4/−9/−14, α .22/.35/.50) ----------
@@ -1581,12 +1633,15 @@ function buildHighland(env) {
   for (let i = 0; i < 7; i++) {
     const dark = i < 5
     const tex = canvasTex(128, 128, aniso, (g, w, h) => paintBlades(g, w, h, 700 + i * 9, dark), { clamp: true, smooth: true })
-    const w = dark ? 1.6 + rnd() * 1.2 : 0.7 + rnd() * 0.4
+    const w = dark ? 1.9 + rnd() * 1.3 : 0.7 + rnd() * 0.4
     const h = w * (0.75 + rnd() * 0.3)
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: !dark })
     const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-    const x = dark ? -7.2 + rnd() * 3.2 : -2 + rnd() * 9
-    const z = dark ? 1.2 + rnd() * 1.6 : -2.5 - rnd() * 7
+    // dark clumps: bottom-left corner. At z > 1 the frame bottom cuts at
+    // y ≈ 1.0 and the old placements never appeared; at z ∈ [−0.6, 0.6]
+    // they land fx 0.00–0.13, fy 0.8–1.0 like the plate's silhouettes.
+    const x = dark ? -6.1 + rnd() * 1.8 : -2 + rnd() * 9
+    const z = dark ? -0.6 + rnd() * 1.2 : -2.5 - rnd() * 7
     m.position.set(x, groundY(x, z) + h * 0.48, z)
     m.rotation.y = Math.atan2(CAM.x - x, CAM.z - z)
     m.renderOrder = dark ? 16 : 0
@@ -1615,6 +1670,14 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
   const aniso = renderer && renderer.capabilities ? renderer.capabilities.getMaxAnisotropy() : 4
   const rnd = mulberry32(variant === 'hall' ? 0xa17e04 : 0xa17e05)
   const env = { group, aniso, rnd }
+
+  // Each rig carries exactly one PCF shadow map (§3/§4). engine.js already
+  // enables renderer shadows; this is a construction-time guard for a bespoke
+  // renderer so the grounding shadow never silently vanishes.
+  if (renderer && renderer.shadowMap && !renderer.shadowMap.enabled) {
+    renderer.shadowMap.enabled = true
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  }
 
   const spellGroup = new THREE.Group()
   spellGroup.name = 'arenaSpellLights'
@@ -1666,8 +1729,9 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
         depthWrite: false, fog: false,
       })
     )
-    doorGlow.position.set(0.5, 4.55, -11.85)
-    doorGlow.renderOrder = 6
+    // world (0.75, 5.0, −11.85) reprojects to the bible's (0.534, 0.20) glow
+    // centre. Depth-sorted with the other additive layers, no renderOrder.
+    doorGlow.position.set(0.75, 5.0, -11.85)
     group.add(doorGlow)
 
     const cm = group.getObjectByName('arena_coals')
@@ -1675,7 +1739,7 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
 
     // rim law (§5.1): #ffb47a at 0.55 from the nearest warm source; boot dir
     // points at torch R from the party block (updated per frame with camera).
-    rim.dir = [0.19, -0.98]
+    rim.dir = [0.1903, -0.9817] // unit vector toward torch R from the party block
     rim.color = '#ffb47a'
     rim.strength = 0.55
     rim.sources = built.torches.map((T) => ({ x: T.x, y: T.y, z: T.z, kind: 'torch' }))
@@ -1770,13 +1834,15 @@ export function createArena({ renderer, scene, variant = 'hall' } = {}) {
         }
       }
     } else {
-      // fog-card drift 0.15–0.4 m/s + seamless texture scroll (§4)
+      // fog-card drift 0.15–0.4 m/s + seamless texture scroll (§4). Peak
+      // carriage speed amp·0.5·w = 0.5·speed plus the UV scroll's
+      // 0.02·speed·width m/s keeps each card inside the spec band.
       for (let i = 0; i < built.fogCards.length; i++) {
         const F = built.fogCards[i]
         const w = 0.085 + i * 0.021
         const amp = F.base.speed / w
-        F.m.position.x = Math.sin(t * w + F.phase) * amp * 0.32
-        F.m.material.map.offset.x = t * F.base.speed * 0.011 + F.phase
+        F.m.position.x = Math.sin(t * w + F.phase) * amp * 0.5
+        F.m.material.map.offset.x = t * F.base.speed * 0.02 + F.phase
         // spell light participation: fog receives light too (§8) —
         // +0.08 α for cards within 6 m of an active spell light.
         let boost = 0
