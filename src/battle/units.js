@@ -37,8 +37,10 @@
 //     (the enemy, which bakes its key, caps at ±15 % — §6).
 //   * anim clocks over the battlerSheet cell orders (idle ready attack cast
 //     hit ko victory) with §9 hit-flash/recoil, KO desaturate+fade, and the
-//     enemy quad's procedural life: 0.25 Hz breathing, ±2 px wing/beard
-//     drift, hit flash + 0.15 m recoil, bottom-up death dissolve.
+//     enemy's PAINTED frame clock over enemySprite's meta.sheet.anims (idle
+//     4 fps, attack/cast/hit/death one-shots via setFrame) layered with its
+//     procedural life: subtle 0.25 Hz breathing, hit flash + 0.15 m recoil,
+//     bottom-up death dissolve.
 //   * screen(target?) — the load-bearing UI anchor. Projected feet px + sprite
 //     screen height, cached once per frame, allocation-free in the hot path.
 //
@@ -108,7 +110,12 @@ const EMISSIVE_FLOOR = { hall: 0x121a28, highland: 0x24302a }
 // silhouette-dark against the highland fog band (§4 readability contract);
 // the painterly enemy fogs near-fully — at 21 m detail drowns, darks survive.
 const SPRITE_FOG_SCALE = 0.55
-const ENEMY_FOG_SCALE = { hall: 0.95, highland: 0.88 }
+// Highland enemy fog was 0.88 and dissolved the boss into the fog band behind
+// it (measured: beard luma ≈ fog luma, zero contrast on its brightest mass).
+// §4's law is "darks survive, detail does not" — at 0.50 the robe near-blacks
+// hold and the beard keeps ≥ 0.15 luma over the band while the silhouette
+// still reads as standing IN the fog, not pasted over it.
+const ENEMY_FOG_SCALE = { hall: 0.95, highland: 0.50 }
 
 // §9 hit react: 2 × 60 ms white flash, −0.35 m recoil over 90 ms, settle 180.
 const HIT_FLASH_MS = 0.060
@@ -269,13 +276,19 @@ const UNIT_FRAG = /* glsl */ `
       col *= mix(${OCCLUDE_DARKEN.toFixed(2)}, 1.0, smoothstep(uOccl.x, uOccl.y, vUv.y));
     }
 
-    // §5.1 scene-keyed rim: 1-texel offset mask — lit where the neighbour
-    // toward the light is empty. Facing edge only, never a full halo.
+    // §5.1 scene-keyed rim: offset mask — lit where the neighbour toward the
+    // light is empty. Three fan taps (facing dir ±40°) so the rim covers the
+    // §5.1 40–60 % of the facing edge as a continuous stroke instead of the
+    // old single-tap dotted sub-pixel sparkle; still never a full halo.
     if (uRimColor.r + uRimColor.g + uRimColor.b > 0.001) {
-      float aN = texture2D(uMap, clamp(uv + uRimOff, uClampMin, uClampMax)).a;
-      float edge = step(aN, 0.45);
+      vec2 o1 = uRimOff;
+      vec2 o2 = vec2(o1.x * 0.766 - o1.y * 0.643, o1.x * 0.643 + o1.y * 0.766);
+      vec2 o3 = vec2(o1.x * 0.766 + o1.y * 0.643, o1.y * 0.766 - o1.x * 0.643);
+      float edge = step(texture2D(uMap, clamp(uv + o1, uClampMin, uClampMax)).a, 0.45);
+      edge = max(edge, step(texture2D(uMap, clamp(uv + o2, uClampMin, uClampMax)).a, 0.45) * 0.85);
+      edge = max(edge, step(texture2D(uMap, clamp(uv + o3, uClampMin, uClampMax)).a, 0.45) * 0.85);
       // second tap 2 texels out softens the rim onto round silhouettes
-      float aN2 = texture2D(uMap, clamp(uv + uRimOff * 2.0, uClampMin, uClampMax)).a;
+      float aN2 = texture2D(uMap, clamp(uv + o1 * 2.0, uClampMin, uClampMax)).a;
       edge = max(edge, step(aN2, 0.45) * 0.45);
       col += uRimColor * edge;
     }
@@ -346,34 +359,34 @@ function makeUnitMaterial({ map, alphaCut, emissive, fogScale, lightBase, lightR
 
 const BLOB_VERT = /* glsl */ `
   varying vec2 vUv;
-  varying vec3 vWorld;
   void main() {
     vUv = uv;
-    vec4 wp = modelMatrix * vec4(position, 1.0);
-    vWorld = wp.xyz;
-    gl_Position = projectionMatrix * viewMatrix * wp;
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(position, 1.0);
   }
 `
 const BLOB_FRAG = /* glsl */ `
   precision highp float;
   uniform vec3 uColor;
   uniform float uAlpha;
-  uniform float uFogDensity;
   varying vec2 vUv;
-  varying vec3 vWorld;
   void main() {
     vec2 q = vUv * 2.0 - 1.0;
     float r = length(q);
     float a = 1.0 - smoothstep(0.55, 1.0, r);          // 45 % feather
     a *= 0.80 + 0.20 * (1.0 - smoothstep(0.0, 0.5, r)); // denser core
-    // Distance fade only — NOT a second fog pass. The blob is a decal lying on
-    // the ground at the ground's own depth, so the scene fog that veils the
-    // floor veils the blob with it; re-applying the full curve here double-
-    // counted and, at the highland's 0.028 density, stripped a quarter of the
-    // party's grounding before the mist cards even landed on top of it.
-    float fd = uFogDensity * length(vWorld - cameraPosition);
-    float fogT = exp(-fd * fd);
-    float outA = a * uAlpha * mix(0.60, 1.0, fogT);
+    // FLAT §5.2 alpha — no distance/fog fade of any kind. Post-mortem of the
+    // invisible-shadow bug: the decal darkens toward #10131c in scene-linear
+    // space, where the acting floor only holds ~0.03–0.10 of luminance; the
+    // post grade's shadow-lift + the ACES toe then compress that already-tiny
+    // delta, and the drifting fog/mist cards dilute what survives. A previous
+    // revision ALSO multiplied the alpha by a distance-fade term here (up to
+    // −40 %), which pushed the final on-screen contrast under the visibility
+    // threshold — measured: an opaque red blob rendered plainly at these
+    // exact pixels while the faded dark blob moved them by < 6/255. The §5.2
+    // alphas are read off the FINAL plates, so they must arrive at the
+    // framebuffer intact; scene fog already veils the floor underneath, which
+    // veils the composite. Never re-fade this decal.
+    float outA = a * uAlpha;
     if (outA < 0.004) discard;
     gl_FragColor = vec4(uColor, outA);
     #include <colorspace_fragment>
@@ -392,12 +405,11 @@ function blobGeometry() {
   return g
 }
 
-function makeBlob({ color, alpha, rx, rz, fogDensity }) {
+function makeBlob({ color, alpha, rx, rz }) {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uColor: { value: colorOf(color) },
       uAlpha: { value: alpha },
-      uFogDensity: { value: fogDensity },
     },
     vertexShader: BLOB_VERT,
     fragmentShader: BLOB_FRAG,
@@ -643,7 +655,7 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
     // 0.06 m toward camera so a sliver always reads below the soles on screen.
     const blob = makeBlob({
       color: BLOB_COLOR, alpha: blobAlpha,
-      rx: BLOB_RX, rz: BLOB_RZ, fogDensity: bootFogDensity,
+      rx: BLOB_RX, rz: BLOB_RZ,
     })
     blob.position.set(0, 0.02, 0.06)
     root.add(blob)
@@ -715,9 +727,21 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
     lightResp: 0.45,
     lightClamp: [0.85, 1.15],
   })
-  // §6 idle wing/beard drift: ±2 px of the source canvas, upper 45 % only.
+  // Painted frame animation (enemySprite round 3): the art module owns frame
+  // selection via setFrame(i) and publishes expanded atlas index lists at
+  // meta.sheet.anims (dragon idle/attack/hit/death, sorcerer idle/cast/hit/
+  // death). When both are present the enemy runs its painted clock — idle at
+  // ~4 fps, one-shots timed to the procedural beat lengths below.
+  const eSheetAnims = (eMeta.sheet && eMeta.sheet.anims) || null
+  const eSetFrame = typeof enemyArt.setFrame === 'function' ? enemyArt.setFrame : null
+  const ePainted = !!(eSheetAnims && eSheetAnims.idle && eSheetAnims.idle.length && eSetFrame)
+
+  // §6 idle wing/beard drift: ±2 px of the source canvas, upper 45 % only —
+  // an idle-motion stand-in for a STATIC painting. With live painted frames
+  // the sheet animates its own wings/beard, so the shader warp would smear
+  // the authored art; it stays only in the no-anim fallback.
   const eCanvasW = (eMeta.canvas && eMeta.canvas.w) || 1024
-  eMat.uniforms.uDrift.value.set(2 / eCanvasW, 0.55)
+  eMat.uniforms.uDrift.value.set(ePainted ? 0 : 2 / eCanvasW, 0.55)
   if (artMode === 'feet') {
     // grounded enemy: occlusion band over the bottom 15 % of its 6 m mass
     eMat.uniforms.uOccl.value.set(eAnchorV, eAnchorV + ((enemyArt.worldHeight || 6) * OCCLUDE_FRAC * ePpm) / ((eMeta.canvas && eMeta.canvas.h) || 896))
@@ -754,16 +778,16 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
   // sorcerer = pale fog-pool disc r 2.5 m α 0.25 (no dark blob — it floats).
   const eBlobs = []
   if (artMode === 'feet') {
-    const pool = makeBlob({ color: BLOB_COLOR, alpha: 0.50, rx: 2.45, rz: 0.95, fogDensity: bootFogDensity })
+    const pool = makeBlob({ color: BLOB_COLOR, alpha: 0.50, rx: 2.45, rz: 0.95 })
     pool.position.set(-1.25, 0.02, -0.15) // mass sits left of the forefeet
     eRoot.add(pool)
     eBlobs.push(pool)
-    const feet = makeBlob({ color: BLOB_COLOR, alpha: 0.55, rx: 0.85, rz: 0.32, fogDensity: bootFogDensity })
+    const feet = makeBlob({ color: BLOB_COLOR, alpha: 0.55, rx: 0.85, rz: 0.32 })
     feet.position.set(0, 0.025, 0.05)
     eRoot.add(feet)
     eBlobs.push(feet)
   } else {
-    const pool = makeBlob({ color: FOGPOOL_COLOR, alpha: FOGPOOL_ALPHA, rx: FOGPOOL_R, rz: FOGPOOL_R * 0.55, fogDensity: bootFogDensity })
+    const pool = makeBlob({ color: FOGPOOL_COLOR, alpha: FOGPOOL_ALPHA, rx: FOGPOOL_R, rz: FOGPOOL_R * 0.55 })
     pool.position.set(0, 0.03, 0)
     eRoot.add(pool)
     eBlobs.push(pool)
@@ -802,6 +826,40 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
     dissolve: 0,
     dying: false,
     breathPhase: Math.random() * Math.PI * 2,
+    // painted-frame clock over meta.sheet.anims (null → procedural only)
+    frames: ePainted ? eSheetAnims.idle : null,
+    frameFps: 4,          // §9 idle pacing
+    frameLoop: true,
+    frameT: Math.random() * 2,
+    lastFrame: -1,
+  }
+
+  /** Point the enemy's painted clock at the atlas range for `name`. One-shot
+   *  fps is derived from the procedural beat length so the painted frames and
+   *  the lunge/flash/dissolve stay in lockstep. */
+  function setEnemyFrames(name) {
+    if (!ePainted) return
+    const A = eSheetAnims
+    let list = null
+    let dur = 0
+    switch (name) {
+      case 'hit':    list = A.hit; dur = 0.33; break
+      case 'attack':
+      case 'cast':   list = A.attack || A.cast; dur = 0.9; break
+      case 'death':
+      case 'ko':     list = A.death; dur = DEATH_DISSOLVE_S; break
+      default:       break // idle
+    }
+    if (list && list.length) {
+      eInternal.frames = list
+      eInternal.frameFps = list.length / dur
+      eInternal.frameLoop = false
+    } else {
+      eInternal.frames = A.idle
+      eInternal.frameFps = 4
+      eInternal.frameLoop = true
+    }
+    eInternal.frameT = 0
   }
 
   // ......................................................................
@@ -839,7 +897,7 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
     const onDone = opts && opts.onDone ? opts.onDone : null
 
     if (u.isEnemy) {
-      // procedural enemy beats (§6/§9)
+      // enemy beats (§6/§9): painted atlas frames + procedural lunge/flash
       const inn = eInternal
       inn.onDone = onDone
       inn.animT = 0
@@ -872,6 +930,7 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
           for (const b of inn.blobs) b.material.uniforms.uAlpha.value = b.userData.bootAlpha
           u.alive = true
       }
+      setEnemyFrames(inn.anim)
       return
     }
 
@@ -1023,7 +1082,9 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
       rimColorStr = rim.color
       rimColor.set(rim.color)
     }
-    const k = rim.strength * 0.85
+    // Full published §5.1 strength (hall 0.55 #ffb47a) — the old 0.85 haircut
+    // left Lasswell's rim sub-threshold against the dark hall floor.
+    const k = rim.strength
     U.uRimColor.value.set(rimColor.r * k, rimColor.g * k, rimColor.b * k)
 
     // direction: strongest of rim.sources as seen from THIS unit (§5.1),
@@ -1238,13 +1299,34 @@ export function createUnits({ arena, sheets, enemyArt, renderer }) {
             inn.onDone = null
             cb()
           }
-          if (inn.anim !== 'death') { inn.anim = 'idle'; U.uFlash.value = 0 }
+          if (inn.anim !== 'death') {
+            inn.anim = 'idle'
+            U.uFlash.value = 0
+            setEnemyFrames('idle')
+          }
           inn.animDur = 0
         }
       }
 
-      // §6 idle: 0.25 Hz breathing scale-y ±1.5 %; sorcerer adds a slow bob
-      const breath = 1 + BREATH_AMP * Math.sin(tNow * Math.PI * 2 * BREATH_HZ + inn.breathPhase)
+      // painted-frame clock (idle loops at 4 fps; one-shots hold their last
+      // cell — the death painting freezes under the procedural dissolve)
+      if (inn.frames) {
+        inn.frameT += dt * inn.frameFps
+        let fIdx = inn.frameT | 0
+        const fLen = inn.frames.length
+        if (fIdx >= fLen) fIdx = inn.frameLoop ? fIdx % fLen : fLen - 1
+        const cell = inn.frames[fIdx]
+        if (cell !== inn.lastFrame) {
+          inn.lastFrame = cell
+          eSetFrame(cell)
+        }
+      }
+
+      // §6 idle: 0.25 Hz breathing scale-y ±1.5 %; sorcerer adds a slow bob.
+      // With painted frames running, the breath drops to a whisper (±0.6 %)
+      // so it underlines the sheet's own idle cycle instead of fighting it.
+      const breathAmp = inn.frames ? BREATH_AMP * 0.4 : BREATH_AMP
+      const breath = 1 + breathAmp * Math.sin(tNow * Math.PI * 2 * BREATH_HZ + inn.breathPhase)
       eMesh.scale.y = breath
       eMesh.scale.x = 1 + (1 - breath) * 0.4 // faint counter-squash
       eMesh.position.x = lunge
