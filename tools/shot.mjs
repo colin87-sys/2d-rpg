@@ -2,6 +2,11 @@
 // The page is plain ESM + an import map, served by a tiny static server.
 //
 // Usage: node tools/shot.mjs [outfile] [--wait 12000] [--w 1920] [--h 1080] [--port 4173]
+//                            [--page index.html] [--settle 3000]
+//
+// --page changes only which URL is opened (query string allowed, e.g.
+// "battle.html?freeze=firaga"). It defaults to index.html, so every existing
+// invocation keeps behaving exactly as before.
 import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
@@ -15,11 +20,17 @@ const flag = (name, def) => {
   const i = args.indexOf(`--${name}`)
   return i === -1 ? def : args[i + 1]
 }
-const out = resolve(args.find((a) => !a.startsWith('--')) || 'shots/poc.png')
+// The outfile is the first bare positional. Skip anything consumed as a flag
+// value so `--page battle.html` can never be mistaken for the output path.
+const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')))
+const out = resolve(positional[0] || 'shots/poc.png')
 const waitMs = Number(flag('wait', 12000))
 const W = Number(flag('w', 1920))
 const H = Number(flag('h', 1080))
 const PORT = Number(flag('port', 4173))
+// Page to open, relative to the served root. Default preserves the original
+// hard-coded /index.html behaviour byte for byte.
+const PAGE = String(flag('page', 'index.html')).replace(/^\/+/, '')
 
 mkdirSync(dirname(out), { recursive: true })
 
@@ -52,7 +63,7 @@ const run = async () => {
   page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`))
   page.on('pageerror', (e) => logs.push(`PAGEERROR: ${e.message}\n${(e.stack || '').split('\n').slice(0, 6).join('\n')}`))
 
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load', timeout: 60000 })
+  await page.goto(`http://127.0.0.1:${PORT}/${PAGE}`, { waitUntil: 'load', timeout: 60000 })
   // Wait for the app to signal it has drawn real content, then let animation settle.
   try {
     await page.waitForFunction(() => window.__POC && window.__POC.ready, { timeout: waitMs })

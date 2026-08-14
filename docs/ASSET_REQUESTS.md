@@ -1,5 +1,35 @@
 # ASSET REQUESTS — what to generate, and to what spec
 
+> ## STATUS — 9 assets received, 1 blocker outstanding
+>
+> Everything in `assets/raw/`. Batch 1 is complete **except the dragon**; Batch 2 is complete.
+>
+> | Received | File | Replaces |
+> | --- | --- | --- |
+> | Rain battler | `battler_rain.webp` 1920×1600 | `makeBattlerSheet('rain')` |
+> | Lasswell battler | `battler_lasswell.webp` 1920×1600 | `makeBattlerSheet('lasswell')` |
+> | Fina battler | `battler_fina.webp` 1920×1600 | `makeBattlerSheet('fina')` |
+> | Lid battler | `battler_lid.webp` 1920×1600 | `makeBattlerSheet('lid')` |
+> | Highland boss | `boss_sorcerer_sheet.webp` 1500×1500 | `makeSorcererArt()` |
+> | Stone hall backdrop | `bg_stone_hall.webp` 1920×1080 | the whole procedural `hall` set in `arena.js` |
+> | Highland backdrop | `bg_misty_highland.webp` 1920×1080 | the whole procedural `highland` set in `arena.js` |
+> | Overworld Rain | `overworld_rain.webp` 1536×1152 | `makeHeroSheet()` |
+> | Overworld chocobo | `overworld_chocobo.webp` 1536×1152 | `makeMountSheet()` |
+>
+> **STILL BLOCKING: the dragon (§1.2-equivalent, hall enemy).** It is the focal point of the
+> hall frame and the only fully procedural element left in it. The critic's verdict on the
+> code-drawn version was *"a cute vector bird-blob, not a painterly dragon — the
+> enemy-as-spectacle hierarchy collapses."* Painterly treatment, facing **right** toward the
+> party, ~6 m world height, frames `idle(4) attack(4) hit(2) death(3)`.
+>
+> Note: §1.2 below describes the sorcerer as a pairing for "your dragon" and the universal
+> rules reference existing sheets. That text was written before any assets existed and those
+> references were speculative — the dragon has never been supplied.
+>
+> After the dragon, the highest-value requests are the overworld **vegetation** and **cliff/rock**
+> sets (see Batch 3 below). The procedural cliffs have failed three critique rounds running.
+
+
 Generated sprite sheets replace hand-coded Canvas2D art for **characters, creatures and
 backdrops only**. Terrain, cliffs, water, roads and camera stay procedural — geometry cannot
 come from a PNG, and that is where the overworld's remaining defects live.
@@ -183,3 +213,53 @@ smooth airbrushed shading.
    characters and backdrops explicitly exempted.
 
 Send them in whatever order you generate them; I can wire up batch 1 before batch 2 exists.
+
+---
+
+## BATCH 3 — overworld world art (highest value after the dragon)
+
+The overworld has been through three critique rounds (53 → 68 → partial). Its remaining
+failures are concentrated in exactly the places where generated art would help most.
+
+### 3.1 — Vegetation set · **pixel art**, side-on, one sprite per image, transparent
+
+Conifers ×4 with genuinely different silhouettes, deciduous crowns ×4, cherry-blossom ×3 in
+distinct pink/lavender ramps, bamboo cluster ×2, bushes ×3, autumn/dead variants ×2.
+
+Critical: the reference has strong **hue variation between neighbouring trees** — olive,
+yellow-green and blue-green in one stand. Our procedural atlas is one green with value changes
+only, and that flatness is visible at frame scale.
+
+### 3.2 — Rock and cliff set · **pixel art** + one tiling texture
+
+Boulders ×3, rock clusters ×3, scree patches ×2, plus a **tileable cliff-face texture with
+horizontal strata**.
+
+This is the overworld's most persistent defect. Three rounds of procedural work have produced
+what the critic called *"wavy khaki contour-plywood"* and *"a topographic map, not layered
+rock"* — the wrong hue family and no facet structure. Painted strata would end it outright.
+
+### 3.3 — Ground textures · tileable, 1024², hand-painted feel
+
+Grass (with large-scale mottling, not flat), dirt road, sand, bare rock, ploughed field.
+
+### 3.4 — Castle and structures · **pixel art or painted**
+
+The castle is the overworld's landmark and still reads as a toy fort. Either a painted castle
+sprite, or a texture set: white stone with masonry coursing, cobalt roof tile, gold trim.
+Also useful: village houses ×4 plans, rope bridge, timber trestle bridge, fences, signpost, pier.
+
+### 3.5 — Water · tileable
+
+Water surface, foam/surf edge strip, waterfall sheet, river flow texture.
+
+---
+
+## Explicitly NOT needed
+
+- **VFX.** Spell effects stay procedural. The Firaga burst already casts real light into the
+  scene and the critic credited it as "not an additive decal floating on top".
+- **UI.** Panels, turn rail and callouts are code-drawn and are our strongest area — rated
+  "closest to parity" and palette-stable across both battle environments.
+- **Fonts.** System stacks by design; no webfonts.
+- **Terrain geometry, camera, lighting rigs.** Geometry cannot come from a PNG. These stay code.

@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "atlasOrder": "row-major-top-left",
+  "colorSpace": "srgb",
+  "premultipliedAlpha": false,
+  "assets": [
+    {
+      "id": "rain",
+      "role": "sword-hero",
+      "type": "battle-atlas",
+      "path": "battlers/rain-stormblade.png",
+      "width": 1920,
+      "height": 1600,
+      "alpha": true,
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
+      "frameCount": 29,
+      "emptyCells": [
+        29
+      ],
+      "anchor": "bottom-center",
+      "facing": "west-except-victory-front",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
+      }
+    },
+    {
+      "id": "lasswell",
+      "role": "katana-duellist",
+      "type": "battle-atlas",
+      "path": "battlers/lasswell-katana-duellist.png",
+      "width": 1920,
+      "height": 1600,
+      "alpha": true,
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
+      "frameCount": 29,
+      "emptyCells": [
+        29
+      ],
+      "anchor": "bottom-center",
+      "facing": "west-except-victory-front",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
+      }
+    },
+    {
+      "id": "fina",
+      "role": "radiant-support",
+      "type": "battle-atlas",
+      "path": "battlers/fina-radiant-support.png",
+      "width": 1920,
+      "height": 1600,
+      "alpha": true,
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
+      "frameCount": 29,
+      "emptyCells": [
+        29
+      ],
+      "anchor": "bottom-center",
+      "facing": "west-except-victory-front",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
+      }
+    },
+    {
+      "id": "lid",
+      "role": "gunner-engineer",
+      "type": "battle-atlas",
+      "path": "battlers/lid-engineer.png",
+      "width": 1920,
+      "height": 1600,
+      "alpha": true,
+      "grid": {
+        "columns": 6,
+        "rows": 5,
+        "cellWidth": 320,
+        "cellHeight": 320
+      },
+      "frameCount": 29,
+      "emptyCells": [
+        29
+      ],
+      "anchor": "bottom-center",
+      "facing": "west-except-victory-front",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "ready": {
+          "start": 4,
+          "count": 4
+        },
+        "attack": {
+          "start": 8,
+          "count": 6
+        },
+        "cast": {
+          "start": 14,
+          "count": 6
+        },
+        "hit": {
+          "start": 20,
+          "count": 2
+        },
+        "ko": {
+          "start": 22,
+          "count": 3,
+          "loop": false
+        },
+        "victory": {
+          "start": 25,
+          "count": 4
+        }
+      }
+    },
+    {
+      "id": "highland-sovereign",
+      "role": "highland-boss",
+      "type": "battle-atlas",
+      "path": "enemies/highland-sovereign.png",
+      "width": 2048,
+      "height": 2048,
+      "alpha": true,
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "cellWidth": 512,
+        "cellHeight": 512
+      },
+      "frameCount": 13,
+      "emptyCells": [
+        13,
+        14,
+        15
+      ],
+      "anchor": "bottom-center",
+      "facing": "east",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "cast": {
+          "start": 4,
+          "count": 4
+        },
+        "hit": {
+          "start": 8,
+          "count": 2
+        },
+        "death": {
+          "start": 10,
+          "count": 3,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "hall-dragon",
+      "role": "hall-boss",
+      "type": "battle-atlas",
+      "path": "enemies/hall-dragon.png",
+      "width": 2048,
+      "height": 2048,
+      "alpha": true,
+      "grid": {
+        "columns": 4,
+        "rows": 4,
+        "cellWidth": 512,
+        "cellHeight": 512
+      },
+      "frameCount": 13,
+      "emptyCells": [
+        13,
+        14,
+        15
+      ],
+      "anchor": "bottom-center",
+      "facing": "east",
+      "source": "re-packed by tools/key-and-pack.mjs from a 2048x2048 sheet that already carried real alpha; frames trimmed and planted bottom-centre at native scale, no keying applied",
+      "animations": {
+        "idle": {
+          "start": 0,
+          "count": 4
+        },
+        "attack": {
+          "start": 4,
+          "count": 4
+        },
+        "hit": {
+          "start": 8,
+          "count": 2
+        },
+        "death": {
+          "start": 10,
+          "count": 3,
+          "loop": false
+        }
+      }
+    },
+    {
+      "id": "torchlit-stone-hall",
+      "type": "battle-backdrop",
+      "path": "backdrops/torchlit-stone-hall.png",
+      "width": 1920,
+      "height": 1080,
+      "alpha": false,
+      "aspectRatio": "16:9"
+    },
+    {
+      "id": "misty-highland",
+      "type": "battle-backdrop",
+      "path": "backdrops/misty-highland.png",
+      "width": 1920,
+      "height": 1080,
+      "alpha": false,
+      "aspectRatio": "16:9"
+    },
+    {
+      "id": "rain-overworld",
+      "role": "overworld-hero",
+      "type": "overworld-atlas",
+      "path": "overworld/rain-stormblade-walk.png",
+      "width": 1536,
+      "height": 1152,
+      "alpha": true,
+      "grid": {
+        "columns": 4,
+        "rows": 3,
+        "cellWidth": 384,
+        "cellHeight": 384
+      },
+      "frameCount": 12,
+      "anchor": "bottom-center",
+      "animations": {
+        "walk_south": {
+          "start": 0,
+          "count": 4
+        },
+        "walk_west": {
+          "start": 4,
+          "count": 4
+        },
+        "walk_north": {
+          "start": 8,
+          "count": 4
+        }
+      },
+      "east": "mirror-walk-west"
+    },
+    {
+      "id": "golden-bird-mount",
+      "role": "riderless-mount",
+      "type": "overworld-atlas",
+      "path": "overworld/golden-bird-mount-walk.png",
+      "width": 1536,
+      "height": 1152,
+      "alpha": true,
+      "grid": {
+        "columns": 4,
+        "rows": 3,
+        "cellWidth": 384,
+        "cellHeight": 384
+      },
+      "frameCount": 12,
+      "anchor": "bottom-center",
+      "animations": {
+        "walk_south": {
+          "start": 0,
+          "count": 4
+        },
+        "walk_west": {
+          "start": 4,
+          "count": 4
+        },
+        "walk_north": {
+          "start": 8,
+          "count": 4
+        }
+      },
+      "east": "mirror-walk-west"
+    }
+  ]
+}
